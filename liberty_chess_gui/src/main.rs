@@ -104,6 +104,7 @@ struct LibertyChessGUI {
   gamemode: GameMode,
   gamestate: Option<Board>,
   selected: Option<(usize, usize)>,
+  moved: Option<[(usize, usize); 2]>,
   message: Option<String>,
   // images and a render cache
   images: [Tree; 36],
@@ -148,6 +149,7 @@ impl Default for LibertyChessGUI {
       gamemode: Preset(Presets::Standard),
       gamestate: None,
       selected: None,
+      moved: None,
       message: None,
       images: get_images(),
       renders: [(); 36].map(|_| None),
@@ -229,6 +231,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &egui::Context, ui: &mut egui::Ui)
 fn draw_game(gui: &mut LibertyChessGUI, ctx: &egui::Context, ui: &mut egui::Ui) {
   if ui.button(text("Main menu")).clicked() {
     gui.screen = MainMenu;
+    gui.moved = None;
   }
   if let Some(gamestate) = gui.gamestate.clone() {
     let available_size = ui.available_size();
@@ -247,13 +250,18 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &egui::Context, ui: &mut egui::Ui) 
           for j in 0..columns {
             let coords = (i, j);
             let piece = gamestate.pieces[coords];
-            let colour;
+            let mut colour = if (i + j) % 2 == 0 {
+              Colours::BlackSquare
+            } else {
+              Colours::WhiteSquare
+            };
+            if let Some([from, to]) = gui.moved {
+              if coords == from || coords == to {
+                colour = Colours::Moved;
+              }
+            }
             if Some(coords) == gui.selected {
               colour = Colours::Selected;
-            } else if (i + j) % 2 == 0 {
-              colour = Colours::BlackSquare;
-            } else {
-              colour = Colours::WhiteSquare;
             }
             let image = gui.get_image(piece, size as usize);
             let texture = ctx.load_texture("piece", image, TextureFilter::Linear);
@@ -263,6 +271,7 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &egui::Context, ui: &mut egui::Ui) 
               if let Some(selected) = gui.selected {
                 if let Some(gamestate) = &mut gui.gamestate {
                   gamestate.make_move(selected, coords);
+                  gui.moved = Some([selected, coords]);
                 }
                 gui.selected = None;
               } else {
@@ -344,7 +353,7 @@ fn text(text: &str) -> RichText {
 }
 
 fn main() {
-  let mut options = eframe::NativeOptions::default();
+  let options = eframe::NativeOptions::default();
   // Disable vsync for benchmarking
   // options.vsync = false;
   eframe::run_native(
