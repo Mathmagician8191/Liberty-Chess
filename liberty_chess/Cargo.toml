@@ -1,0 +1,12 @@
+[package]
+name = "liberty_chess"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[lib]
+name = "liberty_chess"
+path = "src/liberty_chess.rs"
+
+[dependencies]
+array2d = {workspace = true}

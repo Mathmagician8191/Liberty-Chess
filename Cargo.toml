@@ -1,0 +1,27 @@
+[workspace]
+members = ["liberty_chess_gui","test"]
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[workspace.dependencies]
+liberty_chess = {path = "liberty_chess"}
+array2d = "0.2.1"
+eframe = "0.19.0"
+enum-iterator = "1.2.0"
+resvg = "0.24.0"
+tiny-skia = "0.8.2"
+usvg = "0.24.0"
+
+[profile.dev]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+strip = true
+lto = true
