@@ -124,6 +124,7 @@ fn process_board(board: &str) -> Result<Board, FenError> {
       } else {
         if squares > 0 {
           vec.append(&mut vec![0; squares]);
+          squares = 0;
         }
         vec.push(to_piece(c)?);
       }
