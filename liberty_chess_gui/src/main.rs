@@ -2,13 +2,14 @@ use crate::GameMode::*;
 use crate::Screen::*;
 use eframe::egui;
 use egui::widget_text::RichText;
-use egui::{Color32, ColorImage, Image, Sense, TextureFilter};
+use egui::{Color32, ColorImage, Context, Image, Sense, TextureFilter};
 use enum_iterator::{all, Sequence};
 use liberty_chess::{Board, Piece};
 use std::time::{Duration, Instant};
 use tiny_skia::Pixmap;
 use usvg::{FitTo, Options, Tree};
 
+#[derive(PartialEq)]
 enum Screen {
   MainMenu,
   Game,
@@ -161,11 +162,21 @@ impl Default for LibertyChessGUI {
 }
 
 impl eframe::App for LibertyChessGUI {
-  fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+  fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    if self.screen == Game {
+      egui::SidePanel::right("Panel")
+        .resizable(false)
+        .show(ctx, |ui| {
+          if ui.button(text("Main menu")).clicked() {
+            self.screen = MainMenu;
+            self.moved = None;
+          }
+        });
+    }
     egui::CentralPanel::default().show(ctx, |ui| {
       match self.screen {
         MainMenu => draw_menu(self, ctx, ui),
-        Game => draw_game(self, ctx, ui),
+        Game => draw_game(self, ctx),
         Help => draw_help(self, ui),
         Credits => draw_credits(self, ui),
       };
@@ -177,13 +188,13 @@ impl eframe::App for LibertyChessGUI {
       println!("{} FPS", self.frames);
       self.frames = 0;
     }
-    ctx.request_repaint_after(Duration::from_millis(200));
+    // ctx.request_repaint_after(Duration::from_millis(200));
     // Add no delay between rendering frames, for benchmarking
-    // ctx.request_repaint_after(Duration::ZERO);
+    ctx.request_repaint_after(Duration::ZERO);
   }
 }
 
-fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &egui::Context, ui: &mut egui::Ui) {
+fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut egui::Ui) {
   ui.horizontal_top(|ui| {
     if ui.button(text("Help")).clicked() {
       gui.message = None;
@@ -228,65 +239,66 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &egui::Context, ui: &mut egui::Ui)
   }
 }
 
-fn draw_game(gui: &mut LibertyChessGUI, ctx: &egui::Context, ui: &mut egui::Ui) {
-  if ui.button(text("Main menu")).clicked() {
-    gui.screen = MainMenu;
-    gui.moved = None;
-  }
+fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context) {
   if let Some(gamestate) = gui.gamestate.clone() {
-    let available_size = ui.available_size();
-    let rows = gamestate.height;
-    let columns = gamestate.width;
-    let row_size = (available_size.y / (rows as f32)).floor();
-    let column_size = (available_size.x / (columns as f32)).floor();
-    let size = f32::min(row_size, column_size);
-    egui::Grid::new("board")
-      .num_columns(columns)
-      .spacing([0.0, 0.0])
-      .min_col_width(size)
-      .min_row_height(size)
-      .show(ui, |ui| {
-        for i in (0..rows).rev() {
-          for j in 0..columns {
-            let coords = (i, j);
-            let piece = gamestate.pieces[coords];
-            let mut colour = if (i + j) % 2 == 0 {
-              Colours::BlackSquare
-            } else {
-              Colours::WhiteSquare
-            };
-            if let Some([from, to]) = gui.moved {
-              if coords == from || coords == to {
-                colour = Colours::Moved;
-              }
-            }
-            if Some(coords) == gui.selected {
-              colour = Colours::Selected;
-            }
-            let image = gui.get_image(piece, size as usize);
-            let texture = ctx.load_texture("piece", image, TextureFilter::Linear);
-            let icon = Image::new(texture.id(), [size, size]).bg_fill(colour.value());
-            let response = ui.add(icon).interact(Sense::click());
-            if response.clicked() {
-              if let Some(selected) = gui.selected {
-                if let Some(gamestate) = &mut gui.gamestate {
-                  gamestate.make_move(selected, coords);
-                  gui.moved = Some([selected, coords]);
-                }
-                gui.selected = None;
-              } else {
-                gui.selected = Some(coords);
-              }
-              println!("{}{}", j, i);
-            }
-          }
-          ui.end_row();
-        }
-      });
+    egui::Area::new("Board")
+      .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+      .show(ctx, |ui| render_board(gui, ctx, ui, gamestate));
   } else {
     println!("On Game screen with no gamestate");
     gui.screen = MainMenu;
   }
+}
+
+fn render_board(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut egui::Ui, gamestate: Board) {
+  let available_size = ctx.available_rect().size();
+  let rows = gamestate.height;
+  let columns = gamestate.width;
+  let row_size = (available_size.y / (rows as f32)).floor();
+  let column_size = (available_size.x / (columns as f32)).floor();
+  let size = f32::min(row_size, column_size);
+  egui::Grid::new("Board")
+    .num_columns(columns)
+    .spacing([0.0, 0.0])
+    .min_col_width(size)
+    .min_row_height(size)
+    .show(ui, |ui| {
+      for i in (0..rows).rev() {
+        for j in 0..columns {
+          let coords = (i, j);
+          let piece = gamestate.pieces[coords];
+          let mut colour = if (i + j) % 2 == 0 {
+            Colours::BlackSquare
+          } else {
+            Colours::WhiteSquare
+          };
+          if let Some([from, to]) = gui.moved {
+            if coords == from || coords == to {
+              colour = Colours::Moved;
+            }
+          }
+          if Some(coords) == gui.selected {
+            colour = Colours::Selected;
+          }
+          let image = gui.get_image(piece, size as usize);
+          let texture = ctx.load_texture("piece", image, TextureFilter::Linear);
+          let icon = Image::new(texture.id(), [size, size]).bg_fill(colour.value());
+          let response = ui.add(icon).interact(Sense::click());
+          if response.clicked() {
+            if let Some(selected) = gui.selected {
+              if let Some(gamestate) = &mut gui.gamestate {
+                gamestate.make_move(selected, coords);
+                gui.moved = Some([selected, coords]);
+              }
+              gui.selected = None;
+            } else {
+              gui.selected = Some(coords);
+            }
+          }
+        }
+        ui.end_row();
+      }
+    });
 }
 
 fn draw_help(gui: &mut LibertyChessGUI, ui: &mut egui::Ui) {
@@ -353,9 +365,9 @@ fn text(text: &str) -> RichText {
 }
 
 fn main() {
-  let options = eframe::NativeOptions::default();
+  let mut options = eframe::NativeOptions::default();
   // Disable vsync for benchmarking
-  // options.vsync = false;
+  options.vsync = false;
   eframe::run_native(
     "Liberty Chess",
     options,
