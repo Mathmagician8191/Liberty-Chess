@@ -2,11 +2,12 @@
 
 The sequel to Totally Normal Chess, now written in Rust
 
-This is currently in a pre-alpha state where key functionality (e.g. move validation) is not yet implemented and many other features (e.g. loading L-FENs and moving pieces) is only partially implemented.
+This is currently in a pre-alpha state where key functionality (e.g. move validation, loading L-FENs and moving pieces) is only partially implemented.
 
 Implemented so far:
 - Loading and rendering pieces from an L-FEN (remaining L-FEN functionality missing)
 - Basic piece moving functionality (accounts for none of the special cases)
+- Basic move validation (not accounting for special cases or ray attack pieces)
 
 For information on the copyright of the images, see COPYING.md.
 

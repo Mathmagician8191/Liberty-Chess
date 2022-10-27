@@ -287,12 +287,17 @@ fn render_board(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut egui::Ui, gam
           if response.clicked() {
             if let Some(selected) = gui.selected {
               if let Some(gamestate) = &mut gui.gamestate {
-                gamestate.make_move(selected, coords);
-                gui.moved = Some([selected, coords]);
+                if gamestate.check_pseudolegal(selected, coords) {
+                  gamestate.make_move(selected, coords);
+                  gui.moved = Some([selected, coords]);
+                }
               }
               gui.selected = None;
             } else {
-              gui.selected = Some(coords);
+              let piece = gamestate.pieces[coords];
+              if piece != 0 && gamestate.to_move == (piece > 0) {
+                gui.selected = Some(coords);
+              }
             }
           }
         }

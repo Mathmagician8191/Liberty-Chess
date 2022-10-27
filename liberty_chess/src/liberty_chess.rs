@@ -24,6 +24,14 @@ const ELEPHANT: Piece = 16;
 const OBSTACLE: Piece = 17;
 const WALL: Piece = 18;
 
+// attack and defence values of pieces
+// 0 = empty square
+// 1 = None
+// 2 = Basic
+// 3 = Powerful
+const ATTACK: [Piece; 19] = [0, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 1, 1];
+const DEFENCE: [Piece; 19] = [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2];
+
 #[derive(Debug)]
 pub enum FenError {
   InvalidPieceError(char), // encounters a piece that doesn't exist
@@ -50,6 +58,7 @@ pub struct Board {
   pub height: usize,
   pub width: usize,
   pub pieces: Array2D<Piece>,
+  pub to_move: bool,
 }
 
 fn to_piece(c: char) -> Result<Piece, FenError> {
@@ -151,6 +160,7 @@ fn process_board(board: &str) -> Result<Board, FenError> {
     pieces: Array2D::from_rows(&pieces),
     height,
     width,
+    to_move: true,
   })
 }
 
@@ -161,16 +171,72 @@ impl Board {
       return Err(MissingFieldsError);
     }
 
-    let board = process_board(fields[0])?;
+    let mut board = process_board(fields[0])?;
 
-    // TODO: rest of processing
+    board.to_move = fields[1] == "w";
+
+    // TODO: other fields
 
     return Ok(board);
+  }
+
+  pub fn check_pseudolegal(&self, start: (usize, usize), end: (usize, usize)) -> bool {
+    let piece = self.pieces[start];
+    if start == end || self.to_move == (piece < 0) {
+      return false;
+    }
+    let destination = self.pieces[end];
+    if destination != 0 && (piece > 0) == (destination > 0) {
+      return false;
+    }
+    if DEFENCE[destination.abs() as usize] >= ATTACK[piece.abs() as usize] {
+      return false;
+    }
+    let row_diff = (start.0 as i32 - end.0 as i32).abs();
+    let column_diff = (start.1 as i32 - end.1 as i32).abs();
+    match piece.abs() {
+      //Teleporting pieces
+      OBSTACLE => true,
+      WALL => true,
+
+      //Jumping pieces
+      KNIGHT => (row_diff == 2 && column_diff == 1) || (row_diff == 1 && column_diff == 2),
+      CAMEL => (row_diff == 3 && column_diff == 1) || (row_diff == 1 && column_diff == 3),
+      ZEBRA => (row_diff == 3 && column_diff == 2) || (row_diff == 2 && column_diff == 3),
+      MANN => row_diff <= 1 && column_diff <= 1,
+      ELEPHANT => row_diff <= 1 && column_diff <= 1,
+      CHAMPION => {
+        row_diff <= 2
+          && column_diff <= 2
+          && (row_diff == 0 || column_diff == 0 || row_diff == column_diff)
+      }
+      CENTAUR => {
+        (row_diff <= 1 && column_diff <= 1)
+          || (row_diff == 2 && column_diff == 1)
+          || (row_diff == 1 && column_diff == 2)
+      }
+
+      // Leaping pieces - TODO
+      BISHOP => true,
+      ROOK => true,
+      QUEEN => true,
+      ARCHBISHOP => true,
+      CHANCELLOR => true,
+      NIGHTRIDER => true,
+      AMAZON => true,
+
+      // Special cases - TODO
+      PAWN => true,
+      KING => row_diff <= 1 && column_diff <= 1,
+
+      _ => unreachable!(),
+    }
   }
 
   pub fn make_move(&mut self, start: (usize, usize), end: (usize, usize)) {
     // TODO: handle special cases
     self.pieces[end] = self.pieces[start];
     self.pieces[start] = SQUARE;
+    self.to_move = !self.to_move;
   }
 }
