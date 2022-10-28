@@ -192,8 +192,10 @@ impl Board {
     if DEFENCE[destination.abs() as usize] >= ATTACK[piece.abs() as usize] {
       return false;
     }
-    let row_diff = (start.0 as i32 - end.0 as i32).abs();
-    let column_diff = (start.1 as i32 - end.1 as i32).abs();
+    let istart = (start.0 as i32, start.1 as i32);
+    let iend = (end.0 as i32, end.1 as i32);
+    let row_diff = (istart.0 - iend.0).abs();
+    let column_diff = (istart.1 - iend.1).abs();
     match piece.abs() {
       //Teleporting pieces
       OBSTACLE => true,
@@ -216,17 +218,81 @@ impl Board {
           || (row_diff == 1 && column_diff == 2)
       }
 
-      // Leaping pieces - TODO
-      BISHOP => true,
-      ROOK => true,
-      QUEEN => true,
-      ARCHBISHOP => true,
-      CHANCELLOR => true,
-      NIGHTRIDER => true,
-      AMAZON => true,
+      // Leaping pieces
+      BISHOP => {
+        if row_diff == column_diff {
+          self.ray_is_valid(istart, iend, row_diff)
+        } else {
+          false
+        }
+      }
+      ROOK => {
+        if row_diff == 0 || column_diff == 0 {
+          self.ray_is_valid(istart, iend, i32::max(row_diff, column_diff))
+        } else {
+          false
+        }
+      }
+      QUEEN => {
+        if row_diff == 0 || column_diff == 0 {
+          self.ray_is_valid(istart, iend, i32::max(row_diff, column_diff))
+        } else if row_diff == column_diff {
+          self.ray_is_valid(istart, iend, row_diff)
+        } else {
+          false
+        }
+      }
+      ARCHBISHOP => {
+        if (row_diff == 2 && column_diff == 1) || (row_diff == 1 && column_diff == 2) {
+          true
+        } else if row_diff == column_diff {
+          self.ray_is_valid(istart, iend, row_diff)
+        } else {
+          false
+        }
+      }
+      CHANCELLOR => {
+        if (row_diff == 2 && column_diff == 1) || (row_diff == 1 && column_diff == 2) {
+          true
+        } else if row_diff == 0 || column_diff == 0 {
+          self.ray_is_valid(istart, iend, i32::max(row_diff, column_diff))
+        } else {
+          false
+        }
+      }
+      NIGHTRIDER => {
+        if row_diff == 2 * column_diff {
+          self.ray_is_valid(istart, iend, column_diff)
+        } else if column_diff == 2 * row_diff {
+          self.ray_is_valid(istart, iend, row_diff)
+        } else {
+          false
+        }
+      }
+      AMAZON => {
+        if (row_diff == 2 && column_diff == 1) || (row_diff == 1 && column_diff == 2) {
+          true
+        } else if row_diff == 0 || column_diff == 0 {
+          self.ray_is_valid(istart, iend, i32::max(row_diff, column_diff))
+        } else if row_diff == column_diff {
+          self.ray_is_valid(istart, iend, row_diff)
+        } else {
+          false
+        }
+      }
 
       // Special cases - TODO
-      PAWN => true,
+      PAWN => {
+        if (end.0 > start.0) == (piece > 0) {
+          match column_diff {
+            0 => destination == 0,
+            1 => row_diff == 1 && destination != 0,
+            _ => false,
+          }
+        } else {
+          false
+        }
+      }
       KING => row_diff <= 1 && column_diff <= 1,
 
       _ => unreachable!(),
@@ -238,5 +304,16 @@ impl Board {
     self.pieces[end] = self.pieces[start];
     self.pieces[start] = SQUARE;
     self.to_move = !self.to_move;
+  }
+
+  fn ray_is_valid(&self, start: (i32, i32), end: (i32, i32), steps: i32) -> bool {
+    let dx = (end.0 - start.0) / steps;
+    let dy = (end.1 - start.1) / steps;
+    for i in 1..steps {
+      if self.pieces[((start.0 + i * dx) as usize, (start.1 + i * dy) as usize)] != 0 {
+        return false;
+      }
+    }
+    true
   }
 }

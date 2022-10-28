@@ -7,7 +7,16 @@ This is currently in a pre-alpha state where key functionality (e.g. move valida
 Implemented so far:
 - Loading and rendering pieces from an L-FEN (remaining L-FEN functionality missing)
 - Basic piece moving functionality (accounts for none of the special cases)
-- Basic move validation (not accounting for special cases or ray attack pieces)
+- Basic move validation (not accounting for special cases)
+
+TODO for version 1.0:
+- Reading the other fields of an L-FEN
+- Serializing a board state to an L-FEN
+- Castling
+- Pawn moves and en passant
+- Testing for exposing the king to attack/check
+- Help and credits screen
+- Support for chess engines
 
 For information on the copyright of the images, see COPYING.md.
 

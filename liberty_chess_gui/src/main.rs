@@ -2,7 +2,7 @@ use crate::GameMode::*;
 use crate::Screen::*;
 use eframe::egui;
 use egui::widget_text::RichText;
-use egui::{Color32, ColorImage, Context, Image, Sense, TextureFilter};
+use egui::{Color32, ColorImage, Context, Image, Sense, TextureFilter, TextureHandle, Ui};
 use enum_iterator::{all, Sequence};
 use liberty_chess::{Board, Piece};
 use std::time::{Duration, Instant};
@@ -107,9 +107,10 @@ struct LibertyChessGUI {
   selected: Option<(usize, usize)>,
   moved: Option<[(usize, usize); 2]>,
   message: Option<String>,
+  undo: Vec<Board>,
   // images and a render cache
   images: [Tree; 36],
-  renders: [Option<ColorImage>; 36],
+  renders: [Option<TextureHandle>; 37],
   // for measuring FPS
   instant: Instant,
   frames: u32,
@@ -117,14 +118,25 @@ struct LibertyChessGUI {
 }
 
 impl LibertyChessGUI {
-  fn get_image(&mut self, piece: Piece, size: usize) -> ColorImage {
+  fn get_image(&mut self, ctx: &Context, piece: Piece, size: usize) -> TextureHandle {
     let index = match piece {
       _ if piece > 0 => (piece - 1) as usize,
       _ if piece < 0 => (17 - piece) as usize,
-      _ => return ColorImage::new([size, size], Color32::from_black_alpha(0)),
+      _ => {
+        if let Some(map) = &self.renders[36] {
+          return map.clone();
+        }
+        let texture = ctx.load_texture(
+          "square",
+          ColorImage::new([size, size], Color32::from_black_alpha(0)),
+          TextureFilter::Linear,
+        );
+        self.renders[36] = Some(texture.clone());
+        return texture;
+      }
     };
     if let Some(map) = &self.renders[index] {
-      if map.width() == size {
+      if map.size() == [size, size] {
         return map.clone();
       }
     }
@@ -137,8 +149,9 @@ impl LibertyChessGUI {
     )
     .unwrap();
     let image = egui::ColorImage::from_rgba_unmultiplied([size, size], pixmap.data());
-    self.renders[index] = Some(image.clone());
-    return image;
+    let texture = ctx.load_texture("piece", image, TextureFilter::Linear);
+    self.renders[index] = Some(texture.clone());
+    return texture;
   }
 }
 
@@ -152,8 +165,9 @@ impl Default for LibertyChessGUI {
       selected: None,
       moved: None,
       message: None,
+      undo: Vec::new(),
       images: get_images(),
-      renders: [(); 36].map(|_| None),
+      renders: [(); 37].map(|_| None),
       instant: Instant::now(),
       frames: 0,
       seconds: 0,
@@ -163,16 +177,26 @@ impl Default for LibertyChessGUI {
 
 impl eframe::App for LibertyChessGUI {
   fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    egui::TopBottomPanel::top("Topbar")
+      .resizable(false)
+      .show(ctx, |ui| {
+        egui::widgets::global_dark_light_mode_buttons(ui);
+      });
+
     if self.screen == Game {
-      egui::SidePanel::right("Panel")
+      egui::SidePanel::right("Sidebar")
         .resizable(false)
         .show(ctx, |ui| {
           if ui.button(text("Main menu")).clicked() {
-            self.screen = MainMenu;
+            switch_screen(self, MainMenu);
+          }
+          if self.undo.len() > 0 && ui.button(text("Undo")).clicked() {
+            self.gamestate = self.undo.pop();
             self.moved = None;
           }
         });
     }
+
     egui::CentralPanel::default().show(ctx, |ui| {
       match self.screen {
         MainMenu => draw_menu(self, ctx, ui),
@@ -194,15 +218,25 @@ impl eframe::App for LibertyChessGUI {
   }
 }
 
-fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut egui::Ui) {
+fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
+  match gui.screen {
+    MainMenu => gui.message = None,
+    Game => {
+      gui.moved = None;
+      gui.undo = Vec::new();
+    }
+    Help | Credits => (),
+  }
+  gui.screen = screen;
+}
+
+fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   ui.horizontal_top(|ui| {
     if ui.button(text("Help")).clicked() {
-      gui.message = None;
-      gui.screen = Help;
+      switch_screen(gui, Help);
     }
     if ui.button(text("Credits")).clicked() {
-      gui.message = None;
-      gui.screen = Credits;
+      switch_screen(gui, Credits);
     }
   });
   egui::ComboBox::from_label(text("Select game mode"))
@@ -226,8 +260,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut egui::Ui) {
     match Board::new(&gui.fen) {
       Ok(board) => {
         gui.gamestate = Some(board);
-        gui.message = None;
-        gui.screen = Game;
+        switch_screen(gui, Game);
       }
       Err(error) => {
         gui.message = Some(error.to_string());
@@ -246,11 +279,11 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context) {
       .show(ctx, |ui| render_board(gui, ctx, ui, gamestate));
   } else {
     println!("On Game screen with no gamestate");
-    gui.screen = MainMenu;
+    switch_screen(gui, MainMenu);
   }
 }
 
-fn render_board(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut egui::Ui, gamestate: Board) {
+fn render_board(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui, gamestate: Board) {
   let available_size = ctx.available_rect().size();
   let rows = gamestate.height;
   let columns = gamestate.width;
@@ -277,17 +310,26 @@ fn render_board(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut egui::Ui, gam
               colour = Colours::Moved;
             }
           }
+          if let Some(start) = gui.selected {
+            if gamestate.check_pseudolegal(start, coords) {
+              colour = if gamestate.pieces[coords] == 0 {
+                Colours::ValidMove
+              } else {
+                Colours::Threatened
+              }
+            }
+          }
           if Some(coords) == gui.selected {
             colour = Colours::Selected;
           }
-          let image = gui.get_image(piece, size as usize);
-          let texture = ctx.load_texture("piece", image, TextureFilter::Linear);
+          let texture = gui.get_image(ctx, piece, size as usize);
           let icon = Image::new(texture.id(), [size, size]).bg_fill(colour.value());
           let response = ui.add(icon).interact(Sense::click());
           if response.clicked() {
             if let Some(selected) = gui.selected {
               if let Some(gamestate) = &mut gui.gamestate {
                 if gamestate.check_pseudolegal(selected, coords) {
+                  gui.undo.push(gamestate.clone());
                   gamestate.make_move(selected, coords);
                   gui.moved = Some([selected, coords]);
                 }
@@ -306,17 +348,17 @@ fn render_board(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut egui::Ui, gam
     });
 }
 
-fn draw_help(gui: &mut LibertyChessGUI, ui: &mut egui::Ui) {
+fn draw_help(gui: &mut LibertyChessGUI, ui: &mut Ui) {
   ui.heading(text("Help - TODO"));
   if ui.button(text("Main menu")).clicked() {
-    gui.screen = MainMenu;
+    switch_screen(gui, MainMenu);
   }
 }
 
-fn draw_credits(gui: &mut LibertyChessGUI, ui: &mut egui::Ui) {
+fn draw_credits(gui: &mut LibertyChessGUI, ui: &mut Ui) {
   ui.heading(text("Credits - TODO"));
   if ui.button(text("Main menu")).clicked() {
-    gui.screen = MainMenu;
+    switch_screen(gui, MainMenu);
   }
 }
 
