@@ -2,7 +2,7 @@
 members = ["liberty_chess_gui","test"]
 
 [workspace.package]
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
 edition = "2021"
 

@@ -1,227 +1,28 @@
-use crate::GameMode::*;
+use crate::colours::Colours;
+use crate::credits::Credits;
+use crate::gamemodes::{GameMode, Presets};
+use crate::help_page::HelpPage;
 use crate::Screen::*;
 use eframe::egui;
-use egui::widget_text::RichText;
-use egui::{Color32, ColorImage, Context, Image, Sense, TextureFilter, TextureHandle, Ui};
-use enum_iterator::{all, Sequence};
+use egui::{Color32, ColorImage, Context, Image, TextureFilter, TextureHandle, Ui};
+use enum_iterator::all;
 use liberty_chess::{Board, Piece};
 use std::time::{Duration, Instant};
-use tiny_skia::Pixmap;
-use usvg::{FitTo, Options, Tree};
+
+// enums in own file
+mod colours;
+mod credits;
+mod gamemodes;
+mod help_page;
+
+// file to load images
+mod images;
 
 const BENCHMARKING: bool = false;
 
-const MENU_TEXT: &str = "Main Menu";
+const MENU_TEXT: &str = "Back to Menu";
 
-#[derive(Clone, Copy, Sequence)]
-enum HelpPage {
-  PawnForward,
-  PawnCapture,
-  PawnDouble,
-  Knight,
-  Bishop,
-  Rook,
-  Queen,
-  King,
-  Archbishop,
-  Chancellor,
-  Camel,
-  Zebra,
-  Mann,
-  Nightrider,
-  Champion,
-  Centaur,
-  Amazon,
-  Elephant,
-  Obstacle,
-  Wall,
-}
-
-impl HelpPage {
-  fn title(self) -> &'static str {
-    match self {
-      HelpPage::PawnForward => "Pawns",
-      HelpPage::PawnCapture => "Pawns 2",
-      HelpPage::PawnDouble => "Pawns 3",
-      HelpPage::Knight => "Knight",
-      HelpPage::Bishop => "Bishop",
-      HelpPage::Rook => "Rook",
-      HelpPage::Queen => "Queen",
-      HelpPage::King => "King",
-      HelpPage::Archbishop => "Archbishop",
-      HelpPage::Chancellor => "Chancellor",
-      HelpPage::Camel => "Camel",
-      HelpPage::Zebra => "Zebra",
-      HelpPage::Mann => "Mann",
-      HelpPage::Nightrider => "Nightrider",
-      HelpPage::Champion => "Champion",
-      HelpPage::Centaur => "Centaur",
-      HelpPage::Amazon => "Amazon",
-      HelpPage::Elephant => "Elephant",
-      HelpPage::Obstacle => "Obstacle",
-      HelpPage::Wall => "Wall",
-    }
-  }
-
-  fn board(self) -> Board {
-    match self {
-      HelpPage::PawnForward => Board::new("7/7/7/7/3P3/7/7 w").unwrap(),
-      HelpPage::PawnCapture => Board::new("7/7/2ppp2/3P3/7/7/7 w").unwrap(),
-      HelpPage::PawnDouble => Board::new("7/7/7/7/7/3P3/7 w").unwrap(),
-      HelpPage::Knight => Board::new("7/7/7/3N3/7/7/7 w").unwrap(),
-      HelpPage::Bishop => Board::new("7/ppppppp/7/3B3/7/7/7 w").unwrap(),
-      HelpPage::Rook => Board::new("7/ppppppp/7/3R3/7/7/7 w").unwrap(),
-      HelpPage::Queen => Board::new("7/ppppppp/7/3Q3/7/7/7 w").unwrap(),
-      HelpPage::King => Board::new("7/7/7/3K3/7/7/7 w").unwrap(),
-      HelpPage::Archbishop => Board::new("7/ppppppp/7/3A3/7/7/7 w").unwrap(),
-      HelpPage::Chancellor => Board::new("7/ppppppp/7/3C3/7/7/7 w").unwrap(),
-      HelpPage::Camel => Board::new("7/7/7/3L3/7/7/7 w").unwrap(),
-      HelpPage::Zebra => Board::new("7/7/7/3Z3/7/7/7 w").unwrap(),
-      HelpPage::Mann => Board::new("7/7/7/3X3/7/7/7 w").unwrap(),
-      HelpPage::Nightrider => Board::new("9/9/9/9/4I4/9/9/9/9 w").unwrap(),
-      HelpPage::Champion => Board::new("7/7/7/3H3/7/7/7 w").unwrap(),
-      HelpPage::Centaur => Board::new("7/7/7/3U3/7/7/7 w").unwrap(),
-      HelpPage::Amazon => Board::new("7/ppppppp/7/3M3/7/7/7 w").unwrap(),
-      HelpPage::Elephant => Board::new("7/7/7/3E3/7/7/7 w").unwrap(),
-      HelpPage::Obstacle => Board::new("7/ppppppp/7/3O3/7/7/7 w").unwrap(),
-      HelpPage::Wall => Board::new("7/ppppppp/7/3W3/7/7/7 w").unwrap(),
-    }
-  }
-
-  fn selected(self) -> (usize, usize) {
-    match self {
-      HelpPage::PawnForward => (2, 3),
-      HelpPage::PawnCapture => (3, 3),
-      HelpPage::PawnDouble => (1, 3),
-      HelpPage::Knight => (3, 3),
-      HelpPage::Bishop => (3, 3),
-      HelpPage::Rook => (3, 3),
-      HelpPage::Queen => (3, 3),
-      HelpPage::King => (3, 3),
-      HelpPage::Archbishop => (3, 3),
-      HelpPage::Chancellor => (3, 3),
-      HelpPage::Camel => (3, 3),
-      HelpPage::Zebra => (3, 3),
-      HelpPage::Mann => (3, 3),
-      HelpPage::Nightrider => (4, 4),
-      HelpPage::Champion => (3, 3),
-      HelpPage::Centaur => (3, 3),
-      HelpPage::Amazon => (3, 3),
-      HelpPage::Elephant => (3, 3),
-      HelpPage::Obstacle => (3, 3),
-      HelpPage::Wall => (3, 3),
-    }
-  }
-
-  fn description(self) -> &'static str {
-    match self {
-      HelpPage::PawnForward => "The pawn moves one square forward.",
-      HelpPage::PawnCapture => "The pawn cannot capture forwards, but can move diagonally to capture.",
-      HelpPage::PawnDouble => "The pawn can move multiple squares on its first move. The number of squares depends on the gamemode.",
-      HelpPage::Knight => "The Knight jumps a set number of squares in each direction, including over other pieces.",
-      HelpPage::Bishop => "The Bishop moves diagonally, but cannot go past another piece. The Bishop is confined to squares of the same colour it started on.",
-      HelpPage::Rook => "The Rook moves horizontally or vertically, but cannot go past another piece.",
-      HelpPage::Queen => "The Queen moves as the combination of the Bishop and the Rook.",
-      HelpPage::King => "The King moves one square in any direction, and has a special move called castling (covered later). Putting the King in a position where it cannot escape is the object of the game.",
-      HelpPage::Archbishop => "The Archbishop moves as the combination of the Bishop and the Knight.",
-      HelpPage::Chancellor => "The Archbishop moves as the combination of the Rook and the Knight.",
-      HelpPage::Camel => "The Camel moves like the Knight, only a different number of squares to it. The Camel is confined to squares of a the same colour it started on.",
-      HelpPage::Zebra => "The Zebra moves like the Knight, only a different number of squares to it.",
-      HelpPage::Mann => "The Mann moves one square in any direction.",
-      HelpPage::Nightrider => "The Nightrider can make multiple knight jumps at once in the same direction, but cannot go past another piece on one of the knight-jump destination squares.",
-      HelpPage::Champion => "The Champion can go 1 or 2 spaces in any direction, and can jump over other pieces. However, it cannot make a Knight move.",
-      HelpPage::Centaur => "The Centaur moves as the combination of the Knight and the Mann.",
-      HelpPage::Amazon => "The Amazon moves as a combination of the Queen and the Knight.",
-      HelpPage::Elephant => "The Elephant moves like a Mann, but is immune to capture from pieces other than another Elephant or a King.",
-      HelpPage::Obstacle => "The Obstacle can teleport to any empty square on the board, but cannot capture other pieces.",
-      HelpPage::Wall => "The Wall moves like the Obstacle, but it can only be captured by an Elephant or King",
-    }
-  }
-}
-
-enum Colours {
-  BlackSquare,
-  WhiteSquare,
-  Moved,
-  Selected,
-  ValidMoveBlack,
-  ValidMoveWhite,
-  Threatened,
-  Check,
-}
-
-impl Colours {
-  fn value(&self) -> Color32 {
-    match self {
-      Colours::BlackSquare => Color32::from_rgb(160, 128, 96),
-      Colours::WhiteSquare => Color32::from_rgb(240, 217, 181),
-      Colours::Moved => Color32::from_rgb(64, 192, 0),
-      Colours::Selected => Color32::from_rgb(192, 192, 0),
-      Colours::ValidMoveBlack => Color32::from_rgb(120, 144, 108),
-      Colours::ValidMoveWhite => Color32::from_rgb(180, 225, 168),
-      Colours::Threatened => Color32::from_rgb(200, 128, 0),
-      Colours::Check => Color32::from_rgb(192, 0, 0),
-    }
-  }
-}
-
-#[derive(PartialEq)]
-enum GameMode {
-  Preset(Presets),
-  Custom,
-}
-
-#[derive(Clone, Copy, PartialEq, Sequence)]
-enum Presets {
-  Standard,
-  Mini,
-  CapablancaRectangle,
-  CapablancaSquare,
-  Mongol,
-  LoadedBoard,
-}
-
-impl Presets {
-  fn value(&self) -> String {
-    match self {
-      Presets::Standard => "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".to_string(),
-      Presets::Mini => "qkbnr/ppppp/5/5/PPPPP/QKBNR w Kk - 0 1".to_string(),
-      Presets::CapablancaRectangle => {
-        "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1".to_string()
-      }
-      Presets::CapablancaSquare => {
-        "rnabqkbcnr/pppppppppp/10/10/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1".to_string()
-      }
-      Presets::Mongol => "nnnnknnn/pppppppp/8/8/8/8/PPPPPPPP/NNNNKNNN w - - 0 1".to_string(),
-      Presets::LoadedBoard => {
-        "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1"
-          .to_string()
-      }
-    }
-  }
-}
-
-impl ToString for Presets {
-  fn to_string(&self) -> String {
-    match self {
-      Presets::Standard => "Standard".to_string(),
-      Presets::Mini => "Mini chess".to_string(),
-      Presets::CapablancaRectangle => "Capablanca's chess (10x8)".to_string(),
-      Presets::CapablancaSquare => "Capablanca's chess (10x10)".to_string(),
-      Presets::Mongol => "Mongol chess".to_string(),
-      Presets::LoadedBoard => "Loaded board".to_string(),
-    }
-  }
-}
-
-impl ToString for GameMode {
-  fn to_string(&self) -> String {
-    match self {
-      Preset(preset) => preset.to_string(),
-      Custom => "Custom".to_string(),
-    }
-  }
-}
+const ICON_SIZE: usize = 50;
 
 enum Screen {
   MainMenu,
@@ -248,8 +49,11 @@ struct LibertyChessGUI {
   //field for help screen
   help_page: HelpPage,
 
+  // field for credits
+  credits: Credits,
+
   // images and a render cache - used on game screen
-  images: [Tree; 36],
+  images: [usvg::Tree; 36],
   renders: [Option<TextureHandle>; 37],
 
   // for measuring FPS
@@ -263,7 +67,7 @@ impl Default for LibertyChessGUI {
     Self {
       screen: MainMenu,
 
-      gamemode: Preset(Presets::Standard),
+      gamemode: GameMode::Preset(Presets::Standard),
       fen: Presets::Standard.value(),
       message: None,
 
@@ -273,8 +77,9 @@ impl Default for LibertyChessGUI {
       undo: Vec::new(),
 
       help_page: HelpPage::PawnForward,
+      credits: Credits::Coding,
 
-      images: get_images(),
+      images: images::get_images(),
       renders: [(); 37].map(|_| None),
 
       instant: Instant::now(),
@@ -285,40 +90,42 @@ impl Default for LibertyChessGUI {
 }
 
 impl LibertyChessGUI {
-  fn get_image(&mut self, ctx: &Context, piece: Piece, size: usize) -> TextureHandle {
+  fn get_image(&mut self, ctx: &Context, piece: Piece, size: usize) -> egui::TextureId {
     let index = match piece {
       _ if piece > 0 => (piece - 1) as usize,
       _ if piece < 0 => (17 - piece) as usize,
       _ => {
         if let Some(map) = &self.renders[36] {
-          return map.clone();
+          if map.size() == [size, size] {
+            return map.id();
+          }
         }
         let texture = ctx.load_texture(
           "square",
           ColorImage::new([size, size], Color32::from_black_alpha(0)),
-          TextureFilter::Linear,
+          TextureFilter::Nearest,
         );
         self.renders[36] = Some(texture.clone());
-        return texture;
+        return texture.id();
       }
     };
     if let Some(map) = &self.renders[index] {
       if map.size() == [size, size] {
-        return map.clone();
+        return map.id();
       }
     }
-    let mut pixmap = Pixmap::new(size as u32, size as u32).unwrap();
+    let mut pixmap = tiny_skia::Pixmap::new(size as u32, size as u32).unwrap();
     resvg::render(
       &self.images[index],
-      FitTo::Size(size as u32, size as u32),
+      usvg::FitTo::Size(size as u32, size as u32),
       tiny_skia::Transform::default(),
       pixmap.as_mut(),
     )
     .unwrap();
     let image = egui::ColorImage::from_rgba_unmultiplied([size, size], pixmap.data());
-    let texture = ctx.load_texture("piece", image, TextureFilter::Linear);
+    let texture = ctx.load_texture("piece", image, TextureFilter::Nearest);
     self.renders[index] = Some(texture.clone());
-    return texture;
+    return texture.id();
   }
 }
 
@@ -351,17 +158,34 @@ impl eframe::App for LibertyChessGUI {
             if ui.button(text(MENU_TEXT)).clicked() {
               switch_screen(self, MainMenu);
             }
-            for page in all::<HelpPage>() {
-              if ui.button(text(page.title())).clicked() {
-                self.help_page = page;
+            egui::ScrollArea::vertical().show(ui, |ui| {
+              for page in all::<HelpPage>() {
+                if ui.button(text(page.title())).clicked() {
+                  self.help_page = page;
+                }
               }
-            }
+            });
           });
         egui::TopBottomPanel::bottom("Description")
           .resizable(false)
           .show(ctx, |ui| ui.heading(text(self.help_page.description())));
       }
-      Credits | MainMenu => (),
+      Credits => {
+        egui::SidePanel::left("Leftbar")
+          .resizable(false)
+          .show(ctx, |ui| {
+            if ui.button(text(MENU_TEXT)).clicked() {
+              switch_screen(self, MainMenu);
+            }
+            ui.heading("Credits:");
+            for page in all::<Credits>() {
+              if ui.button(text(page.title())).clicked() {
+                self.credits = page;
+              }
+            }
+          });
+      }
+      MainMenu => (),
     };
 
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -369,7 +193,7 @@ impl eframe::App for LibertyChessGUI {
         MainMenu => draw_menu(self, ctx, ui),
         Game => draw_game(self, ctx),
         Help => draw_help(self, ctx),
-        Credits => draw_credits(self, ui),
+        Credits => draw_credits(self, ctx, ui),
       };
     });
     self.frames += 1;
@@ -414,7 +238,7 @@ fn render_board(
   let columns = gamestate.width;
   let row_size = (available_size.y / (rows as f32)).floor();
   let column_size = (available_size.x / (columns as f32)).floor();
-  let size = f32::min(row_size, column_size);
+  let size = f32::max(1.0, f32::min(row_size, column_size));
   egui::Grid::new("Board")
     .num_columns(columns)
     .spacing([0.0, 0.0])
@@ -452,8 +276,8 @@ fn render_board(
             colour = Colours::Selected;
           }
           let texture = gui.get_image(ctx, piece, size as usize);
-          let icon = Image::new(texture.id(), [size, size]).bg_fill(colour.value());
-          let response = ui.add(icon).interact(Sense::click());
+          let icon = Image::new(texture, [size, size]).bg_fill(colour.value());
+          let response = ui.add(icon).interact(egui::Sense::click());
           if clickable && response.clicked() {
             if let Some(selected) = gui.selected {
               if let Some(gamestate) = &mut gui.gamestate {
@@ -490,11 +314,15 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
     .selected_text(text(&gui.gamemode.to_string()))
     .show_ui(ui, |ui| {
       for gamemode in all::<Presets>() {
-        ui.selectable_value(&mut gui.gamemode, Preset(gamemode), gamemode.to_string());
+        ui.selectable_value(
+          &mut gui.gamemode,
+          GameMode::Preset(gamemode),
+          gamemode.to_string(),
+        );
       }
-      ui.selectable_value(&mut gui.gamemode, Custom, "Custom")
+      ui.selectable_value(&mut gui.gamemode, GameMode::Custom, "Custom")
     });
-  if let Preset(preset) = gui.gamemode {
+  if let GameMode::Preset(preset) = gui.gamemode {
     gui.fen = preset.value();
   } else {
     let space = f32::min(
@@ -539,60 +367,65 @@ fn draw_help(gui: &mut LibertyChessGUI, ctx: &Context) {
     });
 }
 
-fn draw_credits(gui: &mut LibertyChessGUI, ui: &mut Ui) {
-  ui.heading(text("Credits - TODO"));
-  if ui.button(text(MENU_TEXT)).clicked() {
-    switch_screen(gui, MainMenu);
+fn draw_credits(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
+  match gui.credits {
+    Credits::Coding => {
+      ui.heading(text("Programming done by:"));
+      ui.hyperlink_to(
+        text("Mathmagician8191"),
+        "https://github.com/Mathmagician8191",
+      );
+    }
+    Credits::Images => {
+      egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.heading(text("Image credit by license"));
+        ui.heading(text(""));
+        ui.heading(text("CC-BY-SA 3.0"));
+        ui.heading(text("Apathor:"));
+        get_row(gui, ctx, ui, "NnBbRr");
+        ui.heading(text("TomFryers:"));
+        get_row(gui, ctx, ui, "PpQqKk");
+        ui.heading(text("Cburnett:"));
+        get_row(gui, ctx, ui, "AaCc");
+        ui.heading(text("Francois-Pier:"));
+        get_row(gui, ctx, ui, "Ll");
+        ui.heading(text("NikNaks:"));
+        get_row(gui, ctx, ui, "Hh");
+        ui.hyperlink_to(text("greenchess.net"), "greenchess.net");
+        get_row(gui, ctx, ui, "IiMmOoWw");
+        ui.heading(text(""));
+        ui.heading(text("CC-BY-SA 4.0"));
+        ui.heading(text("Sunny3113:"));
+        get_row(gui, ctx, ui, "ZzXxU");
+        ui.heading(text("Iago Casabiell González:"));
+        get_row(gui, ctx, ui, "Ee");
+        ui.heading(text(""));
+        ui.heading(text("CC0"));
+        ui.heading(text("CheChe:"));
+        ui.add(get_icon(gui, ctx, 'u'));
+      });
+    }
   }
 }
 
-fn load_image(data: &[u8]) -> Tree {
-  Tree::from_data(data, &Options::default().to_ref()).unwrap()
+fn get_row(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui, pieces: &str) {
+  ui.horizontal_wrapped(|ui| {
+    for c in pieces.chars() {
+      ui.add(get_icon(gui, ctx, c));
+    }
+  });
 }
 
-fn get_images() -> [Tree; 36] {
-  [
-    load_image(include_bytes!("../../resources/WPawn.svg")),
-    load_image(include_bytes!("../../resources/WKnight.svg")),
-    load_image(include_bytes!("../../resources/WBishop.svg")),
-    load_image(include_bytes!("../../resources/WRook.svg")),
-    load_image(include_bytes!("../../resources/WQueen.svg")),
-    load_image(include_bytes!("../../resources/WKing.svg")),
-    load_image(include_bytes!("../../resources/WArchbishop.svg")),
-    load_image(include_bytes!("../../resources/WChancellor.svg")),
-    load_image(include_bytes!("../../resources/WCamel.svg")),
-    load_image(include_bytes!("../../resources/WZebra.svg")),
-    load_image(include_bytes!("../../resources/WMann.svg")),
-    load_image(include_bytes!("../../resources/WNightrider.svg")),
-    load_image(include_bytes!("../../resources/WChampion.svg")),
-    load_image(include_bytes!("../../resources/WCentaur.svg")),
-    load_image(include_bytes!("../../resources/WAmazon.svg")),
-    load_image(include_bytes!("../../resources/WElephant.svg")),
-    load_image(include_bytes!("../../resources/WObstacle.svg")),
-    load_image(include_bytes!("../../resources/WWall.svg")),
-    load_image(include_bytes!("../../resources/BPawn.svg")),
-    load_image(include_bytes!("../../resources/BKnight.svg")),
-    load_image(include_bytes!("../../resources/BBishop.svg")),
-    load_image(include_bytes!("../../resources/BRook.svg")),
-    load_image(include_bytes!("../../resources/BQueen.svg")),
-    load_image(include_bytes!("../../resources/BKing.svg")),
-    load_image(include_bytes!("../../resources/BArchbishop.svg")),
-    load_image(include_bytes!("../../resources/BChancellor.svg")),
-    load_image(include_bytes!("../../resources/BCamel.svg")),
-    load_image(include_bytes!("../../resources/BZebra.svg")),
-    load_image(include_bytes!("../../resources/BMann.svg")),
-    load_image(include_bytes!("../../resources/BNightrider.svg")),
-    load_image(include_bytes!("../../resources/BChampion.svg")),
-    load_image(include_bytes!("../../resources/BCentaur.svg")),
-    load_image(include_bytes!("../../resources/BAmazon.svg")),
-    load_image(include_bytes!("../../resources/BElephant.svg")),
-    load_image(include_bytes!("../../resources/BObstacle.svg")),
-    load_image(include_bytes!("../../resources/BWall.svg")),
-  ]
+fn get_icon(gui: &mut LibertyChessGUI, ctx: &Context, piece: char) -> Image {
+  Image::new(
+    gui.get_image(ctx, liberty_chess::to_piece(piece).unwrap(), ICON_SIZE),
+    [ICON_SIZE as f32, ICON_SIZE as f32],
+  )
 }
 
-fn text(text: &str) -> RichText {
-  RichText::new(text).size(24.0)
+fn text(text: &str) -> egui::widget_text::RichText {
+  egui::widget_text::RichText::new(text).size(24.0)
 }
 
 fn main() {

@@ -61,7 +61,7 @@ pub struct Board {
   pub to_move: bool,
 }
 
-fn to_piece(c: char) -> Result<Piece, FenError> {
+pub fn to_piece(c: char) -> Result<Piece, FenError> {
   let multiplier: Piece = if c.is_ascii_uppercase() { 1 } else { -1 };
 
   let piece_type = match c.to_ascii_lowercase() {
