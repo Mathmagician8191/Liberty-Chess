@@ -19,6 +19,7 @@ usvg = "0.24.0"
 
 [profile.dev]
 opt-level = 3
+debug = 0
 
 [profile.release]
 opt-level = 3
