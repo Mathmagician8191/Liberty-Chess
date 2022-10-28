@@ -2,27 +2,27 @@ use crate::FenError::*;
 use array2d::Array2D;
 
 pub type Piece = i8;
-pub type Hash = u64;
+type Hash = u64;
 
-const SQUARE: Piece = 0;
-const PAWN: Piece = 1;
-const KNIGHT: Piece = 2;
-const BISHOP: Piece = 3;
-const ROOK: Piece = 4;
-const QUEEN: Piece = 5;
-const KING: Piece = 6;
-const ARCHBISHOP: Piece = 7;
-const CHANCELLOR: Piece = 8;
-const CAMEL: Piece = 9;
-const ZEBRA: Piece = 10;
-const MANN: Piece = 11;
-const NIGHTRIDER: Piece = 12;
-const CHAMPION: Piece = 13;
-const CENTAUR: Piece = 14;
-const AMAZON: Piece = 15;
-const ELEPHANT: Piece = 16;
-const OBSTACLE: Piece = 17;
-const WALL: Piece = 18;
+pub const SQUARE: Piece = 0;
+pub const PAWN: Piece = 1;
+pub const KNIGHT: Piece = 2;
+pub const BISHOP: Piece = 3;
+pub const ROOK: Piece = 4;
+pub const QUEEN: Piece = 5;
+pub const KING: Piece = 6;
+pub const ARCHBISHOP: Piece = 7;
+pub const CHANCELLOR: Piece = 8;
+pub const CAMEL: Piece = 9;
+pub const ZEBRA: Piece = 10;
+pub const MANN: Piece = 11;
+pub const NIGHTRIDER: Piece = 12;
+pub const CHAMPION: Piece = 13;
+pub const CENTAUR: Piece = 14;
+pub const AMAZON: Piece = 15;
+pub const ELEPHANT: Piece = 16;
+pub const OBSTACLE: Piece = 17;
+pub const WALL: Piece = 18;
 
 // attack and defence values of pieces
 // 0 = empty square
