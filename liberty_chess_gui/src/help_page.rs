@@ -1,7 +1,7 @@
 use enum_iterator::Sequence;
 use liberty_chess::Board;
 
-#[derive(Clone, Copy, Sequence)]
+#[derive(Clone, Copy, PartialEq, Sequence)]
 pub enum HelpPage {
   PawnForward,
   PawnCapture,
@@ -23,6 +23,7 @@ pub enum HelpPage {
   Elephant,
   Obstacle,
   Wall,
+  EnPassant,
 }
 
 impl HelpPage {
@@ -48,6 +49,7 @@ impl HelpPage {
       HelpPage::Elephant => "Elephant",
       HelpPage::Obstacle => "Obstacle",
       HelpPage::Wall => "Wall",
+      HelpPage::EnPassant => "En passant",
     }
   }
 
@@ -73,6 +75,7 @@ impl HelpPage {
       HelpPage::Elephant => Board::new("7/7/7/3E3/7/7/7 w").unwrap(),
       HelpPage::Obstacle => Board::new("7/ppppppp/7/3O3/7/7/7 w").unwrap(),
       HelpPage::Wall => Board::new("7/ppppppp/7/3W3/7/7/7 w").unwrap(),
+      HelpPage::EnPassant => Board::new("7/pp1pppp/7/2pP3/7/7/7 w - c5").unwrap(),
     }
   }
 
@@ -98,6 +101,7 @@ impl HelpPage {
       HelpPage::Elephant => (3, 3),
       HelpPage::Obstacle => (3, 3),
       HelpPage::Wall => (3, 3),
+      HelpPage::EnPassant => (3, 3),
     }
   }
 
@@ -123,6 +127,14 @@ impl HelpPage {
       HelpPage::Elephant => "The Elephant moves like a Mann, but is immune to capture from pieces other than another Elephant or a King.",
       HelpPage::Obstacle => "The Obstacle can teleport to any empty square on the board, but cannot capture other pieces.",
       HelpPage::Wall => "The Wall moves like the Obstacle, but it can only be captured by an Elephant or King",
+      HelpPage::EnPassant => "When a pawn moves more than one space, another pawn can capture it as if it had only moved one. This option is only available on the next move.",
+    }
+  }
+
+  pub fn moved(self) -> Option<[(usize, usize); 2]> {
+    match self {
+      HelpPage::EnPassant => Some([(3, 2), (5, 2)]),
+      _ => None,
     }
   }
 }

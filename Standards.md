@@ -43,7 +43,7 @@ If no square is valid for en passant capture, the output is "-".
 
 If a single square is valid for en passant capture, the output is that square represented using the coordinate representation.
 
-If several squares in the same file are valid for en passant capture, the output is the square with the lowest rank, using the coordinate representation, a dash "-", and the highest rank of the squares.
+If several squares in the same file are valid for en passant capture, the output is the square with the lowest rank, using the coordinate representation, a dash ("-"), and the highest rank of the squares.
 
 This field is optional, the default value is as "-".
 
@@ -59,6 +59,13 @@ The number of full moves the game has lasted.
 Starts at 1 and increments after every Black move.
 
 This field is optional, the default value is 1.
+
+## Pawn multiple move configuration
+
+The number of squares a pawn can move first move, a comma (","), and then the maximum row a pawn can move multiple squares from.
+
+This field is optional, the default value is "2,2".
+Even if the field is present, the part from the comma onwards is also optional, defaulting to ",2"
 
 # Coordinate representation
 

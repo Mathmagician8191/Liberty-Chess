@@ -10,6 +10,16 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo build --release -p liberty_chess_gui
+    - uses: actions/upload-artifact@v3
+      with:
+        name: liberty-chess-gui
+        path: target/release/liberty_chess_gui
   format:
     runs-on: ubuntu-latest
     steps:

@@ -59,6 +59,12 @@ pub struct Board {
   pub width: usize,
   pub pieces: Array2D<Piece>,
   pub to_move: bool,
+  castling: [bool; 4],
+  en_passant: Option<[usize; 3]>,
+  halfmoves: u8,
+  moves: u16,
+  pawn_moves: i32,
+  pawn_row: usize,
 }
 
 pub fn to_piece(c: char) -> Result<Piece, FenError> {
@@ -113,6 +119,43 @@ fn to_char(piece: Piece) -> Result<char, FenError> {
   return Ok(if piece > 0 { c.to_ascii_uppercase() } else { c });
 }
 
+fn get_indices(algebraic: &str) -> Option<[usize; 3]> {
+  if algebraic == "-" {
+    return None;
+  }
+  let mut column = 0;
+  let mut row = 0;
+  let mut row_start = 0;
+  let mut found_dash = false;
+  let iterator = algebraic.chars();
+  for c in iterator {
+    match c {
+      _ if c.is_ascii_lowercase() => {
+        column *= 26;
+        column += c as usize + 1 - 'a' as usize;
+      }
+      _ if c.is_digit(10) => {
+        if found_dash {
+          row_start *= 10;
+          row_start += c as usize - '0' as usize;
+        } else {
+          row *= 10;
+          row += c as usize - '0' as usize;
+        }
+      }
+      '-' => found_dash = true,
+      _ => (),
+    }
+  }
+  if column == 0 || row == 0 {
+    return None;
+  } else if row_start == 0 {
+    return Some([column - 1, row - 1, row - 1]);
+  } else {
+    return Some([column - 1, row - 1, row_start - 1]);
+  }
+}
+
 // returns a board with default values for parameters
 fn process_board(board: &str) -> Result<Board, FenError> {
   let rows: Vec<&str> = board.split("/").collect();
@@ -161,6 +204,12 @@ fn process_board(board: &str) -> Result<Board, FenError> {
     height,
     width,
     to_move: true,
+    castling: [false; 4],
+    en_passant: None,
+    halfmoves: 0,
+    moves: 1,
+    pawn_moves: 2,
+    pawn_row: 2,
   })
 }
 
@@ -175,7 +224,49 @@ impl Board {
 
     board.to_move = fields[1] == "w";
 
-    // TODO: other fields
+    if fields.len() > 2 {
+      let mut castling = [false; 4];
+      for c in fields[2].chars() {
+        match c {
+          'K' => castling[0] = true,
+          'Q' => castling[1] = true,
+          'k' => castling[2] = true,
+          'q' => castling[3] = true,
+          _ => (),
+        }
+      }
+      board.castling = castling;
+    }
+
+    if fields.len() > 3 {
+      board.en_passant = get_indices(fields[3]);
+    }
+
+    if fields.len() > 4 {
+      if let Ok(value) = fields[4].parse::<u8>() {
+        board.halfmoves = value;
+      }
+    }
+
+    if fields.len() > 5 {
+      if let Ok(value) = fields[5].parse::<u16>() {
+        board.moves = value;
+      }
+    }
+
+    if fields.len() > 6 {
+      let data: Vec<&str> = fields[6].split(",").collect();
+      if data.len() > 0 {
+        if let Ok(pawn_moves) = data[0].parse::<i32>() {
+          board.pawn_moves = pawn_moves;
+        }
+      }
+      if data.len() > 1 {
+        if let Ok(pawn_row) = data[1].parse::<usize>() {
+          board.pawn_row = pawn_row;
+        }
+      }
+    }
 
     return Ok(board);
   }
@@ -285,8 +376,27 @@ impl Board {
       PAWN => {
         if (end.0 > start.0) == (piece > 0) {
           match column_diff {
-            0 => destination == 0,
-            1 => row_diff == 1 && destination != 0,
+            0 => {
+              destination == 0
+                && (row_diff == 1
+                  || (row_diff <= self.pawn_moves && {
+                    if piece > 0 {
+                      start.0 < self.pawn_row
+                    } else {
+                      self.height - start.0 <= self.pawn_row
+                    }
+                  }))
+            }
+            1 => {
+              row_diff == 1
+                && (destination != 0 || {
+                  if let Some(coords) = self.en_passant {
+                    end.1 == coords[0] && coords[1] <= end.0 && end.0 <= coords[2]
+                  } else {
+                    false
+                  }
+                })
+            }
             _ => false,
           }
         } else {
@@ -300,10 +410,46 @@ impl Board {
   }
 
   pub fn make_move(&mut self, start: (usize, usize), end: (usize, usize)) {
-    // TODO: handle special cases
-    self.pieces[end] = self.pieces[start];
+    // TODO: handle promotion, castling and king position updating
+    self.halfmoves += 1;
+    let piece = self.pieces[start];
+    match piece.abs() {
+      PAWN => {
+        self.halfmoves = 0;
+        if start.1 != end.1 {
+          if let Some(coords) = self.en_passant {
+            if end.1 == coords[0] && coords[1] <= end.0 && end.0 <= coords[2] {
+              if piece > 0 {
+                self.pieces[(coords[1] - 1, end.1)] = SQUARE;
+              } else {
+                self.pieces[(coords[2] + 1, end.1)] = SQUARE;
+              }
+            }
+          }
+          self.en_passant = None;
+        } else if piece > 0 {
+          if end.0 - start.0 > 1 {
+            self.en_passant = Some([start.1, start.0 + 1, end.0 - 1]);
+          } else {
+            self.en_passant = None;
+          }
+        } else if start.0 - end.0 > 1 {
+          self.en_passant = Some([start.1, end.0 + 1, start.0 - 1]);
+        } else {
+          self.en_passant = None;
+        }
+      }
+      _ => self.en_passant = None,
+    }
+    if self.pieces[end] != 0 {
+      self.halfmoves = 0;
+    }
+    self.pieces[end] = piece;
     self.pieces[start] = SQUARE;
     self.to_move = !self.to_move;
+    if self.to_move {
+      self.moves += 1;
+    }
   }
 
   fn ray_is_valid(&self, start: (i32, i32), end: (i32, i32), steps: i32) -> bool {

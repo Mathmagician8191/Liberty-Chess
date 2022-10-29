@@ -7,11 +7,10 @@ This is currently in a pre-alpha state where key functionality (e.g. move valida
 TODO for version 1.0:
 - Reading the other fields of an L-FEN
 - Serializing a board state to an L-FEN
-- Castling
-- Pawn moves and en passant
+- Castling and promotion
 - Testing for exposing the king to attack/check
-- Credits screen
-- Castling, check and en passant for help screen
+- Castling and check for help screen
+- Clock support
 - Support for chess engines
 
 For information on the copyright of the images, see COPYING.md.
