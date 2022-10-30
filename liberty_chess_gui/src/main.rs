@@ -9,7 +9,7 @@ use egui::{
   TextureFilter, TextureHandle, Ui,
 };
 use enum_iterator::all;
-use liberty_chess::{Board, Piece};
+use liberty_chess::{print_secs, Board, Clock, ClockType, Piece};
 use std::time::{Duration, Instant};
 
 // enums in own file
@@ -46,12 +46,15 @@ struct LibertyChessGUI {
   fen: String,
   gamemode: GameMode,
   message: Option<String>,
+  clock_type: ClockType,
+  clock_data: [u64; 4],
 
   // fields for game screen
   gamestate: Option<Board>,
   selected: Option<(usize, usize)>,
   moved: Option<[(usize, usize); 2]>,
   undo: Vec<Board>,
+  clock: Option<Clock>,
 
   //field for help screen
   help_page: HelpPage,
@@ -79,11 +82,14 @@ impl Default for LibertyChessGUI {
       gamemode: GameMode::Preset(Presets::Standard),
       fen: Presets::Standard.value(),
       message: None,
+      clock_type: ClockType::None,
+      clock_data: [10, 10, 10, 10],
 
       gamestate: None,
       selected: None,
       moved: None,
       undo: Vec::new(),
+      clock: None,
 
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
@@ -157,7 +163,7 @@ impl eframe::App for LibertyChessGUI {
     egui::TopBottomPanel::top("Topbar")
       .resizable(false)
       .show(ctx, |ui| {
-        ComboBox::from_label("")
+        ComboBox::from_id_source("Theme")
           .selected_text(size("Theme: ".to_string() + &self.theme.to_string(), 16.0))
           .show_ui(ui, |ui| {
             for theme in all::<Theme>() {
@@ -179,11 +185,40 @@ impl eframe::App for LibertyChessGUI {
             if !self.undo.is_empty() && ui.button("Undo").clicked() {
               self.gamestate = self.undo.pop();
               self.moved = None;
+              if let Some(clock) = &mut self.clock {
+                clock.switch_clocks();
+              }
             }
           });
+        if let Some(clock) = &mut self.clock {
+          clock.update();
+          let (white, black) = clock.get_clocks();
+          let mut white_text = RichText::new(print_secs(white.as_secs()));
+          let mut black_text = RichText::new(print_secs(black.as_secs()));
+          let color = if clock.is_flagged() {
+            Colours::Check
+          } else {
+            Colours::Selected
+          };
+          if clock.to_move() {
+            white_text = white_text.color(color.value());
+          } else {
+            black_text = black_text.color(color.value());
+          }
+          egui::TopBottomPanel::bottom("White Clock")
+            .resizable(false)
+            .show(ctx, |ui| {
+              ui.heading(white_text);
+            });
+          egui::TopBottomPanel::top("Black Clock")
+            .resizable(false)
+            .show(ctx, |ui| {
+              ui.heading(black_text);
+            });
+        }
       }
       Screen::Help => {
-        egui::SidePanel::left("Leftbar")
+        egui::SidePanel::left("Help menu")
           .resizable(false)
           .show(ctx, |ui| {
             if ui.button(MENU_TEXT).clicked() {
@@ -195,8 +230,7 @@ impl eframe::App for LibertyChessGUI {
                 if page == self.help_page {
                   text = text.color(Colours::ValidBlack.value());
                 }
-                let button = egui::Button::new(text);
-                if ui.add(button).clicked() {
+                if ui.button(text).clicked() {
                   self.help_page = page;
                 }
               }
@@ -207,7 +241,7 @@ impl eframe::App for LibertyChessGUI {
           .show(ctx, |ui| ui.heading(self.help_page.description()));
       }
       Screen::Credits => {
-        egui::SidePanel::left("Leftbar")
+        egui::SidePanel::left("Credits menu")
           .resizable(false)
           .show(ctx, |ui| {
             if ui.button(MENU_TEXT).clicked() {
@@ -232,15 +266,15 @@ impl eframe::App for LibertyChessGUI {
         Screen::Credits => draw_credits(self, ctx, ui),
       };
     });
-    self.frames += 1;
-    let duration = self.instant.elapsed().as_secs();
-    if duration - self.seconds > 0 {
-      self.seconds = duration;
-      println!("{} FPS", self.frames);
-      self.frames = 0;
-    }
-    // Add no delay between rendering frames when benchmarking
+    // Add no delay between rendering frames and log FPS when benchmarking
     if BENCHMARKING {
+      self.frames += 1;
+      let duration = self.instant.elapsed().as_secs();
+      if duration - self.seconds > 0 {
+        self.seconds = duration;
+        println!("{} FPS", self.frames);
+        self.frames = 0;
+      }
       ctx.request_repaint_after(Duration::ZERO);
     } else {
       ctx.request_repaint_after(Duration::from_millis(200));
@@ -327,6 +361,9 @@ fn render_board(
                   gui.undo.push(gamestate.clone());
                   gamestate.make_move(selected, coords);
                   gui.moved = Some([selected, coords]);
+                  if let Some(clock) = &mut gui.clock {
+                    clock.switch_clocks();
+                  }
                 }
               }
               gui.selected = None;
@@ -352,7 +389,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
       switch_screen(gui, Screen::Credits);
     }
   });
-  egui::ComboBox::from_label("")
+  egui::ComboBox::from_id_source("Gamemode")
     .selected_text("Gamemode: ".to_string() + &gui.gamemode.to_string())
     .show_ui(ui, |ui| {
       for gamemode in all::<Presets>() {
@@ -367,16 +404,18 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   if let GameMode::Preset(preset) = gui.gamemode {
     gui.fen = preset.value();
   } else {
-    let space = f32::min(
-      ui.available_size().x,
-      f32::max(11.5 * gui.fen.len() as f32, 220.0),
-    );
-    ui.add_sized([space, 0.0], egui::TextEdit::singleline(&mut gui.fen));
+    text_edit(ui, 11.5, 220.0, &mut gui.fen);
   }
   if ui.button("Start Game").clicked() {
     match Board::new(&gui.fen) {
       Ok(board) => {
-        gui.gamestate = Some(board);
+        gui.gamestate = Some(board.clone());
+        match gui.clock_type {
+          ClockType::None => gui.clock = None,
+          ClockType::Increment | ClockType::Handicap => {
+            gui.clock = Some(Clock::new(gui.clock_data, board.to_move()));
+          }
+        }
         switch_screen(gui, Screen::Game);
       }
       Err(error) => {
@@ -387,13 +426,67 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   if let Some(message) = &gui.message {
     ui.heading(message);
   }
+  egui::ComboBox::from_id_source("Clock")
+    .selected_text(gui.clock_type.to_string())
+    .show_ui(ui, |ui| {
+      for clock_type in all::<ClockType>() {
+        ui.selectable_value(&mut gui.clock_type, clock_type, clock_type.to_string());
+      }
+    });
+  match gui.clock_type {
+    ClockType::None => (),
+    ClockType::Increment => {
+      ui.horizontal_top(|ui| {
+        let mut input: Vec<String> = gui.clock_data.iter().map(|x| x.to_string()).collect();
+        ui.label("Time (minutes):".to_string());
+        text_edit(ui, 8.0, 25.0, &mut input[0]);
+        ui.label("Increment (seconds):");
+        text_edit(ui, 8.0, 25.0, &mut input[2]);
+        if let Ok(value) = input[0].parse::<u64>() {
+          gui.clock_data[0] = value;
+          gui.clock_data[1] = value;
+        }
+        if let Ok(value) = input[2].parse::<u64>() {
+          gui.clock_data[2] = value;
+          gui.clock_data[3] = value;
+        }
+      });
+    }
+    ClockType::Handicap => {
+      let mut input: Vec<String> = gui.clock_data.iter().map(|x| x.to_string()).collect();
+      ui.horizontal_top(|ui| {
+        ui.label("White Time (minutes):");
+        text_edit(ui, 8.0, 25.0, &mut input[0]);
+        ui.label("White Increment (seconds):");
+        text_edit(ui, 8.0, 25.0, &mut input[2]);
+      });
+      ui.horizontal_top(|ui| {
+        ui.label("Black Time (minutes):");
+        text_edit(ui, 8.0, 25.0, &mut input[1]);
+        ui.label("Black Increment (seconds):");
+        text_edit(ui, 8.0, 25.0, &mut input[3]);
+      });
+      for (i, value) in input.iter().enumerate() {
+        if let Ok(value) = value.parse::<u64>() {
+          gui.clock_data[i] = value;
+        }
+      }
+    }
+  }
 }
 
 fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context) {
   if let Some(gamestate) = gui.gamestate.clone() {
+    let mut clickable = true;
+    if let Some(clock) = &gui.clock {
+      if clock.is_flagged() {
+        gui.selected = None;
+        clickable = false;
+      }
+    }
     egui::Area::new("Board")
       .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-      .show(ctx, |ui| render_board(gui, ctx, ui, &gamestate, true));
+      .show(ctx, |ui| render_board(gui, ctx, ui, &gamestate, clickable));
   } else {
     println!("On Game screen with no gamestate");
     switch_screen(gui, Screen::Menu);
@@ -452,6 +545,14 @@ fn get_row(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui, pieces: &str) 
       ui.add(get_icon(gui, ctx, c));
     }
   });
+}
+
+fn text_edit(ui: &mut Ui, char_size: f32, min_size: f32, string: &mut String) {
+  let space = f32::min(
+    ui.available_size().x,
+    f32::max(char_size * string.len() as f32, min_size),
+  );
+  ui.add_sized([space, 0.0], egui::TextEdit::singleline(string));
 }
 
 fn get_icon(gui: &mut LibertyChessGUI, ctx: &Context, piece: char) -> Image {

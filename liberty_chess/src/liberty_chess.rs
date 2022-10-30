@@ -2,6 +2,10 @@
 
 use array2d::Array2D;
 
+pub use crate::clock::{print_secs, Clock, ClockType};
+
+pub mod clock;
+
 /// A type used for pieces.
 /// Positive values indicate a white piece, negative values indicate a black piece and 0 indicates an empty square.
 pub type Piece = i8;
@@ -330,9 +334,8 @@ impl Board {
       return false;
     }
     let destination = self.pieces[end];
-    if destination != 0
-      && (piece > 0) == (destination > 0)
-      && DEFENCE[destination.unsigned_abs() as usize] >= ATTACK[piece.unsigned_abs() as usize]
+    if (destination != 0 && (piece > 0) == (destination > 0))
+      || DEFENCE[destination.unsigned_abs() as usize] >= ATTACK[piece.unsigned_abs() as usize]
     {
       return false;
     }
