@@ -1,6 +1,9 @@
-use crate::FenError::*;
+//! The backend for Liberty Chess
+
 use array2d::Array2D;
 
+/// A type used for pieces.
+/// Positive values indicate a white piece, negative values indicate a black piece and 0 indicates an empty square.
 pub type Piece = i8;
 type Hash = u64;
 
@@ -32,41 +35,50 @@ pub const WALL: Piece = 18;
 const ATTACK: [Piece; 19] = [0, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 1, 1];
 const DEFENCE: [Piece; 19] = [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2];
 
+/// An enum to represent the reasons for an L-FEN to be invalid.
 #[derive(Debug)]
 pub enum FenError {
-  InvalidPieceError(char), // encounters a piece that doesn't exist
-  NonRectangularError,     // board doesn't have a uniform width
-  SizeError,               // board must be 2x2 at minimum
-  MissingFieldsError,      // FEN is missing required fields
-  InvalidSyntaxError,      // other syntax error
+  /// An unrecognised piece was encountered
+  InvalidPiece(char),
+  /// The board has a non-uniform width
+  NonRectangular,
+  /// The board is less than 2 units wide on 1 axis
+  Size,
+  /// Required fields are missing
+  MissingFields,
 }
 
 impl ToString for FenError {
   fn to_string(&self) -> String {
     match self {
-      InvalidPieceError(c) => format!("Invalid piece found: {}", c),
-      NonRectangularError => "Non-rectangular board found".to_string(),
-      SizeError => "Board is too small (must be at least 2x2)".to_string(),
-      MissingFieldsError => "Required field (side to move) missing".to_string(),
-      InvalidSyntaxError => "FEN Syntax error".to_string(),
+      FenError::InvalidPiece(c) => format!("Invalid piece found: {}", c),
+      FenError::NonRectangular => "Non-rectangular board found".to_string(),
+      FenError::Size => "Board is too small (must be at least 2x2)".to_string(),
+      FenError::MissingFields => "Required field (side to move) missing".to_string(),
     }
   }
 }
 
+/// Represents a Liberty chess position
 #[derive(Clone, Debug)]
 pub struct Board {
-  pub height: usize,
-  pub width: usize,
-  pub pieces: Array2D<Piece>,
-  pub to_move: bool,
+  pieces: Array2D<Piece>,
+  height: usize,
+  width: usize,
+  to_move: bool,
   castling: [bool; 4],
   en_passant: Option<[usize; 3]>,
   halfmoves: u8,
   moves: u16,
-  pawn_moves: i32,
+  pawn_moves: isize,
   pawn_row: usize,
 }
 
+/// Converts a character to a `Piece`
+///
+/// # Errors
+///
+/// Will return `Err` if `c` is not a recognised piece
 pub fn to_piece(c: char) -> Result<Piece, FenError> {
   let multiplier: Piece = if c.is_ascii_uppercase() { 1 } else { -1 };
 
@@ -89,12 +101,12 @@ pub fn to_piece(c: char) -> Result<Piece, FenError> {
     'e' => ELEPHANT,
     'o' => OBSTACLE,
     'w' => WALL,
-    _ => return Err(InvalidPieceError(c.to_ascii_lowercase())),
+    _ => return Err(FenError::InvalidPiece(c.to_ascii_lowercase())),
   };
-  return Ok(multiplier * piece_type);
+  Ok(multiplier * piece_type)
 }
 
-fn to_char(piece: Piece) -> Result<char, FenError> {
+fn to_char(piece: Piece) -> char {
   let c = match piece.abs() {
     PAWN => 'p',
     KNIGHT => 'n',
@@ -116,7 +128,11 @@ fn to_char(piece: Piece) -> Result<char, FenError> {
     WALL => 'w',
     _ => unreachable!(),
   };
-  return Ok(if piece > 0 { c.to_ascii_uppercase() } else { c });
+  if piece > 0 {
+    c.to_ascii_uppercase()
+  } else {
+    c
+  }
 }
 
 fn get_indices(algebraic: &str) -> Option<[usize; 3]> {
@@ -134,7 +150,7 @@ fn get_indices(algebraic: &str) -> Option<[usize; 3]> {
         column *= 26;
         column += c as usize + 1 - 'a' as usize;
       }
-      _ if c.is_digit(10) => {
+      _ if c.is_ascii_digit() => {
         if found_dash {
           row_start *= 10;
           row_start += c as usize - '0' as usize;
@@ -148,17 +164,17 @@ fn get_indices(algebraic: &str) -> Option<[usize; 3]> {
     }
   }
   if column == 0 || row == 0 {
-    return None;
+    None
   } else if row_start == 0 {
-    return Some([column - 1, row - 1, row - 1]);
+    Some([column - 1, row - 1, row - 1])
   } else {
-    return Some([column - 1, row - 1, row_start - 1]);
+    Some([column - 1, row - 1, row_start - 1])
   }
 }
 
 // returns a board with default values for parameters
 fn process_board(board: &str) -> Result<Board, FenError> {
-  let rows: Vec<&str> = board.split("/").collect();
+  let rows: Vec<&str> = board.split('/').collect();
 
   let height = rows.len();
   let mut width: Option<usize> = None;
@@ -170,7 +186,7 @@ fn process_board(board: &str) -> Result<Board, FenError> {
     let mut vec: Vec<Piece> = Vec::new();
 
     for c in string.chars() {
-      if c.is_digit(10) {
+      if c.is_ascii_digit() {
         squares *= 10;
         squares += c as usize - '0' as usize;
       } else {
@@ -186,7 +202,7 @@ fn process_board(board: &str) -> Result<Board, FenError> {
     }
     if let Some(i) = width {
       if vec.len() != (i) {
-        return Err(NonRectangularError);
+        return Err(FenError::NonRectangular);
       }
     } else {
       width = Some(vec.len());
@@ -195,7 +211,7 @@ fn process_board(board: &str) -> Result<Board, FenError> {
   }
 
   if width < Some(2) || height < 2 {
-    return Err(SizeError);
+    return Err(FenError::Size);
   }
   let width = width.unwrap();
 
@@ -214,10 +230,20 @@ fn process_board(board: &str) -> Result<Board, FenError> {
 }
 
 impl Board {
+  /// Initialise a new `Board` from an L-FEN
+  ///
+  /// # Errors
+  /// Return an `FenError` if one of the invalid input types mentioned applies.
+  ///
+  /// # Examples
+  /// Getting the start position for standard chess:
+  /// ```
+  /// liberty_chess::Board::new("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1").unwrap();
+  /// ```
   pub fn new(fen: &str) -> Result<Self, FenError> {
-    let fields: Vec<&str> = fen.split(" ").collect();
+    let fields: Vec<&str> = fen.split(' ').collect();
     if fields.len() < 2 {
-      return Err(MissingFieldsError);
+      return Err(FenError::MissingFields);
     }
 
     let mut board = process_board(fields[0])?;
@@ -255,9 +281,9 @@ impl Board {
     }
 
     if fields.len() > 6 {
-      let data: Vec<&str> = fields[6].split(",").collect();
-      if data.len() > 0 {
-        if let Ok(pawn_moves) = data[0].parse::<i32>() {
+      let data: Vec<&str> = fields[6].split(',').collect();
+      if !data.is_empty() {
+        if let Ok(pawn_moves) = data[0].parse::<isize>() {
           board.pawn_moves = pawn_moves;
         }
       }
@@ -268,118 +294,114 @@ impl Board {
       }
     }
 
-    return Ok(board);
+    Ok(board)
   }
 
+  /// Returns the piece at the given coordinates.
+  #[must_use]
+  pub fn get_piece(&self, coords: (usize, usize)) -> Piece {
+    self.pieces[coords]
+  }
+
+  /// The number of ranks the board has
+  #[must_use]
+  pub fn height(&self) -> usize {
+    self.height
+  }
+
+  /// The number of columns the board has
+  #[must_use]
+  pub fn width(&self) -> usize {
+    self.width
+  }
+
+  /// The side currently to move. `true` indicates white, `false` indicates black.
+  #[must_use]
+  pub fn to_move(&self) -> bool {
+    self.to_move
+  }
+
+  /// Checks if a move is psuedo-legal.
+  /// Pseudo-legal moves may expose the king to attack but are otherwise legal.
+  #[must_use]
   pub fn check_pseudolegal(&self, start: (usize, usize), end: (usize, usize)) -> bool {
     let piece = self.pieces[start];
     if start == end || self.to_move == (piece < 0) {
       return false;
     }
     let destination = self.pieces[end];
-    if destination != 0 && (piece > 0) == (destination > 0) {
+    if destination != 0
+      && (piece > 0) == (destination > 0)
+      && DEFENCE[destination.unsigned_abs() as usize] >= ATTACK[piece.unsigned_abs() as usize]
+    {
       return false;
     }
-    if DEFENCE[destination.abs() as usize] >= ATTACK[piece.abs() as usize] {
-      return false;
-    }
-    let istart = (start.0 as i32, start.1 as i32);
-    let iend = (end.0 as i32, end.1 as i32);
-    let row_diff = (istart.0 - iend.0).abs();
-    let column_diff = (istart.1 - iend.1).abs();
+    let istart = (start.0 as isize, start.1 as isize);
+    let iend = (end.0 as isize, end.1 as isize);
+    let rows = (istart.0 - iend.0).abs();
+    let columns = (istart.1 - iend.1).abs();
     match piece.abs() {
       //Teleporting pieces
-      OBSTACLE => true,
-      WALL => true,
+      OBSTACLE | WALL => true,
 
       //Jumping pieces
-      KNIGHT => (row_diff == 2 && column_diff == 1) || (row_diff == 1 && column_diff == 2),
-      CAMEL => (row_diff == 3 && column_diff == 1) || (row_diff == 1 && column_diff == 3),
-      ZEBRA => (row_diff == 3 && column_diff == 2) || (row_diff == 2 && column_diff == 3),
-      MANN => row_diff <= 1 && column_diff <= 1,
-      ELEPHANT => row_diff <= 1 && column_diff <= 1,
-      CHAMPION => {
-        row_diff <= 2
-          && column_diff <= 2
-          && (row_diff == 0 || column_diff == 0 || row_diff == column_diff)
-      }
+      KNIGHT => (rows == 2 && columns == 1) || (rows == 1 && columns == 2),
+      CAMEL => (rows == 3 && columns == 1) || (rows == 1 && columns == 3),
+      ZEBRA => (rows == 3 && columns == 2) || (rows == 2 && columns == 3),
+      MANN | ELEPHANT => rows <= 1 && columns <= 1,
+      CHAMPION => rows <= 2 && columns <= 2 && (rows == 0 || columns == 0 || rows == columns),
       CENTAUR => {
-        (row_diff <= 1 && column_diff <= 1)
-          || (row_diff == 2 && column_diff == 1)
-          || (row_diff == 1 && column_diff == 2)
+        (rows <= 1 && columns <= 1) || (rows == 2 && columns == 1) || (rows == 1 && columns == 2)
       }
 
       // Leaping pieces
-      BISHOP => {
-        if row_diff == column_diff {
-          self.ray_is_valid(istart, iend, row_diff)
-        } else {
-          false
-        }
-      }
+      BISHOP => rows == columns && self.ray_is_valid(istart, iend, rows),
       ROOK => {
-        if row_diff == 0 || column_diff == 0 {
-          self.ray_is_valid(istart, iend, i32::max(row_diff, column_diff))
-        } else {
-          false
-        }
+        (rows == 0 || columns == 0) && self.ray_is_valid(istart, iend, isize::max(rows, columns))
       }
       QUEEN => {
-        if row_diff == 0 || column_diff == 0 {
-          self.ray_is_valid(istart, iend, i32::max(row_diff, column_diff))
-        } else if row_diff == column_diff {
-          self.ray_is_valid(istart, iend, row_diff)
+        if rows == 0 || columns == 0 {
+          self.ray_is_valid(istart, iend, isize::max(rows, columns))
         } else {
-          false
+          rows == columns && self.ray_is_valid(istart, iend, rows)
         }
       }
       ARCHBISHOP => {
-        if (row_diff == 2 && column_diff == 1) || (row_diff == 1 && column_diff == 2) {
-          true
-        } else if row_diff == column_diff {
-          self.ray_is_valid(istart, iend, row_diff)
-        } else {
-          false
-        }
+        (rows == 2 && columns == 1)
+          || (rows == 1 && columns == 2)
+          || rows == columns && self.ray_is_valid(istart, iend, rows)
       }
       CHANCELLOR => {
-        if (row_diff == 2 && column_diff == 1) || (row_diff == 1 && column_diff == 2) {
-          true
-        } else if row_diff == 0 || column_diff == 0 {
-          self.ray_is_valid(istart, iend, i32::max(row_diff, column_diff))
-        } else {
-          false
-        }
+        (rows == 2 && columns == 1)
+          || (rows == 1 && columns == 2)
+          || ((rows == 0 || columns == 0)
+            && self.ray_is_valid(istart, iend, isize::max(rows, columns)))
       }
       NIGHTRIDER => {
-        if row_diff == 2 * column_diff {
-          self.ray_is_valid(istart, iend, column_diff)
-        } else if column_diff == 2 * row_diff {
-          self.ray_is_valid(istart, iend, row_diff)
+        if rows == 2 * columns {
+          self.ray_is_valid(istart, iend, columns)
         } else {
-          false
+          (columns == 2 * rows) && self.ray_is_valid(istart, iend, rows)
         }
       }
       AMAZON => {
-        if (row_diff == 2 && column_diff == 1) || (row_diff == 1 && column_diff == 2) {
-          true
-        } else if row_diff == 0 || column_diff == 0 {
-          self.ray_is_valid(istart, iend, i32::max(row_diff, column_diff))
-        } else if row_diff == column_diff {
-          self.ray_is_valid(istart, iend, row_diff)
-        } else {
-          false
+        (rows == 2 && columns == 1) || (rows == 1 && columns == 2) || {
+          if rows == 0 || columns == 0 {
+            self.ray_is_valid(istart, iend, isize::max(rows, columns))
+          } else {
+            rows == columns && self.ray_is_valid(istart, iend, rows)
+          }
         }
       }
 
       // Special cases - TODO
       PAWN => {
         if (end.0 > start.0) == (piece > 0) {
-          match column_diff {
+          match columns {
             0 => {
               destination == 0
-                && (row_diff == 1
-                  || (row_diff <= self.pawn_moves && {
+                && (rows == 1
+                  || (rows <= self.pawn_moves && {
                     if piece > 0 {
                       start.0 < self.pawn_row
                     } else {
@@ -388,7 +410,7 @@ impl Board {
                   }))
             }
             1 => {
-              row_diff == 1
+              rows == 1
                 && (destination != 0 || {
                   if let Some(coords) = self.en_passant {
                     end.1 == coords[0] && coords[1] <= end.0 && end.0 <= coords[2]
@@ -403,12 +425,14 @@ impl Board {
           false
         }
       }
-      KING => row_diff <= 1 && column_diff <= 1,
+      KING => rows <= 1 && columns <= 1,
 
       _ => unreachable!(),
     }
   }
 
+  /// Moves a piece from one square to another.
+  /// This function assumes the move is legal.
   pub fn make_move(&mut self, start: (usize, usize), end: (usize, usize)) {
     // TODO: handle promotion, castling and king position updating
     self.halfmoves += 1;
@@ -452,7 +476,7 @@ impl Board {
     }
   }
 
-  fn ray_is_valid(&self, start: (i32, i32), end: (i32, i32), steps: i32) -> bool {
+  fn ray_is_valid(&self, start: (isize, isize), end: (isize, isize), steps: isize) -> bool {
     let dx = (end.0 - start.0) / steps;
     let dy = (end.1 - start.1) / steps;
     for i in 1..steps {

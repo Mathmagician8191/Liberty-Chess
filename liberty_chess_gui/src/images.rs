@@ -4,7 +4,7 @@ fn load_image(data: &[u8]) -> Tree {
   Tree::from_data(data, &usvg::Options::default().to_ref()).unwrap()
 }
 
-pub fn get_images() -> [Tree; 36] {
+pub fn get() -> [Tree; 36] {
   [
     load_image(include_bytes!("../../resources/WPawn.svg")),
     load_image(include_bytes!("../../resources/WKnight.svg")),

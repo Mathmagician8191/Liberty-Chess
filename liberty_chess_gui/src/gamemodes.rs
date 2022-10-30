@@ -1,6 +1,6 @@
 use enum_iterator::Sequence;
 
-#[derive(PartialEq)]
+#[derive(Eq, PartialEq)]
 pub enum GameMode {
   Preset(Presets),
   Custom,
@@ -15,7 +15,7 @@ impl ToString for GameMode {
   }
 }
 
-#[derive(Clone, Copy, PartialEq, Sequence)]
+#[derive(Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum Presets {
   Standard,
   Mini,
@@ -27,7 +27,7 @@ pub enum Presets {
 }
 
 impl Presets {
-  pub fn value(&self) -> String {
+  pub fn value(self) -> String {
     match self {
       Presets::Standard => "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1".to_string(),
       Presets::Mini => "qkbnr/ppppp/5/5/PPPPP/QKBNR w Kk - 0 1 1".to_string(),

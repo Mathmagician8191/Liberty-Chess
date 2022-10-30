@@ -1,7 +1,7 @@
 use enum_iterator::Sequence;
 use liberty_chess::Board;
 
-#[derive(Clone, Copy, PartialEq, Sequence)]
+#[derive(Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum HelpPage {
   PawnForward,
   PawnCapture,
@@ -82,26 +82,9 @@ impl HelpPage {
   pub fn selected(self) -> (usize, usize) {
     match self {
       HelpPage::PawnForward => (2, 3),
-      HelpPage::PawnCapture => (3, 3),
       HelpPage::PawnDouble => (1, 3),
-      HelpPage::Knight => (3, 3),
-      HelpPage::Bishop => (3, 3),
-      HelpPage::Rook => (3, 3),
-      HelpPage::Queen => (3, 3),
-      HelpPage::King => (3, 3),
-      HelpPage::Archbishop => (3, 3),
-      HelpPage::Chancellor => (3, 3),
-      HelpPage::Camel => (3, 3),
-      HelpPage::Zebra => (3, 3),
-      HelpPage::Mann => (3, 3),
       HelpPage::Nightrider => (4, 4),
-      HelpPage::Champion => (3, 3),
-      HelpPage::Centaur => (3, 3),
-      HelpPage::Amazon => (3, 3),
-      HelpPage::Elephant => (3, 3),
-      HelpPage::Obstacle => (3, 3),
-      HelpPage::Wall => (3, 3),
-      HelpPage::EnPassant => (3, 3),
+      _ => (3, 3),
     }
   }
 
@@ -116,7 +99,7 @@ impl HelpPage {
       HelpPage::Queen => "The Queen moves as the combination of the Bishop and the Rook.",
       HelpPage::King => "The King moves one square in any direction, and has a special move called castling (covered later). Putting the King in a position where it cannot escape is the object of the game.",
       HelpPage::Archbishop => "The Archbishop moves as the combination of the Bishop and the Knight.",
-      HelpPage::Chancellor => "The Archbishop moves as the combination of the Rook and the Knight.",
+      HelpPage::Chancellor => "The Chancellor moves as the combination of the Rook and the Knight.",
       HelpPage::Camel => "The Camel moves like the Knight, only a different number of squares to it. The Camel is confined to squares of a the same colour it started on.",
       HelpPage::Zebra => "The Zebra moves like the Knight, only a different number of squares to it.",
       HelpPage::Mann => "The Mann moves one square in any direction.",

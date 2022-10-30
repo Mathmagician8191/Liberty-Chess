@@ -1,7 +1,7 @@
 use eframe::egui::style::Visuals;
 use enum_iterator::Sequence;
 
-#[derive(Clone, Copy, PartialEq, Sequence)]
+#[derive(Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum Theme {
   Dark,
   Red,

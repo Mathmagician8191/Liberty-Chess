@@ -8,7 +8,7 @@ fn main() {
       .read_line(&mut input)
       .expect("Failed to read from stdin");
     let trimmed = input.trim();
-    if size == 0 || trimmed.chars().next() == Some('q') {
+    if size == 0 || trimmed.starts_with('q') {
       break;
     }
     println!("{:?}", Board::new(&input));
