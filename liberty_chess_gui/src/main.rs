@@ -4,13 +4,16 @@ use crate::gamemodes::{GameMode, Presets};
 use crate::help_page::HelpPage;
 use crate::themes::Theme;
 use eframe::egui;
+use egui::widgets::Hyperlink;
 use egui::{
   Color32, ColorImage, ComboBox, Context, FontFamily, FontId, Image, RichText, TextStyle,
   TextureFilter, TextureHandle, Ui,
 };
 use enum_iterator::all;
-use liberty_chess::{print_secs, Board, Clock, ClockType, Piece};
+use liberty_chess::{print_secs, Board, Clock, Piece, Type};
+use soloud::{Soloud, Wav};
 use std::time::{Duration, Instant};
+use tiny_skia::Pixmap;
 
 // enums in own file
 mod colours;
@@ -19,14 +22,18 @@ mod gamemodes;
 mod help_page;
 mod themes;
 
-// file to load images
+// files to load resources
 mod images;
+mod sound;
 
 const BENCHMARKING: bool = false;
 
 const MENU_TEXT: &str = "Back to Menu";
 
+//sizes of things
 const ICON_SIZE: usize = 50;
+const TEXT_SIZE: f32 = 24.0;
+const SMALL_SIZE: f32 = 16.0;
 
 enum Screen {
   Menu,
@@ -46,7 +53,7 @@ struct LibertyChessGUI {
   fen: String,
   gamemode: GameMode,
   message: Option<String>,
-  clock_type: ClockType,
+  clock_type: Type,
   clock_data: [u64; 4],
 
   // fields for game screen
@@ -62,6 +69,10 @@ struct LibertyChessGUI {
   // field for credits
   credits: Credits,
 
+  //sound players and audio
+  effect_player: Option<Soloud>,
+  audio: [Wav; 2],
+
   // images and a render cache - used on game screen
   images: [usvg::Tree; 36],
   renders: [Option<TextureHandle>; 37],
@@ -72,17 +83,31 @@ struct LibertyChessGUI {
   seconds: u64,
 }
 
-impl Default for LibertyChessGUI {
-  fn default() -> Self {
+impl LibertyChessGUI {
+  fn new(ctx: &Context) -> Self {
+    let mut style = (*ctx.style()).clone();
+    let font = FontId::new(TEXT_SIZE, FontFamily::Proportional);
+    style.text_styles = [
+      (TextStyle::Heading, font.clone()),
+      (
+        TextStyle::Body,
+        FontId::new(SMALL_SIZE, FontFamily::Proportional),
+      ),
+      (TextStyle::Button, font),
+    ]
+    .into();
+    ctx.set_style(style);
+    let theme = Theme::Dark;
+    ctx.set_visuals(theme.get_visuals());
     Self {
       screen: Screen::Menu,
 
-      theme: Theme::Dark,
+      theme,
 
       gamemode: GameMode::Preset(Presets::Standard),
       fen: Presets::Standard.value(),
       message: None,
-      clock_type: ClockType::None,
+      clock_type: Type::None,
       clock_data: [10, 10, 10, 10],
 
       gamestate: None,
@@ -94,6 +119,9 @@ impl Default for LibertyChessGUI {
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
 
+      effect_player: Soloud::default().ok(),
+      audio: sound::get(),
+
       images: images::get(),
       renders: [(); 37].map(|_| None),
 
@@ -101,21 +129,6 @@ impl Default for LibertyChessGUI {
       frames: 0,
       seconds: 0,
     }
-  }
-}
-
-impl LibertyChessGUI {
-  fn new(ctx: &Context) -> Self {
-    let mut style = (*ctx.style()).clone();
-    let font = FontId::new(24.0, FontFamily::Proportional);
-    style.text_styles = [
-      (TextStyle::Heading, font.clone()),
-      (TextStyle::Body, FontId::new(16.0, FontFamily::Proportional)),
-      (TextStyle::Button, font),
-    ]
-    .into();
-    ctx.set_style(style);
-    Self::default()
   }
 
   fn get_image(&mut self, ctx: &Context, piece: Piece, size: usize) -> egui::TextureId {
@@ -142,7 +155,7 @@ impl LibertyChessGUI {
         return map.id();
       }
     }
-    let mut pixmap = tiny_skia::Pixmap::new(size as u32, size as u32).unwrap();
+    let mut pixmap = Pixmap::new(size as u32, size as u32).unwrap();
     resvg::render(
       &self.images[index],
       usvg::FitTo::Size(size as u32, size as u32),
@@ -163,13 +176,23 @@ impl eframe::App for LibertyChessGUI {
     egui::TopBottomPanel::top("Topbar")
       .resizable(false)
       .show(ctx, |ui| {
-        ComboBox::from_id_source("Theme")
-          .selected_text(size("Theme: ".to_string() + &self.theme.to_string(), 16.0))
-          .show_ui(ui, |ui| {
-            for theme in all::<Theme>() {
-              ui.selectable_value(&mut self.theme, theme, size(theme.to_string(), 16.0));
-            }
-          });
+        ui.horizontal(|ui| {
+          ComboBox::from_id_source("Theme")
+            .selected_text(size(
+              "Theme: ".to_string() + &self.theme.to_string(),
+              SMALL_SIZE,
+            ))
+            .show_ui(ui, |ui| {
+              for theme in all::<Theme>() {
+                ui.selectable_value(&mut self.theme, theme, size(theme.to_string(), SMALL_SIZE));
+              }
+            });
+          let mut sound = self.effect_player.is_some();
+          ui.checkbox(&mut sound, size("Sound", SMALL_SIZE));
+          if sound == self.effect_player.is_none() {
+            self.effect_player = if sound { Soloud::default().ok() } else { None }
+          }
+        });
       });
     if self.theme != theme {
       ctx.set_visuals(self.theme.get_visuals());
@@ -191,30 +214,7 @@ impl eframe::App for LibertyChessGUI {
             }
           });
         if let Some(clock) = &mut self.clock {
-          clock.update();
-          let (white, black) = clock.get_clocks();
-          let mut white_text = RichText::new(print_secs(white.as_secs()));
-          let mut black_text = RichText::new(print_secs(black.as_secs()));
-          let color = if clock.is_flagged() {
-            Colours::Check
-          } else {
-            Colours::Selected
-          };
-          if clock.to_move() {
-            white_text = white_text.color(color.value());
-          } else {
-            black_text = black_text.color(color.value());
-          }
-          egui::TopBottomPanel::bottom("White Clock")
-            .resizable(false)
-            .show(ctx, |ui| {
-              ui.heading(white_text);
-            });
-          egui::TopBottomPanel::top("Black Clock")
-            .resizable(false)
-            .show(ctx, |ui| {
-              ui.heading(black_text);
-            });
+          draw_clock(ctx, clock);
         }
       }
       Screen::Help => {
@@ -359,6 +359,15 @@ fn render_board(
               if let Some(gamestate) = &mut gui.gamestate {
                 if gamestate.check_pseudolegal(selected, coords) {
                   gui.undo.push(gamestate.clone());
+                  if let Some(player) = &gui.effect_player {
+                    player.play(
+                      &gui.audio[if gamestate.get_piece(coords) == 0 {
+                        0
+                      } else {
+                        1
+                      }],
+                    );
+                  }
                   gamestate.make_move(selected, coords);
                   gui.moved = Some([selected, coords]);
                   if let Some(clock) = &mut gui.clock {
@@ -378,6 +387,29 @@ fn render_board(
         ui.end_row();
       }
     });
+}
+
+fn draw_clock(ctx: &Context, clock: &mut Clock) {
+  clock.update();
+  let (white, black) = clock.get_clocks();
+  let mut white_text = RichText::new(print_secs(white.as_secs()));
+  let mut black_text = RichText::new(print_secs(black.as_secs()));
+  let color = if clock.is_flagged() {
+    Colours::Check
+  } else {
+    Colours::Selected
+  };
+  if clock.to_move() {
+    white_text = white_text.color(color.value());
+  } else {
+    black_text = black_text.color(color.value());
+  }
+  egui::TopBottomPanel::bottom("White Clock")
+    .resizable(false)
+    .show(ctx, |ui| ui.heading(white_text));
+  egui::TopBottomPanel::top("Black Clock")
+    .resizable(false)
+    .show(ctx, |ui| ui.heading(black_text));
 }
 
 fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
@@ -411,8 +443,8 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
       Ok(board) => {
         gui.gamestate = Some(board.clone());
         match gui.clock_type {
-          ClockType::None => gui.clock = None,
-          ClockType::Increment | ClockType::Handicap => {
+          Type::None => gui.clock = None,
+          Type::Increment | Type::Handicap => {
             gui.clock = Some(Clock::new(gui.clock_data, board.to_move()));
           }
         }
@@ -429,46 +461,48 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   egui::ComboBox::from_id_source("Clock")
     .selected_text(gui.clock_type.to_string())
     .show_ui(ui, |ui| {
-      for clock_type in all::<ClockType>() {
+      for clock_type in all::<Type>() {
         ui.selectable_value(&mut gui.clock_type, clock_type, clock_type.to_string());
       }
     });
   match gui.clock_type {
-    ClockType::None => (),
-    ClockType::Increment => {
+    Type::None => (),
+    Type::Increment => {
       ui.horizontal_top(|ui| {
-        let mut input: Vec<String> = gui.clock_data.iter().map(|x| x.to_string()).collect();
+        let mut input: Vec<String> = gui.clock_data.iter().map(u64::to_string).collect();
         ui.label("Time (minutes):".to_string());
-        text_edit(ui, 8.0, 25.0, &mut input[0]);
+        text_edit(ui, 0.0, 40.0, &mut input[0]);
         ui.label("Increment (seconds):");
-        text_edit(ui, 8.0, 25.0, &mut input[2]);
+        text_edit(ui, 0.0, 40.0, &mut input[2]);
         if let Ok(value) = input[0].parse::<u64>() {
+          let value = u64::min(value, 1440);
           gui.clock_data[0] = value;
           gui.clock_data[1] = value;
         }
         if let Ok(value) = input[2].parse::<u64>() {
+          let value = u64::min(value, 1440);
           gui.clock_data[2] = value;
           gui.clock_data[3] = value;
         }
       });
     }
-    ClockType::Handicap => {
-      let mut input: Vec<String> = gui.clock_data.iter().map(|x| x.to_string()).collect();
+    Type::Handicap => {
+      let mut input: Vec<String> = gui.clock_data.iter().map(u64::to_string).collect();
       ui.horizontal_top(|ui| {
         ui.label("White Time (minutes):");
-        text_edit(ui, 8.0, 25.0, &mut input[0]);
+        text_edit(ui, 0.0, 40.0, &mut input[0]);
         ui.label("White Increment (seconds):");
-        text_edit(ui, 8.0, 25.0, &mut input[2]);
+        text_edit(ui, 0.0, 40.0, &mut input[2]);
       });
       ui.horizontal_top(|ui| {
         ui.label("Black Time (minutes):");
-        text_edit(ui, 8.0, 25.0, &mut input[1]);
+        text_edit(ui, 0.0, 40.0, &mut input[1]);
         ui.label("Black Increment (seconds):");
-        text_edit(ui, 8.0, 25.0, &mut input[3]);
+        text_edit(ui, 0.0, 40.0, &mut input[3]);
       });
       for (i, value) in input.iter().enumerate() {
         if let Ok(value) = value.parse::<u64>() {
-          gui.clock_data[i] = value;
+          gui.clock_data[i] = u64::min(value, 1440);
         }
       }
     }
@@ -507,7 +541,7 @@ fn draw_credits(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
   match gui.credits {
     Credits::Coding => {
       ui.heading("Programming done by:");
-      ui.hyperlink_to("Mathmagician8191", "https://github.com/Mathmagician8191");
+      ui.add(github("Mathmagician8191"));
     }
     Credits::Images => {
       egui::ScrollArea::vertical().show(ui, |ui| {
@@ -518,23 +552,28 @@ fn draw_credits(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
         get_row(gui, ctx, ui, "NnBbRr");
         ui.heading("TomFryers:");
         get_row(gui, ctx, ui, "PpQqKk");
-        ui.heading("Cburnett:");
+        ui.add(wikipedia("Cburnett"));
         get_row(gui, ctx, ui, "AaCc");
-        ui.heading("Francois-Pier:");
+        ui.add(wikimedia("Francois-Pier", "Francois-Pier"));
         get_row(gui, ctx, ui, "Ll");
-        ui.heading("NikNaks:");
+        ui.add(wikimedia("NikNaks", "NikNaks"));
         get_row(gui, ctx, ui, "Hh");
-        ui.hyperlink("greenchess.net");
+        ui.add(link("greenchess.net", "https://greenchess.net".to_string()));
         get_row(gui, ctx, ui, "IiMmOoWw");
         ui.heading("\nCC-BY-SA 4.0");
-        ui.heading("Sunny3113:");
+        ui.add(wikimedia("Sunny3113", "Sunny3113"));
         get_row(gui, ctx, ui, "ZzXxU");
-        ui.heading("Iago Casabiell González:");
+        ui.add(wikimedia("Iago Casabiell González", "Iagocasabiell"));
         get_row(gui, ctx, ui, "Ee");
         ui.heading("\nCC0");
-        ui.heading("CheChe:");
+        ui.add(wikipedia("CheChe"));
         ui.add(get_icon(gui, ctx, 'u'));
       });
+    }
+    Credits::Sound => {
+      ui.heading("The sound effects for piece moving were done by:");
+      ui.add(github("Enigmahack"));
+      ui.heading("They are licensed under AGPLv3+");
     }
   }
 }
@@ -562,14 +601,50 @@ fn get_icon(gui: &mut LibertyChessGUI, ctx: &Context, piece: char) -> Image {
   )
 }
 
-fn size(text: String, size: f32) -> RichText {
+fn github(name: &str) -> Hyperlink {
+  link(name, "https://github.com/".to_string() + name)
+}
+
+fn wikipedia(name: &str) -> Hyperlink {
+  link(
+    name.to_string() + ":",
+    "https://en.wikipedia.org/wiki/User:".to_string() + name,
+  )
+}
+
+fn wikimedia(name: &str, username: &str) -> Hyperlink {
+  link(
+    name.to_string() + ":",
+    "https://commons.wikimedia.org/wiki/User:".to_string() + username,
+  )
+}
+
+fn link(name: impl Into<String>, link: String) -> Hyperlink {
+  Hyperlink::from_label_and_url(size(name, TEXT_SIZE), link)
+}
+
+fn size(text: impl Into<String>, size: f32) -> RichText {
   RichText::new(text).size(size)
 }
 
 fn main() {
+  let size = ICON_SIZE as u32;
+  let mut pixmap = Pixmap::new(size, size).unwrap();
+  resvg::render(
+    &images::get()[11],
+    usvg::FitTo::Size(size, size),
+    tiny_skia::Transform::default(),
+    pixmap.as_mut(),
+  )
+  .unwrap();
   let options = eframe::NativeOptions {
     // Disable vsync when benchmarking to remove the framerate limit
     vsync: !BENCHMARKING,
+    icon_data: Some(eframe::IconData {
+      rgba: Pixmap::take(pixmap),
+      width: size,
+      height: size,
+    }),
     ..Default::default()
   };
 

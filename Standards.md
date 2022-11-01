@@ -60,12 +60,21 @@ Starts at 1 and increments after every Black move.
 
 This field is optional, the default value is 1.
 
-## Pawn multiple move configuration
+## Misc configuration
 
-The number of squares a pawn can move first move, a comma (","), and then the maximum row a pawn can move multiple squares from.
+This field contains the following comma separated fields:
 
-This field is optional, the default value is "2,2".
-Even if the field is present, the part from the comma onwards is also optional, defaulting to ",2"
+The number of squares a pawn can move on its first move, default 2.
+
+The maximum row a pawn can move multiple squares from, default 2.
+
+The row castling occurs on, default 1.
+
+The column of the queenside castling piece, default 1.
+
+The column of the kingside castling piece, defaults to the board width.
+
+If some fields are missing, they use the default value.
 
 # Coordinate representation
 

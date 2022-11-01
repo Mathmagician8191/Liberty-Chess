@@ -6,8 +6,8 @@ pub struct Clock {
   white_clock: Duration,
   black_clock: Duration,
 
-  winc: Duration,
-  binc: Duration,
+  white_inc: Duration,
+  black_inc: Duration,
 
   to_move: bool,
   flagged: bool,
@@ -18,12 +18,13 @@ pub struct Clock {
 impl Clock {
   /// Initialise a `Clock`.
   /// Time Values are in seconds.
-  pub fn new([white_clock, black_clock, winc, binc]: [u64; 4], to_move: bool) -> Self {
+  #[must_use]
+  pub fn new([white_clock, black_clock, white_inc, black_inc]: [u64; 4], to_move: bool) -> Self {
     Self {
       white_clock: Duration::from_secs(60 * white_clock),
       black_clock: Duration::from_secs(60 * black_clock),
-      winc: Duration::from_secs(winc),
-      binc: Duration::from_secs(binc),
+      white_inc: Duration::from_secs(white_inc),
+      black_inc: Duration::from_secs(black_inc),
       to_move,
       flagged: false,
       last_update: Instant::now(),
@@ -74,10 +75,10 @@ impl Clock {
     self.update();
     if !self.flagged {
       if self.to_move {
-        self.white_clock += self.winc;
+        self.white_clock += self.white_inc;
         self.to_move = false;
       } else {
-        self.black_clock += self.binc;
+        self.black_clock += self.black_inc;
         self.to_move = true;
       }
     }
@@ -86,23 +87,24 @@ impl Clock {
 
 /// A type of clock to use
 #[derive(Clone, Copy, Eq, PartialEq, Sequence)]
-pub enum ClockType {
+pub enum Type {
   None,
   Increment,
   Handicap,
 }
 
-impl ToString for ClockType {
+impl ToString for Type {
   fn to_string(&self) -> String {
     match self {
-      ClockType::None => "No Clock".to_string(),
-      ClockType::Increment => "Increment".to_string(),
-      ClockType::Handicap => "Increment with Handicap".to_string(),
+      Type::None => "No Clock".to_string(),
+      Type::Increment => "Increment".to_string(),
+      Type::Handicap => "Increment with Handicap".to_string(),
     }
   }
 }
 
 /// Convert a number of seconds to a MM:SS time.
+#[must_use]
 pub fn print_secs(secs: u64) -> String {
   (secs / 60).to_string() + &format!(":{:0>2}", secs % 60)
 }

@@ -2,7 +2,7 @@
 
 use array2d::Array2D;
 
-pub use crate::clock::{print_secs, Clock, ClockType};
+pub use crate::clock::{print_secs, Clock, Type};
 
 pub mod clock;
 
@@ -76,6 +76,9 @@ pub struct Board {
   moves: u16,
   pawn_moves: isize,
   pawn_row: usize,
+  castle_row: usize,
+  queen_column: usize,
+  king_column: usize,
 }
 
 /// Converts a character to a `Piece`
@@ -230,6 +233,9 @@ fn process_board(board: &str) -> Result<Board, FenError> {
     moves: 1,
     pawn_moves: 2,
     pawn_row: 2,
+    castle_row: 0,
+    queen_column: 0,
+    king_column: width - 1,
   })
 }
 
@@ -296,6 +302,27 @@ impl Board {
           board.pawn_row = pawn_row;
         }
       }
+      if data.len() > 2 {
+        if let Ok(castle_row) = data[2].parse::<usize>() {
+          if castle_row > 0 {
+            board.castle_row = castle_row - 1;
+          }
+        }
+      }
+      if data.len() > 3 {
+        if let Ok(queen_column) = data[3].parse::<usize>() {
+          if queen_column < board.width {
+            board.queen_column = queen_column;
+          }
+        }
+      }
+      if data.len() > 4 {
+        if let Ok(king_column) = data[4].parse::<usize>() {
+          if king_column > 0 && king_column <= board.width {
+            board.king_column = king_column - 1;
+          }
+        }
+      }
     }
 
     Ok(board)
@@ -342,73 +369,83 @@ impl Board {
     let istart = (start.0 as isize, start.1 as isize);
     let iend = (end.0 as isize, end.1 as isize);
     let rows = (istart.0 - iend.0).abs();
-    let columns = (istart.1 - iend.1).abs();
+    let cols = (istart.1 - iend.1).abs();
     match piece.abs() {
       //Teleporting pieces
       OBSTACLE | WALL => true,
 
       //Jumping pieces
-      KNIGHT => (rows == 2 && columns == 1) || (rows == 1 && columns == 2),
-      CAMEL => (rows == 3 && columns == 1) || (rows == 1 && columns == 3),
-      ZEBRA => (rows == 3 && columns == 2) || (rows == 2 && columns == 3),
-      MANN | ELEPHANT => rows <= 1 && columns <= 1,
-      CHAMPION => rows <= 2 && columns <= 2 && (rows == 0 || columns == 0 || rows == columns),
-      CENTAUR => {
-        (rows <= 1 && columns <= 1) || (rows == 2 && columns == 1) || (rows == 1 && columns == 2)
-      }
+      KNIGHT => (rows == 2 && cols == 1) || (rows == 1 && cols == 2),
+      CAMEL => (rows == 3 && cols == 1) || (rows == 1 && cols == 3),
+      ZEBRA => (rows == 3 && cols == 2) || (rows == 2 && cols == 3),
+      MANN | ELEPHANT => rows <= 1 && cols <= 1,
+      CHAMPION => rows <= 2 && cols <= 2 && (rows == 0 || cols == 0 || rows == cols),
+      CENTAUR => (rows <= 1 && cols <= 1) || (rows == 2 && cols == 1) || (rows == 1 && cols == 2),
 
       // Leaping pieces
-      BISHOP => rows == columns && self.ray_is_valid(istart, iend, rows),
-      ROOK => {
-        (rows == 0 || columns == 0) && self.ray_is_valid(istart, iend, isize::max(rows, columns))
-      }
+      BISHOP => rows == cols && self.ray_is_valid(istart, iend, rows),
+      ROOK => (rows == 0 || cols == 0) && self.ray_is_valid(istart, iend, isize::max(rows, cols)),
       QUEEN => {
-        if rows == 0 || columns == 0 {
-          self.ray_is_valid(istart, iend, isize::max(rows, columns))
+        if rows == 0 || cols == 0 {
+          self.ray_is_valid(istart, iend, isize::max(rows, cols))
         } else {
-          rows == columns && self.ray_is_valid(istart, iend, rows)
+          rows == cols && self.ray_is_valid(istart, iend, rows)
         }
       }
       ARCHBISHOP => {
-        (rows == 2 && columns == 1)
-          || (rows == 1 && columns == 2)
-          || rows == columns && self.ray_is_valid(istart, iend, rows)
+        (rows == 2 && cols == 1)
+          || (rows == 1 && cols == 2)
+          || rows == cols && self.ray_is_valid(istart, iend, rows)
       }
       CHANCELLOR => {
-        (rows == 2 && columns == 1)
-          || (rows == 1 && columns == 2)
-          || ((rows == 0 || columns == 0)
-            && self.ray_is_valid(istart, iend, isize::max(rows, columns)))
+        (rows == 2 && cols == 1)
+          || (rows == 1 && cols == 2)
+          || ((rows == 0 || cols == 0) && self.ray_is_valid(istart, iend, isize::max(rows, cols)))
       }
       NIGHTRIDER => {
-        if rows == 2 * columns {
-          self.ray_is_valid(istart, iend, columns)
+        if rows == 2 * cols {
+          self.ray_is_valid(istart, iend, cols)
         } else {
-          (columns == 2 * rows) && self.ray_is_valid(istart, iend, rows)
+          (cols == 2 * rows) && self.ray_is_valid(istart, iend, rows)
         }
       }
       AMAZON => {
-        (rows == 2 && columns == 1) || (rows == 1 && columns == 2) || {
-          if rows == 0 || columns == 0 {
-            self.ray_is_valid(istart, iend, isize::max(rows, columns))
+        (rows == 2 && cols == 1) || (rows == 1 && cols == 2) || {
+          if rows == 0 || cols == 0 {
+            self.ray_is_valid(istart, iend, isize::max(rows, cols))
           } else {
-            rows == columns && self.ray_is_valid(istart, iend, rows)
+            rows == cols && self.ray_is_valid(istart, iend, rows)
           }
         }
       }
 
       // Special cases - TODO
       PAWN => {
-        if (end.0 > start.0) == (piece > 0) {
-          match columns {
+        (end.0 > start.0) == (piece > 0) && {
+          match cols {
             0 => {
               destination == 0
                 && (rows == 1
                   || (rows <= self.pawn_moves && {
-                    if piece > 0 {
-                      start.0 < self.pawn_row
+                    let (valid, iter) = if piece > 0 {
+                      (start.0 < self.pawn_row, start.0 + 1..end.0 - 1)
                     } else {
-                      self.height - start.0 <= self.pawn_row
+                      (
+                        self.height - start.0 <= self.pawn_row,
+                        end.0 + 1..start.0 - 1,
+                      )
+                    };
+                    if valid {
+                      let mut valid = true;
+                      for i in iter {
+                        if self.pieces[(i, start.1)] != 0 {
+                          valid = false;
+                          break;
+                        }
+                      }
+                      valid
+                    } else {
+                      false
                     }
                   }))
             }
@@ -424,11 +461,31 @@ impl Board {
             }
             _ => false,
           }
-        } else {
-          false
         }
       }
-      KING => rows <= 1 && columns <= 1,
+      KING => {
+        (rows <= 1 && cols <= 1)
+          || (start.0 == self.castle_row() && rows == 0 && cols == 2 && {
+            let offset = self.castle_offset();
+            let (iter, offset) = if start.1 > end.1 {
+              // Queenside Castling
+              (self.queen_column + 1..start.1, offset + 1)
+            } else {
+              //Kingside Castling
+              (start.1 + 1..self.king_column, offset)
+            };
+            let mut valid = self.castling[offset];
+            if valid {
+              for i in iter {
+                if self.pieces[(start.0, i)] != 0 {
+                  valid = false;
+                  break;
+                }
+              }
+            }
+            valid
+          })
+      }
 
       _ => unreachable!(),
     }
@@ -443,30 +500,62 @@ impl Board {
     match piece.abs() {
       PAWN => {
         self.halfmoves = 0;
-        if start.1 != end.1 {
-          if let Some(coords) = self.en_passant {
-            if end.1 == coords[0] && coords[1] <= end.0 && end.0 <= coords[2] {
-              if piece > 0 {
-                self.pieces[(coords[1] - 1, end.1)] = SQUARE;
-              } else {
-                self.pieces[(coords[2] + 1, end.1)] = SQUARE;
-              }
+        if start.1 == end.1 {
+          let (lowest, highest) = if piece > 0 {
+            (start.0, end.0)
+          } else {
+            (end.0, start.0)
+          };
+          self.en_passant = if highest - lowest > 1 {
+            Some([start.1, lowest + 1, highest - 1])
+          } else {
+            None
+          }
+        } else if let Some(coords) = self.en_passant {
+          if end.1 == coords[0] && coords[1] <= end.0 && end.0 <= coords[2] {
+            if piece > 0 {
+              self.pieces[(coords[1] - 1, end.1)] = SQUARE;
+            } else {
+              self.pieces[(coords[2] + 1, end.1)] = SQUARE;
             }
           }
           self.en_passant = None;
-        } else if piece > 0 {
-          if end.0 - start.0 > 1 {
-            self.en_passant = Some([start.1, start.0 + 1, end.0 - 1]);
-          } else {
-            self.en_passant = None;
-          }
-        } else if start.0 - end.0 > 1 {
-          self.en_passant = Some([start.1, end.0 + 1, start.0 - 1]);
-        } else {
-          self.en_passant = None;
         }
       }
-      _ => self.en_passant = None,
+      KING => {
+        self.en_passant = None;
+        if start.0 == self.castle_row {
+          let offset = self.castle_offset();
+          self.castling[offset] = false;
+          self.castling[offset + 1] = false;
+          match start.1 {
+            _ if start.1 == end.1 + 2 => {
+              // queenside castling
+              let rook = (start.0, self.queen_column);
+              self.pieces[(start.0, start.1 - 1)] = self.pieces[rook];
+              self.pieces[rook] = SQUARE;
+            }
+            _ if start.1 == end.1 - 2 => {
+              // kingside castling
+              let rook = (start.0, self.king_column);
+              self.pieces[(start.0, start.1 + 1)] = self.pieces[rook];
+              self.pieces[rook] = SQUARE;
+            }
+            _ => (),
+          }
+        }
+      }
+      _ => {
+        self.en_passant = None;
+        if start.0 == self.castle_row {
+          let offset = self.castle_offset();
+          if start.1 == self.queen_column {
+            self.castling[offset + 1] = false;
+          } else if start.1 == self.king_column {
+            self.castling[offset] = false;
+          }
+        }
+      }
     }
     if self.pieces[end] != 0 {
       self.halfmoves = 0;
@@ -488,5 +577,21 @@ impl Board {
       }
     }
     true
+  }
+
+  fn castle_offset(&self) -> usize {
+    if self.to_move {
+      0
+    } else {
+      2
+    }
+  }
+
+  fn castle_row(&self) -> usize {
+    if self.to_move() {
+      self.castle_row
+    } else {
+      self.width - self.castle_row() - 1
+    }
   }
 }

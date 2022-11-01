@@ -2,7 +2,7 @@
 members = ["liberty_chess_gui","test"]
 
 [workspace.package]
-version = "0.7.0"
+version = "0.8.0"
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
 edition = "2021"
 
@@ -13,9 +13,10 @@ liberty_chess = {path = "liberty_chess"}
 array2d = "0.2.1"
 eframe = "0.19.0"
 enum-iterator = "1.2.0"
-resvg = "0.23.0"
-tiny-skia = "0.6.6"
-usvg = "0.23.0"
+resvg = "0.25.0"
+soloud = "1.0.2"
+tiny-skia = "0.8.2"
+usvg = "0.25.0"
 
 [profile.dev]
 opt-level = 3

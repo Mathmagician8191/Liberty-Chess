@@ -4,6 +4,7 @@ use enum_iterator::Sequence;
 pub enum Credits {
   Coding,
   Images,
+  Sound,
 }
 
 impl Credits {
@@ -11,6 +12,7 @@ impl Credits {
     match self {
       Credits::Coding => "Coding",
       Credits::Images => "Images",
+      Credits::Sound => "Sound effects",
     }
   }
 }
