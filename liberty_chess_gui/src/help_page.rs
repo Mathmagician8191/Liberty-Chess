@@ -25,6 +25,7 @@ pub enum HelpPage {
   Wall,
   EnPassant,
   Castling,
+  Check,
 }
 
 impl HelpPage {
@@ -52,6 +53,7 @@ impl HelpPage {
       HelpPage::Wall => "Wall",
       HelpPage::EnPassant => "En passant",
       HelpPage::Castling => "Castling",
+      HelpPage::Check => "Check",
     }
   }
 
@@ -79,6 +81,7 @@ impl HelpPage {
       HelpPage::Wall => Board::new("7/ppppppp/7/3W3/7/7/7 w").unwrap(),
       HelpPage::EnPassant => Board::new("7/pp1pppp/7/2pP3/7/7/7 w - c5").unwrap(),
       HelpPage::Castling => Board::new("8/8/8/8/8/8/8/R3K2R w KQ").unwrap(),
+      HelpPage::Check => Board::new("3r3/7/7/7/7/7/3K3 w").unwrap(),
     }
   }
 
@@ -88,6 +91,7 @@ impl HelpPage {
       HelpPage::PawnDouble => (1, 3),
       HelpPage::Nightrider => (4, 4),
       HelpPage::Castling => (0, 4),
+      HelpPage::Check => (0, 3),
       _ => (3, 3),
     }
   }
@@ -116,6 +120,7 @@ impl HelpPage {
       HelpPage::Wall => "The Wall moves like the Obstacle, but it can only be captured by an Elephant or King",
       HelpPage::EnPassant => "When a pawn moves more than one space, another pawn can capture it as if it had only moved one. This option is only available on the next move.",
       HelpPage::Castling => "If a King hasn't moved, it can move 2 squares to castle with another piece. The piece that can be castled with is configurable, and the piece moves to the other side of the king.",
+      HelpPage::Check => "If a King is in danger of being captured, it is in check. The King must get out of check on the next move. If that is not possible, the game ends in checkmate.",
     }
   }
 

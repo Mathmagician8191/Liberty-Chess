@@ -63,6 +63,16 @@ impl ToString for FenError {
   }
 }
 
+/// represents the status of the game
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Gamestate {
+  InProgress,
+  Checkmate(bool),
+  Stalemate,
+  Repetition,
+  Move50,
+}
+
 /// Represents a Liberty chess position
 #[derive(Clone, Debug)]
 pub struct Board {
@@ -79,6 +89,11 @@ pub struct Board {
   castle_row: usize,
   queen_column: usize,
   king_column: usize,
+  promotion_target: Option<(usize, usize)>,
+  promotion_options: Vec<Piece>,
+  white_kings: Vec<(usize, usize)>,
+  black_kings: Vec<(usize, usize)>,
+  state: Gamestate,
 }
 
 /// Converts a character to a `Piece`
@@ -142,6 +157,31 @@ fn to_char(piece: Piece) -> char {
   }
 }
 
+#[must_use]
+pub fn to_name(piece: Piece) -> &'static str {
+  match piece.abs() {
+    PAWN => "Pawn",
+    KNIGHT => "Knight",
+    BISHOP => "Bishop",
+    ROOK => "Rook",
+    QUEEN => "Queen",
+    KING => "King",
+    ARCHBISHOP => "Archbishop",
+    CHANCELLOR => "Chancellor",
+    CAMEL => "Camel",
+    ZEBRA => "Zebra",
+    MANN => "Mann",
+    NIGHTRIDER => "Nightrider",
+    CHAMPION => "Champion",
+    CENTAUR => "Centaur",
+    AMAZON => "Amazon",
+    ELEPHANT => "Elephant",
+    OBSTACLE => "Obstacle",
+    WALL => "Wall",
+    _ => unreachable!(),
+  }
+}
+
 fn get_indices(algebraic: &str) -> Option<[usize; 3]> {
   if algebraic == "-" {
     return None;
@@ -185,12 +225,14 @@ fn process_board(board: &str) -> Result<Board, FenError> {
 
   let height = rows.len();
   let mut width: Option<usize> = None;
-  let mut pieces: Vec<Vec<Piece>> = Vec::new();
+  let mut pieces = Vec::new();
+  let mut white_kings = Vec::new();
+  let mut black_kings = Vec::new();
 
   for row in (0..height).rev() {
     let string = rows[row];
     let mut squares = 0;
-    let mut vec: Vec<Piece> = Vec::new();
+    let mut vec = Vec::new();
 
     for c in string.chars() {
       if c.is_ascii_digit() {
@@ -201,7 +243,15 @@ fn process_board(board: &str) -> Result<Board, FenError> {
           vec.append(&mut vec![0; squares]);
           squares = 0;
         }
-        vec.push(to_piece(c)?);
+        let piece = to_piece(c)?;
+        if piece.abs() == KING {
+          if piece > 0 {
+            white_kings.push((height - row - 1, vec.len()));
+          } else {
+            black_kings.push((height - row - 1, vec.len()));
+          }
+        }
+        vec.push(piece);
       }
     }
     if squares > 0 {
@@ -236,6 +286,11 @@ fn process_board(board: &str) -> Result<Board, FenError> {
     castle_row: 0,
     queen_column: 0,
     king_column: width - 1,
+    promotion_target: None,
+    promotion_options: vec![QUEEN, ROOK, BISHOP, KNIGHT],
+    white_kings,
+    black_kings,
+    state: Gamestate::InProgress,
   })
 }
 
@@ -311,8 +366,8 @@ impl Board {
       }
       if data.len() > 3 {
         if let Ok(queen_column) = data[3].parse::<usize>() {
-          if queen_column < board.width {
-            board.queen_column = queen_column;
+          if queen_column > 0 && queen_column <= board.width {
+            board.queen_column = queen_column - 1;
           }
         }
       }
@@ -324,6 +379,16 @@ impl Board {
         }
       }
     }
+
+    if fields.len() > 7 {
+      let mut promotion = Vec::new();
+      for c in fields[7].chars() {
+        promotion.push(to_piece(c)?);
+      }
+      board.promotion_options = promotion;
+    }
+
+    board.update();
 
     Ok(board)
   }
@@ -352,12 +417,80 @@ impl Board {
     self.to_move
   }
 
+  /// Get the valid promotion possibilities
+  #[must_use]
+  pub fn promotion_options(&self) -> &Vec<Piece> {
+    &self.promotion_options
+  }
+
+  /// Whether the board is waiting for a promotion
+  #[must_use]
+  pub fn promotion_available(&self) -> bool {
+    self.promotion_target.is_some()
+  }
+
+  /// The coordinates of the kings under attack.
+  /// Only considers the side to move.
+  #[must_use]
+  pub fn attacked_kings(&self) -> Vec<&(usize, usize)> {
+    let mut attacked = Vec::new();
+    for king in self.kings(self.to_move()) {
+      if self.is_attacked((king.0 as isize, king.1 as isize), !self.to_move) {
+        attacked.push(king);
+      }
+    }
+    attacked
+  }
+
+  /// Get the current state of the game
+  #[must_use]
+  pub fn state(&self) -> Gamestate {
+    self.state
+  }
+
+  /// Generates all legal moves from a position.
+  #[must_use]
+  pub fn generate_legal(&self) -> Vec<Board> {
+    let mut boards = Vec::new();
+    for i in 0..self.height {
+      for j in 0..self.width {
+        let piece = self.pieces[(i, j)];
+        if piece != 0 && self.to_move == (piece > 0) {
+          // TODO: movegen based on piece type
+          for k in 0..self.height {
+            for l in 0..self.width {
+              if self.check_pseudolegal((i, j), (k, l)) {
+                if let Some(mut board) = self.get_legal((i, j), (k, l)) {
+                  if board.promotion_available() {
+                    for piece in &self.promotion_options {
+                      let mut promotion = board.clone();
+                      promotion.promote(*piece);
+                      boards.push(promotion);
+                    }
+                  } else {
+                    board.update();
+                    boards.push(board);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    boards
+  }
+
   /// Checks if a move is psuedo-legal.
   /// Pseudo-legal moves may expose the king to attack but are otherwise legal.
   #[must_use]
   pub fn check_pseudolegal(&self, start: (usize, usize), end: (usize, usize)) -> bool {
     let piece = self.pieces[start];
-    if start == end || self.to_move == (piece < 0) {
+    if start == end
+      || self.to_move == (piece < 0)
+      || self.promotion_target.is_some()
+      || self.state != Gamestate::InProgress
+    {
       return false;
     }
     let destination = self.pieces[end];
@@ -419,7 +552,7 @@ impl Board {
         }
       }
 
-      // Special cases - TODO
+      // Special cases
       PAWN => {
         (end.0 > start.0) == (piece > 0) && {
           match cols {
@@ -428,12 +561,9 @@ impl Board {
                 && (rows == 1
                   || (rows <= self.pawn_moves && {
                     let (valid, iter) = if piece > 0 {
-                      (start.0 < self.pawn_row, start.0 + 1..end.0 - 1)
+                      (start.0 < self.pawn_row, start.0 + 1..end.0)
                     } else {
-                      (
-                        self.height - start.0 <= self.pawn_row,
-                        end.0 + 1..start.0 - 1,
-                      )
+                      (self.height - start.0 <= self.pawn_row, end.0 + 1..start.0)
                     };
                     if valid {
                       let mut valid = true;
@@ -465,26 +595,34 @@ impl Board {
       }
       KING => {
         (rows <= 1 && cols <= 1)
-          || (start.0 == self.castle_row() && rows == 0 && cols == 2 && {
-            let offset = self.castle_offset();
-            let (iter, offset) = if start.1 > end.1 {
-              // Queenside Castling
-              (self.queen_column + 1..start.1, offset + 1)
-            } else {
-              //Kingside Castling
-              (start.1 + 1..self.king_column, offset)
-            };
-            let mut valid = self.castling[offset];
-            if valid {
-              for i in iter {
-                if self.pieces[(start.0, i)] != 0 {
-                  valid = false;
-                  break;
+          || (start.0 == self.castle_row(self.to_move)
+            && rows == 0
+            && cols == 2
+            && !self.attacked_kings().contains(&&start)
+            && {
+              let offset = Board::castle_offset(self.to_move);
+              let (iter, offset) = if start.1 > end.1 {
+                // Queenside Castling
+                (self.queen_column + 1..start.1, offset + 1)
+              } else {
+                //Kingside Castling
+                (start.1 + 1..self.king_column, offset)
+              };
+              let mut valid = self.castling[offset]
+                && !self.is_attacked(
+                  (start.0 as isize, ((start.1 + end.1) / 2) as isize),
+                  !self.to_move,
+                );
+              if valid {
+                for i in iter {
+                  if self.pieces[(start.0, i)] != 0 {
+                    valid = false;
+                    break;
+                  }
                 }
               }
-            }
-            valid
-          })
+              valid
+            })
       }
 
       _ => unreachable!(),
@@ -494,7 +632,6 @@ impl Board {
   /// Moves a piece from one square to another.
   /// This function assumes the move is legal.
   pub fn make_move(&mut self, start: (usize, usize), end: (usize, usize)) {
-    // TODO: handle promotion, castling and king position updating
     self.halfmoves += 1;
     let piece = self.pieces[start];
     match piece.abs() {
@@ -521,11 +658,14 @@ impl Board {
           }
           self.en_passant = None;
         }
+        if end.0 == (if self.to_move { self.height - 1 } else { 0 }) {
+          self.promotion_target = Some(end);
+        }
       }
       KING => {
         self.en_passant = None;
-        if start.0 == self.castle_row {
-          let offset = self.castle_offset();
+        if start.0 == self.castle_row(self.to_move) {
+          let offset = Board::castle_offset(self.to_move);
           self.castling[offset] = false;
           self.castling[offset + 1] = false;
           match start.1 {
@@ -535,7 +675,7 @@ impl Board {
               self.pieces[(start.0, start.1 - 1)] = self.pieces[rook];
               self.pieces[rook] = SQUARE;
             }
-            _ if start.1 == end.1 - 2 => {
+            _ if start.1 + 2 == end.1 => {
               // kingside castling
               let rook = (start.0, self.king_column);
               self.pieces[(start.0, start.1 + 1)] = self.pieces[rook];
@@ -544,21 +684,46 @@ impl Board {
             _ => (),
           }
         }
+        if piece > 0 {
+          for i in 0..self.white_kings.len() {
+            self.white_kings[i] = if start == self.white_kings[i] {
+              end
+            } else {
+              self.white_kings[i]
+            }
+          }
+        } else {
+          for i in 0..self.black_kings.len() {
+            self.black_kings[i] = if start == self.black_kings[i] {
+              end
+            } else {
+              self.black_kings[i]
+            }
+          }
+        }
       }
       _ => {
         self.en_passant = None;
-        if start.0 == self.castle_row {
-          let offset = self.castle_offset();
-          if start.1 == self.queen_column {
-            self.castling[offset + 1] = false;
-          } else if start.1 == self.king_column {
-            self.castling[offset] = false;
-          }
-        }
+      }
+    }
+    if start.0 == self.castle_row(self.to_move) {
+      let offset = Board::castle_offset(self.to_move);
+      if start.1 == self.queen_column {
+        self.castling[offset + 1] = false;
+      } else if start.1 == self.king_column {
+        self.castling[offset] = false;
       }
     }
     if self.pieces[end] != 0 {
       self.halfmoves = 0;
+      if end.0 == self.castle_row(!self.to_move) {
+        let offset = Board::castle_offset(!self.to_move);
+        if end.1 == self.queen_column {
+          self.castling[offset + 1] = false;
+        } else if end.1 == self.king_column {
+          self.castling[offset] = false;
+        }
+      }
     }
     self.pieces[end] = piece;
     self.pieces[start] = SQUARE;
@@ -566,6 +731,198 @@ impl Board {
     if self.to_move {
       self.moves += 1;
     }
+  }
+
+  /// Returns a `Board` if the move is legal, and `None` otherwise.
+  /// Assumes the move is psuedo-legal.
+  /// Update the board afterwards if there is a result.
+  #[must_use]
+  pub fn get_legal(&self, start: (usize, usize), end: (usize, usize)) -> Option<Board> {
+    let mut board = self.clone();
+    board.make_move(start, end);
+    for king in board.kings(!board.to_move) {
+      if board.is_attacked((king.0 as isize, king.1 as isize), board.to_move) {
+        return None;
+      }
+    }
+
+    Some(board)
+  }
+
+  /// Apply a promotion, if valid in the position.
+  /// This function assumes the piece is a valid promotion option.
+  pub fn promote(&mut self, piece: Piece) {
+    if let Some(target) = self.promotion_target {
+      self.pieces[target] = piece * (self.pieces[target] / PAWN);
+      self.promotion_target = None;
+      self.update();
+    }
+  }
+
+  /// Get whether a square is attacked by the specified side.
+  #[must_use]
+  // automatic flatten is 5% slower
+  #[allow(clippy::manual_flatten)]
+  pub fn is_attacked(&self, (row, column): (isize, isize), side: bool) -> bool {
+    let multiplier = if side { 1 } else { -1 };
+    for piece in self.straight((row, column), 1) {
+      if let Some(piece) = piece {
+        match piece * multiplier {
+          ROOK | QUEEN | KING | CHANCELLOR | MANN | CHAMPION | CENTAUR | AMAZON | ELEPHANT => {
+            return true
+          }
+          _ => (),
+        }
+      }
+    }
+    for piece in self.diagonal((row, column), 1) {
+      if let Some(piece) = piece {
+        match piece * multiplier {
+          BISHOP | QUEEN | KING | ARCHBISHOP | MANN | CHAMPION | CENTAUR | AMAZON | ELEPHANT => {
+            return true
+          }
+          _ => (),
+        }
+      }
+    }
+    for piece in self.jumps((row, column), 2, 1) {
+      if let Some(piece) = piece {
+        match piece * multiplier {
+          KNIGHT | ARCHBISHOP | CHANCELLOR | NIGHTRIDER | CENTAUR | AMAZON => return true,
+          _ => (),
+        }
+      }
+    }
+    for piece in self.jumps((row, column), 3, 1) {
+      if piece == Some(&(CAMEL * multiplier)) {
+        return true;
+      }
+    }
+    for piece in self.jumps((row, column), 3, 2) {
+      if piece == Some(&(ZEBRA * multiplier)) {
+        return true;
+      }
+    }
+    for piece in self.straight((row, column), 2) {
+      if piece == Some(&(CHAMPION * multiplier)) {
+        return true;
+      }
+    }
+    for piece in self.diagonal((row, column), 2) {
+      if piece == Some(&(CHAMPION * multiplier)) {
+        return true;
+      }
+    }
+
+    // check for pawn threat
+    if self.get(row - multiplier as isize, column - 1) == Some(&(PAWN * multiplier))
+      || self.get(row - multiplier as isize, column + 1) == Some(&(PAWN * multiplier))
+    {
+      return true;
+    }
+
+    for piece in self.straight_rays((row as isize, column as isize), 1) {
+      if let Some(piece) = piece {
+        match piece * multiplier {
+          ROOK | QUEEN | CHANCELLOR | AMAZON => return true,
+          _ => (),
+        }
+      }
+    }
+
+    for piece in self.diagonal_rays((row as isize, column as isize), 1) {
+      if let Some(piece) = piece {
+        match piece * multiplier {
+          BISHOP | QUEEN | ARCHBISHOP | AMAZON => return true,
+          _ => (),
+        }
+      }
+    }
+
+    for piece in self.all_rays((row as isize, column as isize), 2, 1) {
+      if piece == Some(&(NIGHTRIDER * multiplier)) {
+        return true;
+      }
+    }
+
+    false
+  }
+
+  fn straight(&self, (row, column): (isize, isize), dx: isize) -> [Option<&Piece>; 4] {
+    [
+      self.get(row + dx, column),
+      self.get(row - dx, column),
+      self.get(row, column + dx),
+      self.get(row, column - dx),
+    ]
+  }
+
+  fn diagonal(&self, (row, column): (isize, isize), dx: isize) -> [Option<&Piece>; 4] {
+    [
+      self.get(row + dx, column + dx),
+      self.get(row + dx, column - dx),
+      self.get(row - dx, column + dx),
+      self.get(row - dx, column - dx),
+    ]
+  }
+
+  fn jumps(&self, (row, column): (isize, isize), dx: isize, dy: isize) -> [Option<&Piece>; 8] {
+    [
+      self.get(row + dx, column + dy),
+      self.get(row + dx, column - dy),
+      self.get(row - dx, column + dy),
+      self.get(row - dx, column - dy),
+      self.get(row + dy, column + dx),
+      self.get(row + dy, column - dx),
+      self.get(row - dy, column + dx),
+      self.get(row - dy, column - dx),
+    ]
+  }
+
+  fn diagonal_rays(&self, (row, column): (isize, isize), dx: isize) -> [Option<&Piece>; 4] {
+    [
+      self.ray((row, column), dx, dx),
+      self.ray((row, column), dx, -dx),
+      self.ray((row, column), -dx, dx),
+      self.ray((row, column), -dx, -dx),
+    ]
+  }
+
+  fn straight_rays(&self, (row, column): (isize, isize), dx: isize) -> [Option<&Piece>; 4] {
+    [
+      self.ray((row, column), dx, 0),
+      self.ray((row, column), -dx, 0),
+      self.ray((row, column), 0, dx),
+      self.ray((row, column), 0, -dx),
+    ]
+  }
+
+  fn all_rays(&self, (row, column): (isize, isize), dx: isize, dy: isize) -> [Option<&Piece>; 8] {
+    [
+      self.ray((row, column), dx, dy),
+      self.ray((row, column), dx, -dy),
+      self.ray((row, column), -dx, dy),
+      self.ray((row, column), -dx, -dy),
+      self.ray((row, column), dy, dx),
+      self.ray((row, column), dy, -dx),
+      self.ray((row, column), -dy, dx),
+      self.ray((row, column), -dy, -dx),
+    ]
+  }
+
+  fn ray(&self, (mut row, mut column): (isize, isize), dx: isize, dy: isize) -> Option<&Piece> {
+    loop {
+      row += dx;
+      column += dy;
+      match self.get(row, column) {
+        Some(&SQUARE) => (),
+        piece => return piece,
+      }
+    }
+  }
+
+  fn get(&self, row: isize, column: isize) -> Option<&Piece> {
+    self.pieces.get(row as usize, column as usize)
   }
 
   fn ray_is_valid(&self, start: (isize, isize), end: (isize, isize), steps: isize) -> bool {
@@ -579,19 +936,62 @@ impl Board {
     true
   }
 
-  fn castle_offset(&self) -> usize {
-    if self.to_move {
+  fn castle_offset(side: bool) -> usize {
+    if side {
       0
     } else {
       2
     }
   }
 
-  fn castle_row(&self) -> usize {
-    if self.to_move() {
+  fn castle_row(&self, side: bool) -> usize {
+    if side {
       self.castle_row
     } else {
-      self.width - self.castle_row() - 1
+      self.height - self.castle_row - 1
     }
+  }
+
+  fn kings(&self, side: bool) -> &Vec<(usize, usize)> {
+    if side {
+      &self.white_kings
+    } else {
+      &self.black_kings
+    }
+  }
+
+  /// Update kings in check and game state.
+  pub fn update(&mut self) {
+    // TODO: 3-fold
+    if self.halfmoves > 100 {
+      self.state = Gamestate::Move50;
+    } else if !self.any_moves() {
+      self.state = if self.attacked_kings().is_empty() {
+        Gamestate::Stalemate
+      } else {
+        Gamestate::Checkmate(self.to_move)
+      }
+    }
+  }
+
+  #[must_use]
+  fn any_moves(&self) -> bool {
+    for i in 0..self.height {
+      for j in 0..self.width {
+        let piece = self.pieces[(i, j)];
+        if piece != 0 && self.to_move == (piece > 0) {
+          // TODO: movegen based on piece type
+          for k in 0..self.height {
+            for l in 0..self.width {
+              if self.check_pseudolegal((i, j), (k, l)) && self.get_legal((i, j), (k, l)).is_some()
+              {
+                return true;
+              }
+            }
+          }
+        }
+      }
+    }
+    false
   }
 }

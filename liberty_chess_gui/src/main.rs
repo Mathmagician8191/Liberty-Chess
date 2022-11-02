@@ -10,7 +10,7 @@ use egui::{
   TextureFilter, TextureHandle, Ui,
 };
 use enum_iterator::all;
-use liberty_chess::{print_secs, Board, Clock, Piece, Type};
+use liberty_chess::{print_secs, to_name, Board, Clock, Gamestate, Piece, Type};
 use soloud::{Soloud, Wav};
 use std::time::{Duration, Instant};
 use tiny_skia::Pixmap;
@@ -49,6 +49,11 @@ struct LibertyChessGUI {
   // global theme
   theme: Theme,
 
+  // fields for board rendering
+  gamestate: Option<Board>,
+  selected: Option<(usize, usize)>,
+  moved: Option<[(usize, usize); 2]>,
+
   // fields for main menu
   fen: String,
   gamemode: GameMode,
@@ -57,13 +62,11 @@ struct LibertyChessGUI {
   clock_data: [u64; 4],
 
   // fields for game screen
-  gamestate: Option<Board>,
-  selected: Option<(usize, usize)>,
-  moved: Option<[(usize, usize); 2]>,
   undo: Vec<Board>,
   clock: Option<Clock>,
+  promotion: Piece,
 
-  //field for help screen
+  // field for help screen
   help_page: HelpPage,
 
   // field for credits
@@ -113,8 +116,10 @@ impl LibertyChessGUI {
       gamestate: None,
       selected: None,
       moved: None,
+
       undo: Vec::new(),
       clock: None,
+      promotion: liberty_chess::QUEEN,
 
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
@@ -210,6 +215,42 @@ impl eframe::App for LibertyChessGUI {
               self.moved = None;
               if let Some(clock) = &mut self.clock {
                 clock.switch_clocks();
+              }
+            }
+            if let Some(gamestate) = &mut self.gamestate {
+              if gamestate.promotion_available() {
+                let promotion = gamestate.promotion_options();
+                if !promotion.is_empty() {
+                  if !promotion.contains(&self.promotion) {
+                    self.promotion = promotion[0];
+                  }
+                  ComboBox::from_id_source("Promote")
+                    .selected_text(to_name(self.promotion))
+                    .show_ui(ui, |ui| {
+                      for piece in promotion {
+                        ui.selectable_value(&mut self.promotion, *piece, to_name(*piece));
+                      }
+                    });
+                  if ui.button("Promote").clicked() {
+                    gamestate.promote(self.promotion);
+                  }
+                }
+              }
+              let state = gamestate.state();
+              if state != Gamestate::InProgress {
+                ui.heading(match state {
+                  Gamestate::Checkmate(bool) => {
+                    if bool {
+                      "Black wins by checkmate"
+                    } else {
+                      "White wins by checkmate"
+                    }
+                  }
+                  Gamestate::Stalemate => "Draw by stalemate",
+                  Gamestate::Move50 => "Draw by 50 move rule",
+                  Gamestate::Repetition => "Draw by 3-fold repetition",
+                  Gamestate::InProgress => unreachable!(),
+                });
               }
             }
           });
@@ -333,8 +374,13 @@ fn render_board(
               colour = Colours::Moved;
             }
           }
+          if gamestate.attacked_kings().contains(&&coords) {
+            colour = Colours::Check;
+          }
           if let Some(start) = gui.selected {
-            if gamestate.check_pseudolegal(start, coords) {
+            if gamestate.check_pseudolegal(start, coords)
+              && gamestate.get_legal(start, coords).is_some()
+            {
               colour = if gamestate.get_piece(coords) == 0 {
                 if black_square {
                   Colours::ValidBlack
@@ -358,20 +404,25 @@ fn render_board(
             if let Some(selected) = gui.selected {
               if let Some(gamestate) = &mut gui.gamestate {
                 if gamestate.check_pseudolegal(selected, coords) {
-                  gui.undo.push(gamestate.clone());
-                  if let Some(player) = &gui.effect_player {
-                    player.play(
-                      &gui.audio[if gamestate.get_piece(coords) == 0 {
-                        0
-                      } else {
-                        1
-                      }],
-                    );
-                  }
-                  gamestate.make_move(selected, coords);
-                  gui.moved = Some([selected, coords]);
-                  if let Some(clock) = &mut gui.clock {
-                    clock.switch_clocks();
+                  if let Some(mut newstate) = gamestate.get_legal(selected, coords) {
+                    if !newstate.promotion_available() {
+                      newstate.update();
+                    }
+                    gui.undo.push(gamestate.clone());
+                    if let Some(player) = &gui.effect_player {
+                      player.play(
+                        &gui.audio[if gamestate.get_piece(coords) == 0 {
+                          0
+                        } else {
+                          1
+                        }],
+                      );
+                    }
+                    gui.gamestate = Some(newstate);
+                    gui.moved = Some([selected, coords]);
+                    if let Some(clock) = &mut gui.clock {
+                      clock.switch_clocks();
+                    }
                   }
                 }
               }
@@ -441,13 +492,13 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   if ui.button("Start Game").clicked() {
     match Board::new(&gui.fen) {
       Ok(board) => {
-        gui.gamestate = Some(board.clone());
         match gui.clock_type {
           Type::None => gui.clock = None,
           Type::Increment | Type::Handicap => {
             gui.clock = Some(Clock::new(gui.clock_data, board.to_move()));
           }
         }
+        gui.gamestate = Some(board);
         switch_screen(gui, Screen::Game);
       }
       Err(error) => {
@@ -511,7 +562,8 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
 
 fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context) {
   if let Some(gamestate) = gui.gamestate.clone() {
-    let mut clickable = true;
+    let mut clickable =
+      !gamestate.promotion_available() && gamestate.state() == Gamestate::InProgress;
     if let Some(clock) = &gui.clock {
       if clock.is_flagged() {
         gui.selected = None;

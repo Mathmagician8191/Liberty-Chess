@@ -5,11 +5,9 @@ The sequel to Totally Normal Chess, now written in Rust
 This is currently in a pre-alpha state where key functionality (e.g. move validation, loading L-FENs and moving pieces) is only partially implemented.
 
 TODO for version 1.0:
-- Reading the other fields of an L-FEN
 - Serializing a board state to an L-FEN
-- Promotion
-- Testing for exposing the king to attack/check
-- Promotion and check for help screen
+- Promotion for help screen
+- Friendly fire mode
 - Support for chess engines
 
 For information on the copyright of the images, see COPYING.md.
