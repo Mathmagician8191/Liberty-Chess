@@ -2,7 +2,7 @@
 members = ["liberty_chess_gui", "test", "perft"]
 
 [workspace.package]
-version = "0.9.0"
+version = "0.9.1"
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
 edition = "2021"
 
@@ -15,6 +15,7 @@ eframe = "0.19.0"
 enum-iterator = "1.2.0"
 resvg = "0.25.0"
 soloud = "1.0.2"
+threadpool = "1.8.1"
 tiny-skia = "0.8.2"
 usvg = "0.25.0"
 

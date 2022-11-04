@@ -1,6 +1,6 @@
 [package]
 name = "liberty_chess_gui"
-version = "0.8.0"
+version = "0.8.1"
 authors.workspace = true
 edition.workspace = true
 
@@ -9,6 +9,11 @@ liberty_chess = {workspace = true}
 eframe = {workspace = true}
 enum-iterator = {workspace = true}
 resvg = {workspace = true}
-soloud = {workspace = true}
+soloud = {workspace = true, optional = true}
 tiny-skia = {workspace = true}
 usvg = {workspace = true}
+
+[features]
+default = ["sound"]
+benchmarking = []
+sound = ["dep:soloud"]

@@ -11,9 +11,11 @@ use egui::{
 };
 use enum_iterator::all;
 use liberty_chess::{print_secs, to_name, Board, Clock, Gamestate, Piece, Type};
-use soloud::{Soloud, Wav};
 use std::time::{Duration, Instant};
 use tiny_skia::Pixmap;
+
+#[cfg(feature = "sound")]
+use soloud::{Soloud, Wav};
 
 // enums in own file
 mod colours;
@@ -26,12 +28,10 @@ mod themes;
 mod images;
 mod sound;
 
-const BENCHMARKING: bool = false;
-
 const MENU_TEXT: &str = "Back to Menu";
 
 //sizes of things
-const ICON_SIZE: usize = 50;
+const ICON_SIZE: usize = 48;
 const TEXT_SIZE: f32 = 24.0;
 const SMALL_SIZE: f32 = 16.0;
 
@@ -73,7 +73,9 @@ struct LibertyChessGUI {
   credits: Credits,
 
   //sound players and audio
+  #[cfg(feature = "sound")]
   effect_player: Option<Soloud>,
+  #[cfg(feature = "sound")]
   audio: [Wav; 2],
 
   // images and a render cache - used on game screen
@@ -124,7 +126,9 @@ impl LibertyChessGUI {
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
 
+      #[cfg(feature = "sound")]
       effect_player: Soloud::default().ok(),
+      #[cfg(feature = "sound")]
       audio: sound::get(),
 
       images: images::get(),
@@ -192,10 +196,13 @@ impl eframe::App for LibertyChessGUI {
                 ui.selectable_value(&mut self.theme, theme, size(theme.to_string(), SMALL_SIZE));
               }
             });
-          let mut sound = self.effect_player.is_some();
-          ui.checkbox(&mut sound, size("Sound", SMALL_SIZE));
-          if sound == self.effect_player.is_none() {
-            self.effect_player = if sound { Soloud::default().ok() } else { None }
+          #[cfg(feature = "sound")]
+          {
+            let mut sound = self.effect_player.is_some();
+            ui.checkbox(&mut sound, size("Sound", SMALL_SIZE));
+            if sound == self.effect_player.is_none() {
+              self.effect_player = if sound { Soloud::default().ok() } else { None }
+            }
           }
         });
       });
@@ -308,7 +315,7 @@ impl eframe::App for LibertyChessGUI {
       };
     });
     // Add no delay between rendering frames and log FPS when benchmarking
-    if BENCHMARKING {
+    if cfg!(feature = "benchmarking") {
       self.frames += 1;
       let duration = self.instant.elapsed().as_secs();
       if duration - self.seconds > 0 {
@@ -409,6 +416,7 @@ fn render_board(
                       newstate.update();
                     }
                     gui.undo.push(gamestate.clone());
+                    #[cfg(feature = "sound")]
                     if let Some(player) = &gui.effect_player {
                       player.play(
                         &gui.audio[if gamestate.get_piece(coords) == 0 {
@@ -622,6 +630,7 @@ fn draw_credits(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
         ui.add(get_icon(gui, ctx, 'u'));
       });
     }
+    #[cfg(feature = "sound")]
     Credits::Sound => {
       ui.heading("The sound effects for piece moving were done by:");
       ui.add(github("Enigmahack"));
@@ -691,7 +700,7 @@ fn main() {
   .unwrap();
   let options = eframe::NativeOptions {
     // Disable vsync when benchmarking to remove the framerate limit
-    vsync: !BENCHMARKING,
+    vsync: !cfg!(feature = "benchmarking"),
     icon_data: Some(eframe::IconData {
       rgba: Pixmap::take(pixmap),
       width: size,

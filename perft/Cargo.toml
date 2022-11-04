@@ -6,3 +6,8 @@ edition.workspace = true
 
 [dependencies]
 liberty_chess = {workspace = true}
+threadpool = {workspace = true}
+
+[features]
+default = ["parallel"]
+parallel = []
