@@ -121,7 +121,7 @@ fn main() {
 
   //liberty chess - not tested with external sources
   perft_test(
-    "rnabhqkbhcnr/wlzeuxxuezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZEUXXUEZLW/RNABHQKBHCNR w KQkq - 0 1 3,3",
+    "ruabhqkbhcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKBHCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
     &[1, 194, 37_464, 7_271_730],
   );
 

@@ -383,7 +383,7 @@ impl Board {
     if fields.len() > 7 {
       let mut promotion = Vec::new();
       for c in fields[7].chars() {
-        promotion.push(to_piece(c)?);
+        promotion.push(to_piece(c)?.abs());
       }
       board.promotion_options = promotion;
     }

@@ -34,7 +34,7 @@ impl Presets {
   pub fn value(self) -> String {
     match self {
       Presets::Standard => "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-      Presets::Liberty => "rnabhqkbhcnr/wlzeuxxuezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZEUXXUEZLW/RNABHQKBHCNR w KQkq - 0 1 3,3",
+      Presets::Liberty => "ruabhqkbhcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKBHCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
       Presets::Mini => "qkbnr/ppppp/5/5/PPPPP/QKBNR w Kk - 0 1 1",
       Presets::CapablancaRectangle => "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1",
       Presets::CapablancaSquare => "rnabqkbcnr/pppppppppp/10/10/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1 3",
