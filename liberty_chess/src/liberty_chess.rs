@@ -452,25 +452,72 @@ impl Board {
   #[must_use]
   pub fn generate_legal(&self) -> Vec<Board> {
     let mut boards = Vec::new();
+    let king_safe = self.attacked_kings().is_empty();
     for i in 0..self.height {
       for j in 0..self.width {
         let piece = self.pieces[(i, j)];
         if piece != 0 && self.to_move == (piece > 0) {
+          let skip_legality = match piece.abs() {
+            KING | PAWN => false,
+            _ => king_safe && !self.is_attacked((i as isize, j as isize), !self.to_move),
+          };
           // TODO: movegen based on piece type
-          for k in 0..self.height {
-            for l in 0..self.width {
-              if self.check_pseudolegal((i, j), (k, l)) {
-                if let Some(mut board) = self.get_legal((i, j), (k, l)) {
-                  if board.promotion_available() {
-                    for piece in &self.promotion_options {
-                      let mut promotion = board.clone();
-                      promotion.promote(*piece);
-                      boards.push(promotion);
+          match piece.abs() {
+            PAWN => {
+              let left_column = usize::saturating_sub(j, 1);
+              let right_column = usize::min(j + 1, self.width - 1);
+              for k in 0..self.height {
+                for l in left_column..=right_column {
+                  if self.check_pseudolegal((i, j), (k, l)) {
+                    if let Some(mut board) = self.get_legal((i, j), (k, l)) {
+                      if board.promotion_available() {
+                        for piece in &self.promotion_options {
+                          let mut promotion = board.clone();
+                          promotion.promote(*piece);
+                          boards.push(promotion);
+                        }
+                      } else {
+                        board.update();
+                        boards.push(board);
+                      }
                     }
-                  } else {
-                    board.update();
-                    boards.push(board);
                   }
+                }
+              }
+            }
+            ROOK => {
+              for k in 0..self.height {
+                self.add_if_legal(&mut boards, (i, j), (k, j), skip_legality);
+              }
+              for l in 0..self.width {
+                self.add_if_legal(&mut boards, (i, j), (i, l), skip_legality);
+              }
+            }
+            KNIGHT => {
+              for (k, l) in self.jump_coords((i as isize, j as isize), 2, 1) {
+                if k >= 0 && l >= 0 && k < self.height as isize && l < self.width as isize {
+                  self.add_if_legal(&mut boards, (i, j), (k as usize, l as usize), skip_legality);
+                }
+              }
+            }
+            CAMEL => {
+              for (k, l) in self.jump_coords((i as isize, j as isize), 3, 1) {
+                if k >= 0 && l >= 0 && k < self.height as isize && l < self.width as isize {
+                  self.add_if_legal(&mut boards, (i, j), (k as usize, l as usize), skip_legality);
+                }
+              }
+            }
+            ZEBRA => {
+              for (k, l) in self.jump_coords((i as isize, j as isize), 3, 2) {
+                if k >= 0 && l >= 0 && k < self.height as isize && l < self.width as isize {
+                  self.add_if_legal(&mut boards, (i, j), (k as usize, l as usize), skip_legality);
+                }
+              }
+            }
+            _ => {
+              for k in 0..self.height {
+                for l in 0..self.width {
+                  self.add_if_legal(&mut boards, (i, j), (k, l), skip_legality);
                 }
               }
             }
@@ -479,6 +526,28 @@ impl Board {
       }
     }
     boards
+  }
+
+  // inlining gives approx 3-4% speed improvement
+  #[inline(always)]
+  fn add_if_legal(
+    &self,
+    boards: &mut Vec<Board>,
+    start: (usize, usize),
+    end: (usize, usize),
+    skip_legality: bool,
+  ) {
+    if self.check_pseudolegal(start, end) {
+      if skip_legality {
+        let mut board = self.clone();
+        board.make_move(start, end);
+        board.update();
+        boards.push(board);
+      } else if let Some(mut board) = self.get_legal(start, end) {
+        board.update();
+        boards.push(board);
+      }
+    }
   }
 
   /// Checks if a move is psuedo-legal.
@@ -879,6 +948,24 @@ impl Board {
     ]
   }
 
+  fn jump_coords(
+    &self,
+    (row, column): (isize, isize),
+    dx: isize,
+    dy: isize,
+  ) -> [(isize, isize); 8] {
+    [
+      (row + dx, column + dy),
+      (row + dx, column - dy),
+      (row - dx, column + dy),
+      (row - dx, column - dy),
+      (row + dy, column + dx),
+      (row + dy, column - dx),
+      (row - dy, column + dx),
+      (row - dy, column - dx),
+    ]
+  }
+
   fn diagonal_rays(&self, (row, column): (isize, isize), dx: isize) -> [Option<&Piece>; 4] {
     [
       self.ray((row, column), dx, dx),
@@ -981,11 +1068,44 @@ impl Board {
         let piece = self.pieces[(i, j)];
         if piece != 0 && self.to_move == (piece > 0) {
           // TODO: movegen based on piece type
-          for k in 0..self.height {
-            for l in 0..self.width {
-              if self.check_pseudolegal((i, j), (k, l)) && self.get_legal((i, j), (k, l)).is_some()
-              {
-                return true;
+          match piece.abs() {
+            PAWN => {
+              let left_column = usize::saturating_sub(j, 1);
+              let right_column = usize::min(j + 1, self.width - 1);
+              for k in 0..self.height {
+                for l in left_column..=right_column {
+                  if self.test_legal((i, j), (k, l)) {
+                    return true;
+                  }
+                }
+              }
+            }
+            ROOK => {
+              for k in 0..self.height {
+                if self.test_legal((i, j), (k, j)) {
+                  return true;
+                }
+              }
+              for l in 0..self.width {
+                if self.test_legal((i, j), (i, l)) {
+                  return true;
+                }
+              }
+            }
+            KNIGHT => {
+              for (k, l) in self.jump_coords((i as isize, j as isize), 2, 1) {
+                if k >= 0 && l >= 0 && k < self.height as isize && l < self.width as isize && self.test_legal((i, j), (k as usize, l as usize)) {
+                  return true;
+                }
+              }
+            }
+            _ => {
+              for k in 0..self.height {
+                for l in 0..self.width {
+                  if self.test_legal((i, j), (k as usize, l as usize)) {
+                    return true;
+                  }
+                }
               }
             }
           }
@@ -993,5 +1113,9 @@ impl Board {
       }
     }
     false
+  }
+
+  fn test_legal(&self, start: (usize, usize), end: (usize, usize)) -> bool {
+    self.check_pseudolegal(start, end) && self.get_legal(start, end).is_some()
   }
 }

@@ -3,13 +3,15 @@ use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 use threadpool::ThreadPool;
 
-// Updated 4 Nov 2022
+// Updated 6 Nov 2022
 // 5600x benchmarks - multithreaded
-// 1 million = 2s
-// 10 million = 14s
-// 100 million = 69s
-// 200 million = 270s
-// max = 21 1/2 mins
+// 1 million = 1.3s
+// 5 million = 4.9s
+// 10 million = 9.5s
+// 30 million = 25s
+// 100 million = 49s
+// 200 million = 3 mins
+// max = 14 mins
 const LIMIT: usize = usize::MAX;
 
 fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
@@ -122,7 +124,7 @@ fn main() {
   //liberty chess - not tested with external sources
   perft_test(
     "ruabhqkbhcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKBHCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
-    &[1, 194, 37_464, 7_271_730],
+    &[1, 194, 37_464, 7_293_830],
   );
 
   // mongol chess
