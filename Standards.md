@@ -76,6 +76,12 @@ The column of the kingside castling piece, defaults to the board width.
 
 If some fields are missing, they use the default value.
 
+## Promotion pieces
+
+This field contains all the valid promotion options for pieces, as lowercase letters.
+
+The field defaults to qrbn.
+
 # Coordinate representation
 
 This format is made of 2 parts, with no separation.

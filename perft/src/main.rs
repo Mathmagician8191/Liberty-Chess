@@ -3,15 +3,15 @@ use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 use threadpool::ThreadPool;
 
-// Updated 6 Nov 2022
+// Updated 9 Nov 2022
 // 5600x benchmarks - multithreaded
-// 1 million = 1.3s
-// 5 million = 4.9s
-// 10 million = 9.5s
-// 30 million = 25s
-// 100 million = 49s
-// 200 million = 3 mins
-// max = 14 mins
+// 1 million = 1.4s
+// 5 million = 5.2s
+// 10 million = 10s
+// 30 million = 27s
+// 100 million = 52s
+// 200 million = 200s
+// max = 890s
 const LIMIT: usize = usize::MAX;
 
 fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
@@ -26,11 +26,11 @@ fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
   println!("{} {} for depth {} ({} knodes/s)", fen, time, depth, knodes);
 }
 
-fn perft(board: &Board, depth: usize) -> usize {
+fn perft(board: Board, depth: usize) -> usize {
   if depth > 0 {
     let mut result = 0;
     for position in board.generate_legal() {
-      result += perft(&position, depth - 1);
+      result += perft(position, depth - 1);
     }
     result
   } else {
@@ -40,6 +40,7 @@ fn perft(board: &Board, depth: usize) -> usize {
 
 fn perft_test(fen: &'static str, results: &[usize]) {
   let board = Board::new(fen).unwrap();
+  assert_eq!(board.to_string(), fen);
   let start = Instant::now();
   let mut max = 0;
   let mut nodes = 0;
@@ -57,10 +58,10 @@ fn perft_test(fen: &'static str, results: &[usize]) {
     ThreadPool::new(1)
   };
   for i in 0..max {
-    let new_board = board.clone();
+    let fen = board.to_string();
     let result = results[i];
     pool.execute(move || {
-      assert_eq!(perft(&new_board, i), result);
+      assert_eq!(perft(Board::new(&fen).unwrap(), i), result);
     });
   }
 
@@ -69,7 +70,8 @@ fn perft_test(fen: &'static str, results: &[usize]) {
   let num_moves = moves.len();
   for board in moves {
     let tx = tx.clone();
-    pool.execute(move || tx.send(perft(&board, max - 1)).unwrap());
+    let fen = board.to_string();
+    pool.execute(move || tx.send(perft(Board::new(&fen).unwrap(), max - 1)).unwrap());
   }
   pool.join();
   assert_eq!(rx.iter().take(num_moves).sum::<usize>(), results[max]);
@@ -87,19 +89,15 @@ fn main() {
 
   // positions 2-6 from https://www.chessprogramming.org/Perft_Results
   perft_test(
-    "qkbnr/ppppp/5/5/PPPPP/QKBNR w Kk - 0 1 1",
-    &[1, 7, 49, 457, 4_065, 44_137, 476_690, 5_914_307],
-  );
-  perft_test(
-    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -",
+    "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1",
     &[1, 48, 2_039, 97_862, 4_085_603, 193_690_690],
   );
   perft_test(
-    "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -",
+    "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1",
     &[1, 14, 191, 2_812, 43_238, 674_624, 11_030_083, 178_633_661],
   );
   perft_test(
-    "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq -",
+    "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
     &[1, 6, 264, 9_467, 422_333, 15_833_292, 706_045_033],
   );
   perft_test(
@@ -113,7 +111,7 @@ fn main() {
 
   // capablanca's chess
   perft_test(
-    "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq -",
+    "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1",
     &[1, 28, 784, 25_228, 805_128, 28_741_319, 1_015_802_437],
   );
   perft_test(
@@ -125,6 +123,12 @@ fn main() {
   perft_test(
     "ruabhqkbhcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKBHCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
     &[1, 194, 37_464, 7_293_830],
+  );
+
+  //mini chess
+  perft_test(
+    "qkbnr/ppppp/5/5/PPPPP/QKBNR w Kk - 0 1 1",
+    &[1, 7, 49, 457, 4_065, 44_137, 476_690, 5_914_307],
   );
 
   // mongol chess
@@ -147,13 +151,13 @@ fn main() {
 
   //trump chess - not tested with external sources
   perft_test(
-    "rwwwkwwr/pppppppp/8/8/8/8/PPPPPPPP/RWWWKWWR w KQkq - 0 1 - rw",
+    "rwwwkwwr/pppppppp/8/8/8/8/PPPPPPPP/RWWWKWWR w KQkq - 0 1 - mrw",
     &[1, 176, 30_856, 5_410_950],
   );
 
   //loaded board
   perft_test(
-    "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq -",
+    "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1",
     &[1, 28, 778, 21_974, 617_017, 17_962_678, 527_226_103],
   );
 
@@ -165,15 +169,15 @@ fn main() {
 
   // test positions from totally normal chess
   perft_test(
-    "ciamkaic/pppppppp/8/8/8/8/PPPPPPPP/CIAMKAIC w - -",
+    "ciamkaic/pppppppp/8/8/8/8/PPPPPPPP/CIAMKAIC w - - 0 1 - mcai",
     &[1, 32, 1_026, 38_132, 1_401_550, 56_909_620],
   );
   perft_test(
-    "hixakxih/pppppppp/8/8/8/8/PPPPPPPP/HIXAKXIH w - -",
+    "hixakxih/pppppppp/8/8/8/8/PPPPPPPP/HIXAKXIH w - - 0 1 - ahix",
     &[1, 30, 899, 29_509, 958_995, 33_463_252],
   );
   perft_test(
-    "rnobqkbonr/pppppppppp/10/10/10/10/10/10/PPPPPPPPPP/RNOBQKBONR w KQkq - 0 1 3",
+    "rnobqkbonr/pppppppppp/10/10/10/10/10/10/PPPPPPPPPP/RNOBQKBONR w KQkq - 0 1 3 qcarbno",
     &[1, 154, 23_632, 3_612_238],
   );
   perft_test(

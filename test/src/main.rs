@@ -11,6 +11,9 @@ fn main() {
     if size == 0 || trimmed.starts_with('q') {
       break;
     }
-    println!("{:?}", Board::new(&input));
+    match Board::new(&input) {
+      Ok(board) => println!("{}", board.to_string()),
+      Err(err) => println!("{:?}", err),
+    }
   }
 }

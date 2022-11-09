@@ -2,7 +2,7 @@
 members = ["liberty_chess_gui", "test", "perft"]
 
 [workspace.package]
-version = "0.9.2"
+version = "0.10.0"
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
 edition = "2021"
 
@@ -11,8 +11,11 @@ edition = "2021"
 [workspace.dependencies]
 liberty_chess = {path = "liberty_chess"}
 array2d = "0.2.1"
+clipboard = "0.3.0"
 eframe = "0.19.0"
 enum-iterator = "1.2.0"
+rand = "0.8.5"
+rand_chacha = "0.3.1"
 resvg = "0.25.0"
 soloud = "1.0.2"
 threadpool = "1.8.1"
@@ -26,5 +29,6 @@ debug = 0
 [profile.release]
 opt-level = 3
 panic = "abort"
-strip = true
-lto = true
+#strip = true
+#lto = true
+debug = true

@@ -3,6 +3,7 @@ use crate::credits::Credits;
 use crate::gamemodes::{GameMode, Presets};
 use crate::help_page::HelpPage;
 use crate::themes::Theme;
+use clipboard::{ClipboardContext, ClipboardProvider};
 use eframe::egui;
 use egui::widgets::Hyperlink;
 use egui::{
@@ -65,6 +66,7 @@ struct LibertyChessGUI {
   undo: Vec<Board>,
   clock: Option<Clock>,
   promotion: Piece,
+  clipboard: Option<ClipboardContext>,
 
   // field for help screen
   help_page: HelpPage,
@@ -109,19 +111,20 @@ impl LibertyChessGUI {
 
       theme,
 
+      gamestate: None,
+      selected: None,
+      moved: None,
+
       gamemode: GameMode::Preset(Presets::Standard),
       fen: Presets::Standard.value(),
       message: None,
       clock_type: Type::None,
       clock_data: [10, 10, 10, 10],
 
-      gamestate: None,
-      selected: None,
-      moved: None,
-
       undo: Vec::new(),
       clock: None,
       promotion: liberty_chess::QUEEN,
+      clipboard: ClipboardProvider::new().ok(),
 
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
@@ -224,6 +227,8 @@ impl eframe::App for LibertyChessGUI {
                 clock.switch_clocks();
               }
             }
+
+            // display promotion if applicable
             if let Some(gamestate) = &mut self.gamestate {
               if gamestate.promotion_available() {
                 let promotion = gamestate.promotion_options();
@@ -234,7 +239,7 @@ impl eframe::App for LibertyChessGUI {
                   ComboBox::from_id_source("Promote")
                     .selected_text(to_name(self.promotion))
                     .show_ui(ui, |ui| {
-                      for piece in promotion {
+                      for piece in promotion.iter() {
                         ui.selectable_value(&mut self.promotion, *piece, to_name(*piece));
                       }
                     });
@@ -243,6 +248,15 @@ impl eframe::App for LibertyChessGUI {
                   }
                 }
               }
+
+              // let the user copy the FEN to clipboard
+              if let Some(clipboard) = &mut self.clipboard {
+                if ui.button("Copy FEN to clipboard").clicked() {
+                  clipboard.set_contents(gamestate.to_string()).unwrap();
+                }
+              }
+
+              // if the game is over, report the reason
               let state = gamestate.state();
               if state != Gamestate::InProgress {
                 ui.heading(match state {
@@ -569,22 +583,18 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
 }
 
 fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context) {
-  if let Some(gamestate) = gui.gamestate.clone() {
-    let mut clickable =
-      !gamestate.promotion_available() && gamestate.state() == Gamestate::InProgress;
-    if let Some(clock) = &gui.clock {
-      if clock.is_flagged() {
-        gui.selected = None;
-        clickable = false;
-      }
+  let gamestate = gui.gamestate.clone().expect("No board despite game");
+  let mut clickable =
+    !gamestate.promotion_available() && gamestate.state() == Gamestate::InProgress;
+  if let Some(clock) = &gui.clock {
+    if clock.is_flagged() {
+      gui.selected = None;
+      clickable = false;
     }
-    egui::Area::new("Board")
-      .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-      .show(ctx, |ui| render_board(gui, ctx, ui, &gamestate, clickable));
-  } else {
-    println!("On Game screen with no gamestate");
-    switch_screen(gui, Screen::Menu);
   }
+  egui::Area::new("Board")
+    .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+    .show(ctx, |ui| render_board(gui, ctx, ui, &gamestate, clickable));
 }
 
 fn draw_help(gui: &mut LibertyChessGUI, ctx: &Context) {

@@ -11,3 +11,5 @@ path = "src/liberty_chess.rs"
 [dependencies]
 array2d = {workspace = true}
 enum-iterator = {workspace = true}
+rand = {workspace = true}
+rand_chacha = {workspace = true}
