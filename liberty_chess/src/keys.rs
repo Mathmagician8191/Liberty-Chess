@@ -5,7 +5,7 @@ use rand_chacha::ChaChaRng;
 
 pub type Hash = u64;
 
-pub struct ZobristKeys {
+pub struct Zobrist {
   pub colour: Array2D<Hash>,
   pub pieces: Array2D<[Hash; 18]>,
   pub en_passant: Array2D<Hash>,
@@ -14,11 +14,11 @@ pub struct ZobristKeys {
   pub castling: [Hash; 4],
 }
 
-impl ZobristKeys {
+impl Zobrist {
   pub fn new(width: usize, height: usize) -> Self {
     // seed generated from random.org
     let mut rng = ChaChaRng::seed_from_u64(0xbe76_25d8_a3ac_f287);
-    let mut keys: ZobristKeys = ZobristKeys {
+    let mut keys = Self {
       colour: Array2D::filled_with(0, height, width),
       pieces: Array2D::filled_with([0; 18], height, width),
       en_passant: Array2D::filled_with(0, height, width),

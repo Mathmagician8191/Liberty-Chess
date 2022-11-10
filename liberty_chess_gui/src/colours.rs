@@ -15,15 +15,15 @@ pub enum Colours {
 impl Colours {
   pub fn value(&self) -> Color32 {
     match self {
-      Colours::BlackSquare => Color32::from_rgb(160, 128, 96),
-      Colours::WhiteSquare => Color32::from_rgb(240, 217, 181),
-      Colours::Moved => Color32::from_rgb(64, 192, 0),
-      Colours::Selected => Color32::from_rgb(192, 192, 0),
-      Colours::ValidBlack => Color32::from_rgb(80, 192, 176),
-      Colours::ValidWhite => Color32::from_rgb(120, 237, 219),
-      Colours::ThreatenedBlack => Color32::from_rgb(180, 64, 0),
-      Colours::ThreatenedWhite => Color32::from_rgb(220, 107, 0),
-      Colours::Check => Color32::from_rgb(192, 0, 0),
+      Self::BlackSquare => Color32::from_rgb(160, 128, 96),
+      Self::WhiteSquare => Color32::from_rgb(240, 217, 181),
+      Self::Moved => Color32::from_rgb(64, 192, 0),
+      Self::Selected => Color32::from_rgb(192, 192, 0),
+      Self::ValidBlack => Color32::from_rgb(80, 192, 176),
+      Self::ValidWhite => Color32::from_rgb(120, 237, 219),
+      Self::ThreatenedBlack => Color32::from_rgb(180, 64, 0),
+      Self::ThreatenedWhite => Color32::from_rgb(220, 107, 0),
+      Self::Check => Color32::from_rgb(192, 0, 0),
     }
   }
 }

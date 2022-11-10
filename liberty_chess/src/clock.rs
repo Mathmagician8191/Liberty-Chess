@@ -96,9 +96,9 @@ pub enum Type {
 impl ToString for Type {
   fn to_string(&self) -> String {
     match self {
-      Type::None => "No Clock".to_string(),
-      Type::Increment => "Increment".to_string(),
-      Type::Handicap => "Increment with Handicap".to_string(),
+      Self::None => "No Clock".to_string(),
+      Self::Increment => "Increment".to_string(),
+      Self::Handicap => "Increment with Handicap".to_string(),
     }
   }
 }

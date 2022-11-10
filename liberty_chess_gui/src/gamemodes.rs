@@ -9,8 +9,8 @@ pub enum GameMode {
 impl ToString for GameMode {
   fn to_string(&self) -> String {
     match self {
-      GameMode::Preset(preset) => preset.to_string(),
-      GameMode::Custom => "Custom".to_string(),
+      Self::Preset(preset) => preset.to_string(),
+      Self::Custom => "Custom".to_string(),
     }
   }
 }
@@ -33,17 +33,17 @@ pub enum Presets {
 impl Presets {
   pub fn value(self) -> String {
     match self {
-      Presets::Standard => "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-      Presets::Liberty => "ruabhqkbhcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKBHCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
-      Presets::Mini => "qkbnr/ppppp/5/5/PPPPP/QKBNR w Kk - 0 1 1",
-      Presets::CapablancaRectangle => "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1",
-      Presets::CapablancaSquare => "rnabqkbcnr/pppppppppp/10/10/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1 3",
-      Presets::Mongol => "nnnnknnn/pppppppp/8/8/8/8/PPPPPPPP/NNNNKNNN w - - 0 1",
-      Presets::African => "lnzekznl/pppppppp/8/8/8/8/PPPPPPPP/LNZEKZNL w - - 0 1 - enzl",
-      Presets::Narnia => "uuqkkquu/pppppppp/8/8/8/8/PPPPPPPP/UUQKKQUU w - - 0 1 - u",
-      Presets::Trump => "rwwwkwwr/pppppppp/8/8/8/8/PPPPPPPP/RWWWKWWR w KQkq - 0 1 - mrw",
-      Presets::LoadedBoard => "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1",
-      Presets::Double => "rnbqkbnrrnbqkbnr/pppppppppppppppp/16/16/16/16/PPPPPPPPPPPPPPPP/RNBQKBNRRNBQKBNR w KQkq - 0 1",
+      Self::Standard => "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      Self::Liberty => "ruabhqkbhcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKBHCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
+      Self::Mini => "qkbnr/ppppp/5/5/PPPPP/QKBNR w Kk - 0 1 1",
+      Self::CapablancaRectangle => "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1",
+      Self::CapablancaSquare => "rnabqkbcnr/pppppppppp/10/10/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1 3",
+      Self::Mongol => "nnnnknnn/pppppppp/8/8/8/8/PPPPPPPP/NNNNKNNN w - - 0 1",
+      Self::African => "lnzekznl/pppppppp/8/8/8/8/PPPPPPPP/LNZEKZNL w - - 0 1 - enzl",
+      Self::Narnia => "uuqkkquu/pppppppp/8/8/8/8/PPPPPPPP/UUQKKQUU w - - 0 1 - u",
+      Self::Trump => "rwwwkwwr/pppppppp/8/8/8/8/PPPPPPPP/RWWWKWWR w KQkq - 0 1 - mrw",
+      Self::LoadedBoard => "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1",
+      Self::Double => "rnbqkbnrrnbqkbnr/pppppppppppppppp/16/16/16/16/PPPPPPPPPPPPPPPP/RNBQKBNRRNBQKBNR w KQkq - 0 1",
     }
     .to_string()
   }
@@ -52,17 +52,17 @@ impl Presets {
 impl ToString for Presets {
   fn to_string(&self) -> String {
     match self {
-      Presets::Standard => "Standard",
-      Presets::Liberty => "Liberty chess",
-      Presets::Mini => "Mini chess",
-      Presets::CapablancaRectangle => "Capablanca's chess (10x8)",
-      Presets::CapablancaSquare => "Capablanca's chess (10x10)",
-      Presets::Mongol => "Mongol chess",
-      Presets::African => "African chess",
-      Presets::Narnia => "Narnia chess",
-      Presets::Trump => "Trump chess",
-      Presets::LoadedBoard => "Loaded board",
-      Presets::Double => "Double chess",
+      Self::Standard => "Standard",
+      Self::Liberty => "Liberty chess",
+      Self::Mini => "Mini chess",
+      Self::CapablancaRectangle => "Capablanca's chess (10x8)",
+      Self::CapablancaSquare => "Capablanca's chess (10x10)",
+      Self::Mongol => "Mongol chess",
+      Self::African => "African chess",
+      Self::Narnia => "Narnia chess",
+      Self::Trump => "Trump chess",
+      Self::LoadedBoard => "Loaded board",
+      Self::Double => "Double chess",
     }
     .to_string()
   }

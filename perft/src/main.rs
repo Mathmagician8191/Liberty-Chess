@@ -3,34 +3,37 @@ use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 use threadpool::ThreadPool;
 
-// Updated 9 Nov 2022
+// Updated 10 Nov 2022
 // 5600x benchmarks - multithreaded
 // 1 million = 1.4s
-// 5 million = 5.2s
-// 10 million = 10s
+// 5 million = 5.6s
+// 10 million = 10.5s
 // 30 million = 27s
-// 100 million = 52s
-// 200 million = 200s
-// max = 890s
+// 100 million = 53s
+// 200 million = 208s
+// max = 870s
 const LIMIT: usize = usize::MAX;
 
 fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
   let secs = time.as_secs();
   let millis = time.as_millis();
-  let knodes = nodes / usize::max(millis as usize, 1);
+  let kilonodes = nodes / usize::max(millis as usize, 1);
   let time = if secs >= 30 {
     format!("{} s", secs)
   } else {
     format!("{} ms", millis)
   };
-  println!("{} {} for depth {} ({} knodes/s)", fen, time, depth, knodes);
+  println!(
+    "{} {} for depth {} ({} knodes/s)",
+    fen, time, depth, kilonodes
+  );
 }
 
-fn perft(board: Board, depth: usize) -> usize {
+fn perft(board: &Board, depth: usize) -> usize {
   if depth > 0 {
     let mut result = 0;
     for position in board.generate_legal() {
-      result += perft(position, depth - 1);
+      result += perft(&position, depth - 1);
     }
     result
   } else {
@@ -57,11 +60,11 @@ fn perft_test(fen: &'static str, results: &[usize]) {
   } else {
     ThreadPool::new(1)
   };
-  for i in 0..max {
+  for (i, result) in results.iter().enumerate().take(max) {
     let fen = board.to_string();
-    let result = results[i];
+    let result = *result;
     pool.execute(move || {
-      assert_eq!(perft(Board::new(&fen).unwrap(), i), result);
+      assert_eq!(perft(&Board::new(&fen).unwrap(), i), result);
     });
   }
 
@@ -71,7 +74,7 @@ fn perft_test(fen: &'static str, results: &[usize]) {
   for board in moves {
     let tx = tx.clone();
     let fen = board.to_string();
-    pool.execute(move || tx.send(perft(Board::new(&fen).unwrap(), max - 1)).unwrap());
+    pool.execute(move || tx.send(perft(&Board::new(&fen).unwrap(), max - 1)).unwrap());
   }
   pool.join();
   assert_eq!(rx.iter().take(num_moves).sum::<usize>(), results[max]);
@@ -165,6 +168,12 @@ fn main() {
   perft_test(
     "rnbqkbnrrnbqkbnr/pppppppppppppppp/16/16/16/16/PPPPPPPPPPPPPPPP/RNBQKBNRRNBQKBNR w KQkq - 0 1",
     &[1, 40, 1_592, 68_142, 2_898_457, 132_653_171],
+  );
+
+  //friendly fire
+  perft_test(
+    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 - qrbn ff",
+    &[1, 39, 1_519, 63_034, 2_598_922, 112_776_461],
   );
 
   // test positions from totally normal chess

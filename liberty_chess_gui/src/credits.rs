@@ -11,10 +11,10 @@ pub enum Credits {
 impl Credits {
   pub fn title(self) -> &'static str {
     match self {
-      Credits::Coding => "Coding",
-      Credits::Images => "Images",
+      Self::Coding => "Coding",
+      Self::Images => "Images",
       #[cfg(feature = "sound")]
-      Credits::Sound => "Sound effects",
+      Self::Sound => "Sound effects",
     }
   }
 }

@@ -1,7 +1,6 @@
-#![allow(clippy::inline_always)]
 //! The backend for Liberty Chess
 
-use crate::keys::{Hash, ZobristKeys};
+use crate::keys::{Hash, Zobrist};
 use array2d::Array2D;
 use std::rc::Rc;
 
@@ -59,10 +58,10 @@ pub enum FenError {
 impl ToString for FenError {
   fn to_string(&self) -> String {
     match self {
-      FenError::InvalidPiece(c) => format!("Invalid piece found: {}", c),
-      FenError::NonRectangular => "Non-rectangular board found".to_string(),
-      FenError::Size => "Board is too small (must be at least 2x2)".to_string(),
-      FenError::MissingFields => "Required field (side to move) missing".to_string(),
+      Self::InvalidPiece(c) => format!("Invalid piece found: {}", c),
+      Self::NonRectangular => "Non-rectangular board found".to_string(),
+      Self::Size => "Board is too small (must be at least 2x2)".to_string(),
+      Self::MissingFields => "Required field (side to move) missing".to_string(),
     }
   }
 }
@@ -86,7 +85,7 @@ pub struct Board {
   en_passant: Option<[usize; 3]>,
   halfmoves: u8,
   moves: u16,
-  pawn_moves: isize,
+  pawn_moves: usize,
   pawn_row: usize,
   castle_row: usize,
   queen_column: usize,
@@ -99,7 +98,8 @@ pub struct Board {
   duplicates: Vec<Hash>,
   previous: Vec<Hash>,
   hash: Hash,
-  keys: Rc<ZobristKeys>,
+  keys: Rc<Zobrist>,
+  pub friendly_fire: bool,
 }
 
 impl ToString for Board {
@@ -169,7 +169,13 @@ impl ToString for Board {
     // save optional fields in reverse order
     // because previous ones are required
     let mut optional = Vec::new();
-    let custom_promotion = self.promotion_options.as_ref() != &[QUEEN, ROOK, BISHOP, KNIGHT];
+
+    if self.friendly_fire {
+      optional.push("ff".to_string());
+    }
+
+    let custom_promotion =
+      self.friendly_fire || self.promotion_options.as_ref() != &[QUEEN, ROOK, BISHOP, KNIGHT];
 
     // save promotion options
     if custom_promotion {
@@ -182,12 +188,12 @@ impl ToString for Board {
 
     // assemble misc options (also reversed)
     let mut misc = Vec::new();
-    let mut misc_fields = false;
-
-    if self.king_column != self.width() - 1 {
+    let mut misc_fields = if self.king_column == self.width() - 1 {
+      false
+    } else {
       misc.push(self.king_column.to_string());
-      misc_fields = true;
-    }
+      true
+    };
 
     if misc_fields || self.queen_column != 0 {
       misc.push(self.queen_column.to_string());
@@ -456,7 +462,8 @@ fn process_board(board: &str) -> Result<Board, FenError> {
     duplicates: Vec::new(),
     previous: Vec::new(),
     hash: 0,
-    keys: Rc::new(ZobristKeys::new(width, height)),
+    keys: Rc::new(Zobrist::new(width, height)),
+    friendly_fire: false,
   })
 }
 
@@ -514,7 +521,7 @@ impl Board {
     if fields.len() > 6 {
       let data: Vec<&str> = fields[6].split(',').collect();
       if !data.is_empty() {
-        if let Ok(pawn_moves) = data[0].parse::<isize>() {
+        if let Ok(pawn_moves) = data[0].parse::<usize>() {
           board.pawn_moves = pawn_moves;
         }
       }
@@ -552,6 +559,10 @@ impl Board {
         promotion.push(to_piece(c)?.abs());
       }
       board.promotion_options = Rc::new(promotion);
+    }
+
+    if fields.len() > 8 && fields[8] == "ff" {
+      board.friendly_fire = true;
     }
 
     board.hash = board.get_hash();
@@ -619,7 +630,7 @@ impl Board {
 
   /// Generates all legal moves from a position.
   #[must_use]
-  pub fn generate_legal(&self) -> Vec<Board> {
+  pub fn generate_legal(&self) -> Vec<Self> {
     let mut boards = Vec::new();
     let king_safe = self.attacked_kings().is_empty();
     for i in 0..self.height() {
@@ -663,21 +674,21 @@ impl Board {
               }
             }
             KNIGHT => {
-              for (k, l) in Board::jump_coords((i as isize, j as isize), 2, 1) {
+              for (k, l) in Self::jump_coords((i as isize, j as isize), 2, 1) {
                 if k < self.height() && l < self.width() {
                   self.add_if_legal(&mut boards, (i, j), (k, l), skip_legality);
                 }
               }
             }
             CAMEL => {
-              for (k, l) in Board::jump_coords((i as isize, j as isize), 3, 1) {
+              for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 1) {
                 if k < self.height() && l < self.width() {
                   self.add_if_legal(&mut boards, (i, j), (k, l), skip_legality);
                 }
               }
             }
             ZEBRA => {
-              for (k, l) in Board::jump_coords((i as isize, j as isize), 3, 2) {
+              for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 2) {
                 if k < self.height() && l < self.width() {
                   self.add_if_legal(&mut boards, (i, j), (k, l), skip_legality);
                 }
@@ -701,7 +712,7 @@ impl Board {
   #[inline(always)]
   fn add_if_legal(
     &self,
-    boards: &mut Vec<Board>,
+    boards: &mut Vec<Self>,
     start: (usize, usize),
     end: (usize, usize),
     skip_legality: bool,
@@ -732,15 +743,17 @@ impl Board {
       return false;
     }
     let destination = self.pieces[end];
-    if (destination != 0 && (piece > 0) == (destination > 0))
+    if (destination != 0
+      && (!self.friendly_fire || destination.abs() == KING)
+      && (piece > 0) == (destination > 0))
       || DEFENCE[destination.unsigned_abs() as usize] >= ATTACK[piece.unsigned_abs() as usize]
     {
       return false;
     }
     let istart = (start.0 as isize, start.1 as isize);
     let iend = (end.0 as isize, end.1 as isize);
-    let rows = (istart.0 - iend.0).abs();
-    let cols = (istart.1 - iend.1).abs();
+    let rows = start.0.abs_diff(end.0);
+    let cols = start.1.abs_diff(end.1);
     match piece.abs() {
       //Teleporting pieces
       OBSTACLE | WALL => true,
@@ -755,10 +768,10 @@ impl Board {
 
       // Leaping pieces
       BISHOP => rows == cols && self.ray_is_valid(istart, iend, rows),
-      ROOK => (rows == 0 || cols == 0) && self.ray_is_valid(istart, iend, isize::max(rows, cols)),
+      ROOK => (rows == 0 || cols == 0) && self.ray_is_valid(istart, iend, usize::max(rows, cols)),
       QUEEN => {
         if rows == 0 || cols == 0 {
-          self.ray_is_valid(istart, iend, isize::max(rows, cols))
+          self.ray_is_valid(istart, iend, usize::max(rows, cols))
         } else {
           rows == cols && self.ray_is_valid(istart, iend, rows)
         }
@@ -771,7 +784,7 @@ impl Board {
       CHANCELLOR => {
         (rows == 2 && cols == 1)
           || (rows == 1 && cols == 2)
-          || ((rows == 0 || cols == 0) && self.ray_is_valid(istart, iend, isize::max(rows, cols)))
+          || ((rows == 0 || cols == 0) && self.ray_is_valid(istart, iend, usize::max(rows, cols)))
       }
       NIGHTRIDER => {
         if rows == 2 * cols {
@@ -783,7 +796,7 @@ impl Board {
       AMAZON => {
         (rows == 2 && cols == 1) || (rows == 1 && cols == 2) || {
           if rows == 0 || cols == 0 {
-            self.ray_is_valid(istart, iend, isize::max(rows, cols))
+            self.ray_is_valid(istart, iend, usize::max(rows, cols))
           } else {
             rows == cols && self.ray_is_valid(istart, iend, rows)
           }
@@ -818,11 +831,9 @@ impl Board {
             1 => {
               rows == 1
                 && (destination != 0 || {
-                  if let Some(coords) = self.en_passant {
+                  self.en_passant.map_or(false, |coords| {
                     end.1 == coords[0] && coords[1] <= end.0 && end.0 <= coords[2]
-                  } else {
-                    false
-                  }
+                  })
                 })
             }
             _ => false,
@@ -836,7 +847,7 @@ impl Board {
             && cols == 2
             && !self.attacked_kings().contains(&&start)
             && {
-              let offset = Board::castle_offset(self.to_move);
+              let offset = Self::castle_offset(self.to_move);
               let (iter, offset) = if start.1 > end.1 {
                 // Queenside Castling
                 (self.queen_column + 1..start.1, offset + 1)
@@ -872,19 +883,16 @@ impl Board {
       self.hash ^= keys.colour[start];
       self.hash ^= keys.colour[end];
     }
-    self.hash ^= keys.pieces[start][(piece.abs() - 1) as usize];
-    self.hash ^= keys.pieces[end][(piece.abs() - 1) as usize];
+    self.hash ^= keys.pieces[start][(piece.unsigned_abs() - 1) as usize];
+    self.hash ^= keys.pieces[end][(piece.unsigned_abs() - 1) as usize];
     match piece.abs() {
       PAWN => {
         self.halfmoves = 0;
         self.previous = Vec::new();
         self.duplicates = Vec::new();
         if start.1 == end.1 {
-          let (lowest, highest) = if piece > 0 {
-            (start.0, end.0)
-          } else {
-            (end.0, start.0)
-          };
+          let lowest = usize::min(start.0, end.0);
+          let highest = usize::max(start.0, end.0);
           if let Some([column, row_min, row_max]) = self.en_passant {
             self.hash ^= keys.en_passant[(row_min, column)];
             if row_min != row_max {
@@ -932,7 +940,7 @@ impl Board {
           self.en_passant = None;
         }
         if start.0 == self.castle_row(self.to_move) {
-          let offset = Board::castle_offset(self.to_move);
+          let offset = Self::castle_offset(self.to_move);
           if self.castling[offset] {
             self.castling[offset] = false;
             self.hash ^= keys.castling[offset];
@@ -945,27 +953,29 @@ impl Board {
             _ if start.1 == end.1 + 2 => {
               // queenside castling
               let rook = (start.0, self.queen_column);
+              let end = (start.0, start.1 - 1);
               let rook_type = self.pieces[rook];
-              self.hash ^= keys.pieces[rook][(rook_type.abs() - 1) as usize];
-              self.hash ^= keys.pieces[(start.0, start.1 - 1)][(rook_type.abs() - 1) as usize];
+              self.hash ^= keys.pieces[rook][(rook_type.unsigned_abs() - 1) as usize];
+              self.hash ^= keys.pieces[end][(rook_type.unsigned_abs() - 1) as usize];
               if rook_type > 0 {
                 self.hash ^= keys.colour[rook];
-                self.hash ^= keys.colour[(start.0, start.1 - 1)];
+                self.hash ^= keys.colour[end];
               }
-              self.pieces[(start.0, start.1 - 1)] = rook_type;
+              self.pieces[end] = rook_type;
               self.pieces[rook] = SQUARE;
             }
             _ if start.1 + 2 == end.1 => {
               // kingside castling
               let rook = (start.0, self.king_column);
+              let end = (start.0, start.1 + 1);
               let rook_type = self.pieces[rook];
-              self.hash ^= keys.pieces[rook][(rook_type.abs() - 1) as usize];
-              self.hash ^= keys.pieces[(start.0, start.1 + 1)][(rook_type.abs() - 1) as usize];
+              self.hash ^= keys.pieces[rook][(rook_type.unsigned_abs() - 1) as usize];
+              self.hash ^= keys.pieces[end][(rook_type.unsigned_abs() - 1) as usize];
               if rook_type > 0 {
                 self.hash ^= keys.colour[rook];
-                self.hash ^= keys.colour[(start.0, start.1 + 1)];
+                self.hash ^= keys.colour[end];
               }
-              self.pieces[(start.0, start.1 + 1)] = rook_type;
+              self.pieces[end] = rook_type;
               self.pieces[rook] = SQUARE;
             }
             _ => (),
@@ -1000,7 +1010,7 @@ impl Board {
       }
     }
     if start.0 == self.castle_row(self.to_move) {
-      let offset = Board::castle_offset(self.to_move);
+      let offset = Self::castle_offset(self.to_move);
       if start.1 == self.queen_column {
         if self.castling[offset + 1] {
           self.castling[offset + 1] = false;
@@ -1016,12 +1026,12 @@ impl Board {
       if capture > 0 {
         self.hash ^= keys.colour[end];
       }
-      self.hash ^= keys.pieces[end][(capture.abs() - 1) as usize];
+      self.hash ^= keys.pieces[end][(capture.unsigned_abs() - 1) as usize];
       self.halfmoves = 0;
       self.previous = Vec::new();
       self.duplicates = Vec::new();
       if end.0 == self.castle_row(!self.to_move) {
-        let offset = Board::castle_offset(!self.to_move);
+        let offset = Self::castle_offset(!self.to_move);
         if end.1 == self.queen_column {
           if self.castling[offset + 1] {
             self.castling[offset + 1] = false;
@@ -1046,7 +1056,7 @@ impl Board {
   /// Assumes the move is psuedo-legal.
   /// Update the board afterwards if there is a result.
   #[must_use]
-  pub fn get_legal(&self, start: (usize, usize), end: (usize, usize)) -> Option<Board> {
+  pub fn get_legal(&self, start: (usize, usize), end: (usize, usize)) -> Option<Self> {
     let mut board = self.clone();
     board.make_move(start, end);
     for king in board.kings(!board.to_move) {
@@ -1277,10 +1287,10 @@ impl Board {
     self.pieces.get(row as usize, column as usize)
   }
 
-  fn ray_is_valid(&self, start: (isize, isize), end: (isize, isize), steps: isize) -> bool {
-    let dx = (end.0 - start.0) / steps;
-    let dy = (end.1 - start.1) / steps;
-    for i in 1..steps {
+  fn ray_is_valid(&self, start: (isize, isize), end: (isize, isize), steps: usize) -> bool {
+    let dx = (end.0 - start.0) / steps as isize;
+    let dy = (end.1 - start.1) / steps as isize;
+    for i in 1..steps as isize {
       if self.pieces[((start.0 + i * dx) as usize, (start.1 + i * dy) as usize)] != SQUARE {
         return false;
       }
@@ -1288,7 +1298,7 @@ impl Board {
     true
   }
 
-  fn castle_offset(side: bool) -> usize {
+  const fn castle_offset(side: bool) -> usize {
     if side {
       0
     } else {
@@ -1360,7 +1370,7 @@ impl Board {
           if piece > 0 {
             result ^= keys.colour[(i, j)];
           }
-          let piece_type: usize = (piece.abs() - 1) as usize;
+          let piece_type: usize = (piece.unsigned_abs() - 1) as usize;
           result ^= keys.pieces[(i, j)][piece_type];
         }
       }
@@ -1401,7 +1411,7 @@ impl Board {
               }
             }
             KNIGHT => {
-              for (k, l) in Board::jump_coords((i as isize, j as isize), 2, 1) {
+              for (k, l) in Self::jump_coords((i as isize, j as isize), 2, 1) {
                 if k < self.height() && l < self.width() && self.test_legal((i, j), (k, l)) {
                   return true;
                 }

@@ -82,6 +82,14 @@ This field contains all the valid promotion options for pieces, as lowercase let
 
 The field defaults to qrbn.
 
+## Friendly fire
+
+This field having the value "ff" specifies that friendly fire mode is enabled.
+
+Friendly fire mode means that you can capture your own pieces (except your king).
+
+Friendly fire mode is disabled by default.
+
 # Coordinate representation
 
 This format is made of 2 parts, with no separation.
