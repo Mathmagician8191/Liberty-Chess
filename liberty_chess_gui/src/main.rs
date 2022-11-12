@@ -4,9 +4,9 @@ use crate::gamemodes::{GameMode, Presets};
 use crate::help_page::HelpPage;
 use crate::themes::Theme;
 use clipboard::ClipboardProvider;
-use eframe::egui;
+use eframe::egui::{self, WidgetText};
 use egui::{
-  Color32, ColorImage, ComboBox, Context, FontFamily, FontId, Image, RichText, TextStyle,
+  Button, ColorImage, ComboBox, Context, FontFamily, FontId, Image, RichText, TextStyle,
   TextureFilter, TextureHandle, Ui,
 };
 use enum_iterator::all;
@@ -36,22 +36,23 @@ mod sound;
 const ICON_SIZE: u32 = 48;
 #[allow(clippy::cast_precision_loss)]
 const ICON_SIZE_FLOAT: f32 = ICON_SIZE as f32;
-const TEXT_SIZE: f32 = 20.0;
-const SMALL_SIZE: f32 = 16.0;
+const DEFAULT_TEXT_SIZE: u8 = 24;
 
 enum Screen {
   Menu,
   Game,
   Help,
   Credits,
+  Settings,
 }
 
 struct LibertyChessGUI {
   // current screen
   screen: Screen,
 
-  // global theme
+  // global settings
   theme: Theme,
+  text_size: u8,
 
   // fields for board rendering
   gamestate: Option<Board>,
@@ -82,6 +83,8 @@ struct LibertyChessGUI {
   #[cfg(feature = "sound")]
   effect_player: Option<Soloud>,
   #[cfg(feature = "sound")]
+  volume: u8,
+  #[cfg(feature = "sound")]
   audio: [Wav; 2],
 
   // images and a render cache - used on game screen
@@ -99,24 +102,14 @@ struct LibertyChessGUI {
 
 impl LibertyChessGUI {
   fn new(ctx: &Context) -> Self {
-    let mut style = (*ctx.style()).clone();
-    let font = FontId::new(TEXT_SIZE, FontFamily::Proportional);
-    style.text_styles = [
-      (TextStyle::Heading, font.clone()),
-      (
-        TextStyle::Body,
-        FontId::new(SMALL_SIZE, FontFamily::Proportional),
-      ),
-      (TextStyle::Button, font),
-    ]
-    .into();
-    ctx.set_style(style);
+    set_style(ctx, DEFAULT_TEXT_SIZE);
     let theme = Theme::Dark;
     ctx.set_visuals(theme.get_visuals());
     Self {
       screen: Screen::Menu,
 
       theme,
+      text_size: DEFAULT_TEXT_SIZE,
 
       gamestate: None,
       selected: None,
@@ -139,6 +132,8 @@ impl LibertyChessGUI {
 
       #[cfg(feature = "sound")]
       effect_player: Soloud::default().ok(),
+      #[cfg(feature = "sound")]
+      volume: 100,
       #[cfg(feature = "sound")]
       audio: sound::get(),
 
@@ -166,7 +161,7 @@ impl LibertyChessGUI {
         }
         let texture = ctx.load_texture(
           "square",
-          ColorImage::new([size as usize; 2], Color32::from_black_alpha(0)),
+          ColorImage::new([size as usize; 2], egui::Color32::from_black_alpha(0)),
           TextureFilter::Nearest,
         );
         self.renders[36] = Some(texture.clone());
@@ -195,13 +190,6 @@ impl LibertyChessGUI {
 
 impl eframe::App for LibertyChessGUI {
   fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
-    let theme = self.theme;
-    egui::TopBottomPanel::top("Topbar")
-      .resizable(false)
-      .show(ctx, |ui| draw_topbar(self, ui));
-    if self.theme != theme {
-      ctx.set_visuals(self.theme.get_visuals());
-    }
     match &self.screen {
       Screen::Game => {
         egui::SidePanel::right("Sidebar")
@@ -222,7 +210,7 @@ impl eframe::App for LibertyChessGUI {
                 if page == self.help_page {
                   text = text.color(Colours::ValidBlack.value());
                 }
-                if ui.button(text).clicked() {
+                if ui.add(Button::new(text).wrap(false)).clicked() {
                   self.help_page = page;
                 }
               }
@@ -230,22 +218,22 @@ impl eframe::App for LibertyChessGUI {
           });
         egui::TopBottomPanel::bottom("Description")
           .resizable(false)
-          .show(ctx, |ui| ui.heading(self.help_page.description()));
+          .show(ctx, |ui| ui.label(self.help_page.description()));
       }
       Screen::Credits => {
         egui::SidePanel::left("Credits menu")
           .resizable(false)
           .show(ctx, |ui| {
             menu_button(self, ui);
-            ui.heading("Credits:");
+            ui.add(egui::Label::new("Credits:").wrap(false));
             for page in all::<Credits>() {
-              if ui.button(page.title()).clicked() {
+              if ui.add(Button::new(page.title()).wrap(false)).clicked() {
                 self.credits = page;
               }
             }
           });
       }
-      Screen::Menu => (),
+      Screen::Menu | Screen::Settings => (),
     };
 
     egui::CentralPanel::default().show(ctx, |ui| {
@@ -254,6 +242,11 @@ impl eframe::App for LibertyChessGUI {
         Screen::Game => draw_game(self, ctx),
         Screen::Help => draw_help(self, ctx),
         Screen::Credits => draw_credits(self, ctx, ui),
+        Screen::Settings => {
+          egui::Area::new("Settings")
+            .anchor(egui::Align2::CENTER_TOP, egui::Vec2::ZERO)
+            .show(ctx, |ui| draw_settings(self, ctx, ui));
+        }
       };
     });
     // Add no delay between rendering frames and log FPS when benchmarking
@@ -287,7 +280,7 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
       gui.selected = None;
       gui.moved = None;
     }
-    Screen::Credits => (),
+    Screen::Credits | Screen::Settings => (),
   }
   gui.screen = screen;
 }
@@ -362,14 +355,9 @@ fn render_board(
                     }
                     gui.undo.push(gamestate.clone());
                     #[cfg(feature = "sound")]
-                    if let Some(player) = &gui.effect_player {
-                      player.play(
-                        &gui.audio[if gamestate.get_piece(coords) == 0 {
-                          0
-                        } else {
-                          1
-                        }],
-                      );
+                    if let Some(player) = &mut gui.effect_player {
+                      player.set_global_volume(f32::from(gui.volume) / 100.0);
+                      player.play(&gui.audio[usize::from(gamestate.get_piece(coords) != 0)]);
                     }
                     gui.gamestate = Some(newstate);
                     gui.moved = Some([selected, coords]);
@@ -403,6 +391,9 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
     if ui.button("Credits").clicked() {
       switch_screen(gui, Screen::Credits);
     }
+    if ui.button("Settings").clicked() {
+      switch_screen(gui, Screen::Settings);
+    }
   });
   egui::ComboBox::from_id_source("Gamemode")
     .selected_text("Gamemode: ".to_string() + &gui.gamemode.to_string())
@@ -435,7 +426,6 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
           board.friendly_fire = true;
         }
         gui.gamestate = Some(board);
-
         switch_screen(gui, Screen::Game);
       }
       Err(error) => {
@@ -444,7 +434,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
     }
   }
   if let Some(message) = &gui.message {
-    ui.heading(message);
+    ui.label(message);
   }
   egui::ComboBox::from_id_source("Clock")
     .selected_text(gui.clock_type.to_string())
@@ -525,17 +515,20 @@ fn draw_help(gui: &mut LibertyChessGUI, ctx: &Context) {
 fn draw_credits(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
   match gui.credits {
     Credits::Coding => {
-      ui.heading("Programming done by:");
+      ui.label("Programming done by:");
       github(ui, "Mathmagician8191");
+      ui.label("The code is licensed under GPL v3 and can be found here:");
+      let code_link = "https://github.com/Mathmagician8191/Liberty-Chess".to_string();
+      link(ui, code_link.clone(), code_link);
     }
     Credits::Images => {
       egui::ScrollArea::vertical().show(ui, |ui| {
         ui.set_width(ui.available_width());
-        ui.heading("Image credit by license");
-        ui.heading("\nCC-BY-SA 3.0");
-        ui.heading("Apathor:");
+        ui.label("Image credit by license");
+        ui.label("\nCC-BY-SA 3.0:");
+        ui.label("Apathor:");
         get_row(gui, ctx, ui, "NnBbRr");
-        ui.heading("TomFryers:");
+        ui.label("TomFryers:");
         get_row(gui, ctx, ui, "PpQqKk");
         wikipedia(ui, "Cburnett");
         get_row(gui, ctx, ui, "AaCc");
@@ -545,22 +538,51 @@ fn draw_credits(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
         get_row(gui, ctx, ui, "Hh");
         link(ui, "greenchess.net", "https://greenchess.net".to_string());
         get_row(gui, ctx, ui, "IiMmOoWw");
-        ui.heading("\nCC-BY-SA 4.0");
+        ui.label("\nCC-BY-SA 4.0:");
         wikimedia(ui, "Sunny3113", "Sunny3113");
         get_row(gui, ctx, ui, "ZzXxU");
         wikimedia(ui, "Iago Casabiell González", "Iagocasabiell");
         get_row(gui, ctx, ui, "Ee");
-        ui.heading("\nCC0");
+        ui.label("\nCC0:");
         wikipedia(ui, "CheChe");
         ui.add(get_icon(gui, ctx, 'u'));
       });
     }
     #[cfg(feature = "sound")]
     Credits::Sound => {
-      ui.heading("The sound effects for piece moving were done by:");
+      ui.label("The sound effects for piece moving were done by:");
       github(ui, "Enigmahack");
-      ui.heading("They are licensed under AGPLv3+");
+      ui.label("They are licensed under AGPLv3+");
     }
+  }
+}
+
+fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
+  let theme = gui.theme;
+  menu_button(gui, ui);
+  ComboBox::from_id_source("Theme")
+    .selected_text("Theme: ".to_string() + &gui.theme.to_string())
+    .show_ui(ui, |ui| {
+      for theme in all::<Theme>() {
+        ui.selectable_value(&mut gui.theme, theme, theme.to_string());
+      }
+    });
+  #[cfg(feature = "sound")]
+  {
+    let mut sound = gui.effect_player.is_some();
+    ui.checkbox(&mut sound, "Sound");
+    if sound == gui.effect_player.is_none() {
+      gui.effect_player = if sound { Soloud::default().ok() } else { None }
+    }
+    ui.add(egui::Slider::new(&mut gui.volume, 0..=100).text("Volume"));
+  }
+  let size = gui.text_size;
+  ui.add(egui::Slider::new(&mut gui.text_size, 16..=36).text("Font size"));
+  if size != gui.text_size {
+    set_style(ctx, gui.text_size);
+  }
+  if gui.theme != theme {
+    ctx.set_visuals(gui.theme.get_visuals());
   }
 }
 
@@ -583,33 +605,10 @@ fn draw_clock(ctx: &Context, clock: &mut Clock) {
   }
   egui::TopBottomPanel::bottom("White Clock")
     .resizable(false)
-    .show(ctx, |ui| ui.heading(white_text));
+    .show(ctx, |ui| ui.label(white_text));
   egui::TopBottomPanel::top("Black Clock")
     .resizable(false)
-    .show(ctx, |ui| ui.heading(black_text));
-}
-
-fn draw_topbar(gui: &mut LibertyChessGUI, ui: &mut Ui) {
-  ui.horizontal(|ui| {
-    ComboBox::from_id_source("Theme")
-      .selected_text(size(
-        "Theme: ".to_string() + &gui.theme.to_string(),
-        SMALL_SIZE,
-      ))
-      .show_ui(ui, |ui| {
-        for theme in all::<Theme>() {
-          ui.selectable_value(&mut gui.theme, theme, size(theme.to_string(), SMALL_SIZE));
-        }
-      });
-    #[cfg(feature = "sound")]
-    {
-      let mut sound = gui.effect_player.is_some();
-      ui.checkbox(&mut sound, size("Sound", SMALL_SIZE));
-      if sound == gui.effect_player.is_none() {
-        gui.effect_player = if sound { Soloud::default().ok() } else { None }
-      }
-    }
-  });
+    .show(ctx, |ui| ui.label(black_text));
 }
 
 fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui) {
@@ -653,7 +652,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui) {
     // if the game is over, report the reason
     let state = gamestate.state();
     if state != Gamestate::InProgress {
-      ui.heading(match state {
+      ui.label(match state {
         Gamestate::Checkmate(bool) => {
           if bool {
             "Black wins by checkmate"
@@ -673,7 +672,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui) {
 // general helper functions
 
 fn menu_button(gui: &mut LibertyChessGUI, ui: &mut Ui) {
-  if ui.button("Back to Menu").clicked() {
+  if ui.button("Menu").clicked() {
     switch_screen(gui, Screen::Menu);
   }
 }
@@ -723,15 +722,22 @@ fn wikimedia(ui: &mut Ui, name: &str, username: &str) {
   );
 }
 
-fn link(ui: &mut Ui, name: impl Into<String>, link: String) {
-  ui.add(egui::Hyperlink::from_label_and_url(
-    size(name, TEXT_SIZE),
-    link,
-  ));
+fn link(ui: &mut Ui, name: impl Into<WidgetText>, link: String) {
+  ui.add(egui::Hyperlink::from_label_and_url(name, link));
 }
 
-fn size(text: impl Into<String>, size: f32) -> RichText {
-  RichText::new(text).size(size)
+// configuration functions
+
+fn set_style(ctx: &Context, size: u8) {
+  let mut style = (*ctx.style()).clone();
+  let font = FontId::new(f32::from(size), FontFamily::Proportional);
+  style.text_styles = [
+    (TextStyle::Body, font.clone()),
+    (TextStyle::Button, font.clone()),
+    (TextStyle::Monospace, font),
+  ]
+  .into();
+  ctx.set_style(style);
 }
 
 fn main() {

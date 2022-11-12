@@ -238,7 +238,7 @@ impl ToString for Board {
 /// # Errors
 ///
 /// Will return `Err` if `c` is not a recognised piece
-pub fn to_piece(c: char) -> Result<Piece, FenError> {
+pub const fn to_piece(c: char) -> Result<Piece, FenError> {
   let multiplier: Piece = if c.is_ascii_uppercase() { 1 } else { -1 };
 
   let piece_type = match c.to_ascii_lowercase() {
@@ -266,7 +266,7 @@ pub fn to_piece(c: char) -> Result<Piece, FenError> {
 }
 
 #[must_use]
-fn to_char(piece: Piece) -> char {
+const fn to_char(piece: Piece) -> char {
   let c = match piece.abs() {
     PAWN => 'p',
     KNIGHT => 'n',
@@ -357,7 +357,7 @@ fn get_indices(algebraic: &str) -> Option<[usize; 3]> {
   }
 }
 
-fn get_letter(letter: usize) -> char {
+const fn get_letter(letter: usize) -> char {
   (letter as u8 + b'a') as char
 }
 
@@ -875,7 +875,7 @@ impl Board {
 
   /// Moves a piece from one square to another.
   /// This function assumes the move is legal.
-  pub fn make_move(&mut self, start: (usize, usize), end: (usize, usize)) {
+  fn make_move(&mut self, start: (usize, usize), end: (usize, usize)) {
     let keys = self.keys.as_ref();
     self.halfmoves += 1;
     let piece = self.pieces[start];
@@ -1085,7 +1085,7 @@ impl Board {
   #[must_use]
   // automatic flatten is 5% slower
   #[allow(clippy::manual_flatten)]
-  pub fn is_attacked(&self, (row, column): (usize, usize), side: bool) -> bool {
+  fn is_attacked(&self, (row, column): (usize, usize), side: bool) -> bool {
     let multiplier = if side { 1 } else { -1 };
     for piece in self.straight((row, column), 1) {
       if let Some(piece) = piece {
@@ -1228,7 +1228,7 @@ impl Board {
   }
 
   #[allow(clippy::cast_sign_loss)]
-  fn jump_coords((row, column): (isize, isize), dx: isize, dy: isize) -> [(usize, usize); 8] {
+  const fn jump_coords((row, column): (isize, isize), dx: isize, dy: isize) -> [(usize, usize); 8] {
     [
       ((row + dx) as usize, (column + dy) as usize),
       ((row + dx) as usize, (column - dy) as usize),
@@ -1342,7 +1342,7 @@ impl Board {
   }
 
   #[must_use]
-  pub fn get_hash(&self) -> Hash {
+  fn get_hash(&self) -> Hash {
     let mut result = 0;
     let keys = self.keys.as_ref();
 

@@ -9,7 +9,7 @@ pub enum Credits {
 }
 
 impl Credits {
-  pub fn title(self) -> &'static str {
+  pub const fn title(self) -> &'static str {
     match self {
       Self::Coding => "Coding",
       Self::Images => "Images",

@@ -29,7 +29,7 @@ pub enum HelpPage {
 }
 
 impl HelpPage {
-  pub fn title(self) -> &'static str {
+  pub const fn title(self) -> &'static str {
     match self {
       Self::PawnForward => "Pawns",
       Self::PawnCapture => "Pawns 2",
@@ -85,7 +85,7 @@ impl HelpPage {
     }
   }
 
-  pub fn selected(self) -> (usize, usize) {
+  pub const fn selected(self) -> (usize, usize) {
     match self {
       Self::PawnForward => (2, 3),
       Self::PawnDouble => (1, 3),
@@ -96,7 +96,7 @@ impl HelpPage {
     }
   }
 
-  pub fn description(self) -> &'static str {
+  pub const fn description(self) -> &'static str {
     match self {
       Self::PawnForward => "The pawn moves one square forward.",
       Self::PawnCapture => "The pawn cannot capture forwards, but can move diagonally to capture.",
@@ -124,7 +124,7 @@ impl HelpPage {
     }
   }
 
-  pub fn moved(self) -> Option<[(usize, usize); 2]> {
+  pub const fn moved(self) -> Option<[(usize, usize); 2]> {
     match self {
       Self::EnPassant => Some([(3, 2), (5, 2)]),
       _ => None,

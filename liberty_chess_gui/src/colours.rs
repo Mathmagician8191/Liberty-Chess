@@ -13,7 +13,7 @@ pub enum Colours {
 }
 
 impl Colours {
-  pub fn value(&self) -> Color32 {
+  pub const fn value(&self) -> Color32 {
     match self {
       Self::BlackSquare => Color32::from_rgb(160, 128, 96),
       Self::WhiteSquare => Color32::from_rgb(240, 217, 181),
