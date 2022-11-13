@@ -1,5 +1,5 @@
 #[cfg(feature = "sound")]
-use soloud::{AudioExt, LoadExt, Wav};
+use soloud::{AudioExt, LoadExt, Soloud, Wav};
 
 #[cfg(feature = "sound")]
 fn load_audio(data: &[u8]) -> Wav {
@@ -16,4 +16,13 @@ pub fn get() -> [Wav; 2] {
     load_audio(include_bytes!("../../resources/sounds/Move.ogg")),
     load_audio(include_bytes!("../../resources/sounds/Capture.ogg")),
   ]
+}
+
+#[cfg(feature = "sound")]
+pub fn get_player(sound: bool) -> Option<Soloud> {
+  if sound {
+    Soloud::default().ok()
+  } else {
+    None
+  }
 }

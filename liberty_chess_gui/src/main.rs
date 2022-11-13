@@ -2,8 +2,7 @@ use crate::colours::Colours;
 use crate::credits::Credits;
 use crate::gamemodes::{GameMode, Presets};
 use crate::help_page::HelpPage;
-use crate::themes::Theme;
-use clipboard::ClipboardProvider;
+use crate::themes::{get_theme, Theme};
 use eframe::egui::{self, WidgetText};
 use egui::{
   Button, ColorImage, ComboBox, Context, FontFamily, FontId, Image, RichText, TextStyle,
@@ -13,6 +12,9 @@ use enum_iterator::all;
 use liberty_chess::{print_secs, to_name, Board, Clock, Gamestate, Piece, Type};
 use std::time::Duration;
 use tiny_skia::Pixmap;
+
+#[cfg(not(target_arch = "wasm32"))]
+use clipboard::ClipboardProvider;
 
 #[cfg(feature = "sound")]
 use soloud::{Soloud, Wav};
@@ -37,6 +39,8 @@ const ICON_SIZE: u32 = 48;
 #[allow(clippy::cast_precision_loss)]
 const ICON_SIZE_FLOAT: f32 = ICON_SIZE as f32;
 const DEFAULT_TEXT_SIZE: u8 = 24;
+#[cfg(feature = "sound")]
+const DEFAULT_VOLUME: u8 = 100;
 
 enum Screen {
   Menu,
@@ -71,6 +75,7 @@ struct LibertyChessGUI {
   undo: Vec<Board>,
   clock: Option<Clock>,
   promotion: Piece,
+  #[cfg(not(target_arch = "wasm32"))]
   clipboard: Option<clipboard::ClipboardContext>,
 
   // field for help screen
@@ -101,17 +106,50 @@ struct LibertyChessGUI {
 }
 
 impl LibertyChessGUI {
-  fn new(ctx: &Context) -> Self {
-    set_style(ctx, DEFAULT_TEXT_SIZE);
-    let theme = Theme::Dark;
-    ctx.set_visuals(theme.get_visuals());
+  fn new(ctx: &eframe::CreationContext) -> Self {
+    let theme;
+    let text_size;
+    #[cfg(feature = "sound")]
+    let sound;
+    #[cfg(feature = "sound")]
+    let volume;
+    let gamestate;
+    if let Some(data) = ctx.storage {
+      theme = get_theme(data.get_string("Theme"));
+      text_size = load_data(data.get_string("TextSize"), DEFAULT_TEXT_SIZE);
+      gamestate = data
+        .get_string("Board")
+        .as_ref()
+        .and_then(|fen| Board::new(fen).ok());
+      #[cfg(feature = "sound")]
+      {
+        sound = data.get_string("Sound") != Some("false".to_string());
+        volume = load_data(data.get_string("Volume"), DEFAULT_VOLUME);
+      }
+    } else {
+      // set up default parameters
+      theme = Theme::Dark;
+      text_size = DEFAULT_TEXT_SIZE;
+      gamestate = None;
+      #[cfg(feature = "sound")]
+      {
+        sound = true;
+        volume = DEFAULT_VOLUME;
+      }
+    };
+    set_style(&ctx.egui_ctx, text_size);
+    ctx.egui_ctx.set_visuals(theme.get_visuals());
     Self {
-      screen: Screen::Menu,
+      screen: if gamestate.is_some() {
+        Screen::Game
+      } else {
+        Screen::Menu
+      },
 
       theme,
-      text_size: DEFAULT_TEXT_SIZE,
+      text_size,
 
-      gamestate: None,
+      gamestate,
       selected: None,
       moved: None,
 
@@ -125,15 +163,16 @@ impl LibertyChessGUI {
       undo: Vec::new(),
       clock: None,
       promotion: liberty_chess::QUEEN,
+      #[cfg(not(target_arch = "wasm32"))]
       clipboard: ClipboardProvider::new().ok(),
 
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
 
       #[cfg(feature = "sound")]
-      effect_player: Soloud::default().ok(),
+      effect_player: sound::get_player(sound),
       #[cfg(feature = "sound")]
-      volume: 100,
+      volume,
       #[cfg(feature = "sound")]
       audio: sound::get(),
 
@@ -266,12 +305,30 @@ impl eframe::App for LibertyChessGUI {
       ctx.request_repaint_after(Duration::from_millis(200));
     }
   }
+
+  fn save(&mut self, storage: &mut dyn eframe::Storage) {
+    storage.set_string("Theme", self.theme.to_string());
+    storage.set_string("TextSize", self.text_size.to_string());
+    storage.set_string(
+      "Board",
+      self
+        .gamestate
+        .as_ref()
+        .map_or_else(String::new, ToString::to_string),
+    );
+    #[cfg(feature = "sound")]
+    {
+      storage.set_string("Sound", self.effect_player.is_some().to_string());
+      storage.set_string("Volume", self.volume.to_string());
+    }
+  }
 }
 
 fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
   match &gui.screen {
     Screen::Menu => gui.message = None,
     Screen::Game => {
+      gui.gamestate = None;
       gui.selected = None;
       gui.moved = None;
       gui.undo = Vec::new();
@@ -572,7 +629,7 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
     let mut sound = gui.effect_player.is_some();
     ui.checkbox(&mut sound, "Sound");
     if sound == gui.effect_player.is_none() {
-      gui.effect_player = if sound { Soloud::default().ok() } else { None }
+      gui.effect_player = sound::get_player(sound);
     }
     ui.add(egui::Slider::new(&mut gui.volume, 0..=100).text("Volume"));
   }
@@ -643,6 +700,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui) {
     }
 
     // let the user copy the FEN to clipboard
+    #[cfg(not(target_arch = "wasm32"))]
     if let Some(clipboard) = &mut gui.clipboard {
       if ui.button("Copy FEN to clipboard").clicked() {
         clipboard.set_contents(gamestate.to_string()).unwrap();
@@ -740,6 +798,25 @@ fn set_style(ctx: &Context, size: u8) {
   ctx.set_style(style);
 }
 
+fn load_data<T: std::str::FromStr>(data: Option<String>, default: T) -> T {
+  if let Some(data) = data {
+    data.parse::<T>().unwrap_or(default)
+  } else {
+    default
+  }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+  eframe::start_web(
+    "Liberty Chess",
+    eframe::WebOptions::default(),
+    Box::new(|cc| Box::new(LibertyChessGUI::new(cc))),
+  )
+  .expect("Wasm failed to load");
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
   let size = ICON_SIZE;
   let mut pixmap = Pixmap::new(size, size).unwrap();
@@ -764,6 +841,6 @@ fn main() {
   eframe::run_native(
     "Liberty Chess",
     options,
-    Box::new(|cc| Box::new(LibertyChessGUI::new(&cc.egui_ctx))),
+    Box::new(|cc| Box::new(LibertyChessGUI::new(cc))),
   );
 }

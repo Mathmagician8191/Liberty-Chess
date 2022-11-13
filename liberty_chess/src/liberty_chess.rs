@@ -233,6 +233,14 @@ impl ToString for Board {
   }
 }
 
+impl std::str::FromStr for Board {
+  type Err = FenError;
+
+  fn from_str(fen: &str) -> Result<Self, FenError> {
+    Self::new(fen)
+  }
+}
+
 /// Converts a character to a `Piece`
 ///
 /// # Errors

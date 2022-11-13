@@ -1,5 +1,5 @@
 use eframe::egui::style::Visuals;
-use enum_iterator::Sequence;
+use enum_iterator::{all, Sequence};
 
 #[derive(Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum Theme {
@@ -54,4 +54,15 @@ impl Theme {
       Self::Light => Visuals::light(),
     }
   }
+}
+
+pub fn get_theme(theme: Option<String>) -> Theme {
+  if let Some(theme) = theme {
+    for possible_theme in all::<Theme>() {
+      if possible_theme.to_string() == theme {
+        return possible_theme;
+      }
+    }
+  }
+  Theme::Dark
 }
