@@ -1,20 +1,20 @@
 [package]
 name = "liberty_chess_gui"
-version = "0.12.0"
+version = "0.12.1"
 authors.workspace = true
 edition.workspace = true
 
 [dependencies]
 liberty_chess = {workspace = true}
-clipboard = {workspace = true}
+clipboard = {workspace = true, optional = true}
 eframe = {workspace = true}
 enum-iterator = {workspace = true}
 resvg = {workspace = true}
 soloud = {workspace = true, optional = true}
 tiny-skia = {workspace = true}
-usvg = {workspace = true}
 
 [features]
-default = ["sound"]
+default = ["sound", "clipboard"]
 benchmarking = []
+clipboard = ["dep:clipboard"]
 sound = ["dep:soloud"]

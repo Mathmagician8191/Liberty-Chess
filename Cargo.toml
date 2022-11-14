@@ -2,7 +2,7 @@
 members = ["liberty_chess_gui", "test", "perft"]
 
 [workspace.package]
-version = "0.12.1"
+version = "0.12.2"
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
 edition = "2021"
 
@@ -20,7 +20,6 @@ resvg = "0.25.0"
 soloud = "1.0.2"
 threadpool = "1.8.1"
 tiny-skia = "0.8.2"
-usvg = "0.25.0"
 
 [profile.dev]
 opt-level = 3

@@ -1,6 +1,8 @@
 use liberty_chess::Board;
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
+
+#[cfg(feature = "parallel")]
 use threadpool::ThreadPool;
 
 // Updated 10 Nov 2022
@@ -12,7 +14,7 @@ use threadpool::ThreadPool;
 // 100 million = 53s
 // 200 million = 208s
 // max = 870s
-const LIMIT: usize = usize::MAX;
+const LIMIT: usize = 5_000_000;
 
 fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
   let secs = time.as_secs();
@@ -55,17 +57,17 @@ fn perft_test(fen: &'static str, results: &[usize]) {
       break;
     }
   }
-  let pool = if cfg!(feature = "parallel") {
-    ThreadPool::default()
-  } else {
-    ThreadPool::new(1)
-  };
+  #[cfg(feature = "parallel")]
+  let pool = ThreadPool::default();
+
   for (i, result) in results.iter().enumerate().take(max) {
     let fen = board.to_string();
     let result = *result;
-    pool.execute(move || {
-      assert_eq!(perft(&Board::new(&fen).unwrap(), i), result);
-    });
+    let closure = move || assert_eq!(perft(&Board::new(&fen).unwrap(), i), result);
+    #[cfg(feature = "parallel")]
+    pool.execute(closure);
+    #[cfg(not(feature = "parallel"))]
+    closure();
   }
 
   let (tx, rx) = channel();
@@ -74,8 +76,13 @@ fn perft_test(fen: &'static str, results: &[usize]) {
   for board in moves {
     let tx = tx.clone();
     let fen = board.to_string();
-    pool.execute(move || tx.send(perft(&Board::new(&fen).unwrap(), max - 1)).unwrap());
+    let closure = move || tx.send(perft(&Board::new(&fen).unwrap(), max - 1)).unwrap();
+    #[cfg(feature = "parallel")]
+    pool.execute(closure);
+    #[cfg(not(feature = "parallel"))]
+    closure();
   }
+  #[cfg(feature = "parallel")]
   pool.join();
   assert_eq!(rx.iter().take(num_moves).sum::<usize>(), results[max]);
   print_time(fen, start.elapsed(), max, nodes);

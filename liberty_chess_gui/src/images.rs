@@ -1,7 +1,7 @@
-use usvg::Tree;
+use resvg::usvg::{Options, Tree};
 
 fn load_image(data: &[u8]) -> Tree {
-  Tree::from_data(data, &usvg::Options::default().to_ref()).unwrap()
+  Tree::from_data(data, &Options::default().to_ref()).unwrap()
 }
 
 pub fn get() -> [Tree; 36] {

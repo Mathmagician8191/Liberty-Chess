@@ -2,18 +2,19 @@ use crate::colours::Colours;
 use crate::credits::Credits;
 use crate::gamemodes::{GameMode, Presets};
 use crate::help_page::HelpPage;
-use crate::themes::{get_theme, Theme};
-use eframe::egui::{self, WidgetText};
+use crate::themes::Theme;
+use eframe::egui;
 use egui::{
-  Button, ColorImage, ComboBox, Context, FontFamily, FontId, Image, RichText, TextStyle,
-  TextureFilter, TextureHandle, Ui,
+  Align2, Area, Button, ColorImage, ComboBox, Context, Image, RichText, SidePanel, Slider,
+  TextStyle, TextureFilter, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
 use liberty_chess::{print_secs, to_name, Board, Clock, Gamestate, Piece, Type};
+use resvg::usvg::{FitTo, Tree};
 use std::time::Duration;
-use tiny_skia::Pixmap;
+use tiny_skia::{Pixmap, Transform};
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "clipboard")]
 use clipboard::ClipboardProvider;
 
 #[cfg(feature = "sound")]
@@ -75,7 +76,7 @@ struct LibertyChessGUI {
   undo: Vec<Board>,
   clock: Option<Clock>,
   promotion: Piece,
-  #[cfg(not(target_arch = "wasm32"))]
+  #[cfg(feature = "clipboard")]
   clipboard: Option<clipboard::ClipboardContext>,
 
   // field for help screen
@@ -93,8 +94,8 @@ struct LibertyChessGUI {
   audio: [Wav; 2],
 
   // images and a render cache - used on game screen
-  images: [usvg::Tree; 36],
-  renders: [Option<TextureHandle>; 37],
+  images: [Tree; 36],
+  renders: [Option<egui::TextureHandle>; 37],
 
   // for measuring FPS
   #[cfg(feature = "benchmarking")]
@@ -115,7 +116,7 @@ impl LibertyChessGUI {
     let volume;
     let gamestate;
     if let Some(data) = ctx.storage {
-      theme = get_theme(data.get_string("Theme"));
+      theme = themes::get_theme(data.get_string("Theme"));
       text_size = load_data(data.get_string("TextSize"), DEFAULT_TEXT_SIZE);
       gamestate = data
         .get_string("Board")
@@ -163,7 +164,7 @@ impl LibertyChessGUI {
       undo: Vec::new(),
       clock: None,
       promotion: liberty_chess::QUEEN,
-      #[cfg(not(target_arch = "wasm32"))]
+      #[cfg(feature = "clipboard")]
       clipboard: ClipboardProvider::new().ok(),
 
       help_page: HelpPage::PawnForward,
@@ -215,12 +216,12 @@ impl LibertyChessGUI {
     let mut pixmap = Pixmap::new(size, size).unwrap();
     resvg::render(
       &self.images[index],
-      usvg::FitTo::Size(size, size),
-      tiny_skia::Transform::default(),
+      FitTo::Size(size, size),
+      Transform::default(),
       pixmap.as_mut(),
     )
     .unwrap();
-    let image = egui::ColorImage::from_rgba_unmultiplied([size as usize; 2], pixmap.data());
+    let image = ColorImage::from_rgba_unmultiplied([size as usize; 2], pixmap.data());
     let texture = ctx.load_texture("piece", image, TextureFilter::Nearest);
     self.renders[index] = Some(texture.clone());
     texture.id()
@@ -231,7 +232,7 @@ impl eframe::App for LibertyChessGUI {
   fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
     match &self.screen {
       Screen::Game => {
-        egui::SidePanel::right("Sidebar")
+        SidePanel::right("Sidebar")
           .resizable(false)
           .show(ctx, |ui| draw_game_sidebar(self, ui));
         if let Some(clock) = &mut self.clock {
@@ -239,7 +240,7 @@ impl eframe::App for LibertyChessGUI {
         }
       }
       Screen::Help => {
-        egui::SidePanel::left("Help menu")
+        SidePanel::left("Help menu")
           .resizable(false)
           .show(ctx, |ui| {
             menu_button(self, ui);
@@ -255,12 +256,12 @@ impl eframe::App for LibertyChessGUI {
               }
             });
           });
-        egui::TopBottomPanel::bottom("Description")
+        TopBottomPanel::bottom("Description")
           .resizable(false)
           .show(ctx, |ui| ui.label(self.help_page.description()));
       }
       Screen::Credits => {
-        egui::SidePanel::left("Credits menu")
+        SidePanel::left("Credits menu")
           .resizable(false)
           .show(ctx, |ui| {
             menu_button(self, ui);
@@ -282,8 +283,8 @@ impl eframe::App for LibertyChessGUI {
         Screen::Help => draw_help(self, ctx),
         Screen::Credits => draw_credits(self, ctx, ui),
         Screen::Settings => {
-          egui::Area::new("Settings")
-            .anchor(egui::Align2::CENTER_TOP, egui::Vec2::ZERO)
+          Area::new("Settings")
+            .anchor(Align2::CENTER_TOP, Vec2::ZERO)
             .show(ctx, |ui| draw_settings(self, ctx, ui));
         }
       };
@@ -309,13 +310,20 @@ impl eframe::App for LibertyChessGUI {
   fn save(&mut self, storage: &mut dyn eframe::Storage) {
     storage.set_string("Theme", self.theme.to_string());
     storage.set_string("TextSize", self.text_size.to_string());
-    storage.set_string(
-      "Board",
-      self
-        .gamestate
-        .as_ref()
-        .map_or_else(String::new, ToString::to_string),
-    );
+    let fen = if let Some(gamestate) = &self.gamestate {
+      if gamestate.promotion_available() {
+        // should always be some
+        self
+          .undo
+          .last()
+          .map_or_else(String::new, ToString::to_string)
+      } else {
+        gamestate.to_string()
+      }
+    } else {
+      String::new()
+    };
+    storage.set_string("Board", fen);
     #[cfg(feature = "sound")]
     {
       storage.set_string("Sound", self.effect_player.is_some().to_string());
@@ -409,6 +417,9 @@ fn render_board(
                   if let Some(mut newstate) = gamestate.get_legal(selected, coords) {
                     if !newstate.promotion_available() {
                       newstate.update();
+                      if let Some(clock) = &mut gui.clock {
+                        clock.switch_clocks();
+                      }
                     }
                     gui.undo.push(gamestate.clone());
                     #[cfg(feature = "sound")]
@@ -418,9 +429,6 @@ fn render_board(
                     }
                     gui.gamestate = Some(newstate);
                     gui.moved = Some([selected, coords]);
-                    if let Some(clock) = &mut gui.clock {
-                      clock.switch_clocks();
-                    }
                   }
                 }
               }
@@ -452,7 +460,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
       switch_screen(gui, Screen::Settings);
     }
   });
-  egui::ComboBox::from_id_source("Gamemode")
+  ComboBox::from_id_source("Gamemode")
     .selected_text("Gamemode: ".to_string() + &gui.gamemode.to_string())
     .show_ui(ui, |ui| {
       for gamemode in all::<Presets>() {
@@ -493,7 +501,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   if let Some(message) = &gui.message {
     ui.label(message);
   }
-  egui::ComboBox::from_id_source("Clock")
+  ComboBox::from_id_source("Clock")
     .selected_text(gui.clock_type.to_string())
     .show_ui(ui, |ui| {
       for clock_type in all::<Type>() {
@@ -554,16 +562,16 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context) {
       clickable = false;
     }
   }
-  egui::Area::new("Board")
-    .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+  Area::new("Board")
+    .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| render_board(gui, ctx, ui, &gamestate, clickable));
 }
 
 fn draw_help(gui: &mut LibertyChessGUI, ctx: &Context) {
   gui.selected = Some(gui.help_page.selected());
   gui.moved = gui.help_page.moved();
-  egui::Area::new("Board")
-    .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+  Area::new("Board")
+    .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
       render_board(gui, ctx, ui, &gui.help_page.board(), false);
     });
@@ -631,10 +639,10 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
     if sound == gui.effect_player.is_none() {
       gui.effect_player = sound::get_player(sound);
     }
-    ui.add(egui::Slider::new(&mut gui.volume, 0..=100).text("Volume"));
+    ui.add(Slider::new(&mut gui.volume, 0..=100).text("Volume"));
   }
   let size = gui.text_size;
-  ui.add(egui::Slider::new(&mut gui.text_size, 16..=36).text("Font size"));
+  ui.add(Slider::new(&mut gui.text_size, 16..=36).text("Font size"));
   if size != gui.text_size {
     set_style(ctx, gui.text_size);
   }
@@ -660,10 +668,10 @@ fn draw_clock(ctx: &Context, clock: &mut Clock) {
   } else {
     black_text = black_text.color(color.value());
   }
-  egui::TopBottomPanel::bottom("White Clock")
+  TopBottomPanel::bottom("White Clock")
     .resizable(false)
     .show(ctx, |ui| ui.label(white_text));
-  egui::TopBottomPanel::top("Black Clock")
+  TopBottomPanel::top("Black Clock")
     .resizable(false)
     .show(ctx, |ui| ui.label(black_text));
 }
@@ -695,12 +703,15 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui) {
           });
         if ui.button("Promote").clicked() {
           gamestate.promote(gui.promotion);
+          if let Some(clock) = &mut gui.clock {
+            clock.switch_clocks();
+          }
         }
       }
     }
 
     // let the user copy the FEN to clipboard
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(feature = "clipboard")]
     if let Some(clipboard) = &mut gui.clipboard {
       if ui.button("Copy FEN to clipboard").clicked() {
         clipboard.set_contents(gamestate.to_string()).unwrap();
@@ -780,7 +791,7 @@ fn wikimedia(ui: &mut Ui, name: &str, username: &str) {
   );
 }
 
-fn link(ui: &mut Ui, name: impl Into<WidgetText>, link: String) {
+fn link(ui: &mut Ui, name: impl Into<egui::WidgetText>, link: String) {
   ui.add(egui::Hyperlink::from_label_and_url(name, link));
 }
 
@@ -788,7 +799,7 @@ fn link(ui: &mut Ui, name: impl Into<WidgetText>, link: String) {
 
 fn set_style(ctx: &Context, size: u8) {
   let mut style = (*ctx.style()).clone();
-  let font = FontId::new(f32::from(size), FontFamily::Proportional);
+  let font = egui::FontId::new(f32::from(size), egui::FontFamily::Proportional);
   style.text_styles = [
     (TextStyle::Body, font.clone()),
     (TextStyle::Button, font.clone()),
@@ -822,8 +833,8 @@ fn main() {
   let mut pixmap = Pixmap::new(size, size).unwrap();
   resvg::render(
     &images::get()[11],
-    usvg::FitTo::Size(size, size),
-    tiny_skia::Transform::default(),
+    FitTo::Size(size, size),
+    Transform::default(),
     pixmap.as_mut(),
   )
   .unwrap();
@@ -835,6 +846,7 @@ fn main() {
       width: size,
       height: size,
     }),
+    min_window_size: Some(Vec2::new(640.0, 480.0)),
     ..Default::default()
   };
 
