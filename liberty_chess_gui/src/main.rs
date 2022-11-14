@@ -9,19 +9,22 @@ use egui::{
   TextStyle, TextureFilter, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
-use liberty_chess::{print_secs, to_name, Board, Clock, Gamestate, Piece, Type};
+use liberty_chess::{print_secs, to_name, Board, Clock, Gamestate, Piece};
 use resvg::usvg::{FitTo, Tree};
 use std::time::Duration;
 use tiny_skia::{Pixmap, Transform};
+
+#[cfg(feature = "benchmarking")]
+use std::time::Instant;
+
+#[cfg(feature = "clock")]
+use liberty_chess::Type;
 
 #[cfg(feature = "clipboard")]
 use clipboard::ClipboardProvider;
 
 #[cfg(feature = "sound")]
 use soloud::{Soloud, Wav};
-
-#[cfg(feature = "benchmarking")]
-use std::time::Instant;
 
 // enums in own file
 mod colours;
@@ -69,7 +72,9 @@ struct LibertyChessGUI {
   gamemode: GameMode,
   friendly: bool,
   message: Option<String>,
+  #[cfg(feature = "clock")]
   clock_type: Type,
+  #[cfg(feature = "clock")]
   clock_data: [u64; 4],
 
   // fields for game screen
@@ -158,7 +163,9 @@ impl LibertyChessGUI {
       fen: Presets::Standard.value(),
       friendly: false,
       message: None,
+      #[cfg(feature = "clock")]
       clock_type: Type::None,
+      #[cfg(feature = "clock")]
       clock_data: [10; 4],
 
       undo: Vec::new(),
@@ -481,6 +488,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   if ui.button("Start Game").clicked() {
     match Board::new(&gui.fen) {
       Ok(mut board) => {
+        #[cfg(feature = "clock")]
         match gui.clock_type {
           Type::None => gui.clock = None,
           Type::Increment | Type::Handicap => {
@@ -501,51 +509,55 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   if let Some(message) = &gui.message {
     ui.label(message);
   }
-  ComboBox::from_id_source("Clock")
-    .selected_text(gui.clock_type.to_string())
-    .show_ui(ui, |ui| {
-      for clock_type in all::<Type>() {
-        ui.selectable_value(&mut gui.clock_type, clock_type, clock_type.to_string());
+
+  #[cfg(feature = "clock")]
+  {
+    ComboBox::from_id_source("Clock")
+      .selected_text(gui.clock_type.to_string())
+      .show_ui(ui, |ui| {
+        for clock_type in all::<Type>() {
+          ui.selectable_value(&mut gui.clock_type, clock_type, clock_type.to_string());
+        }
+      });
+    match gui.clock_type {
+      Type::None => (),
+      Type::Increment => {
+        ui.horizontal_top(|ui| {
+          let mut input: Vec<String> = gui.clock_data.iter().map(u64::to_string).collect();
+          ui.label("Time (minutes):".to_string());
+          text_edit(ui, 0.0, 40.0, &mut input[0]);
+          ui.label("Increment (seconds):");
+          text_edit(ui, 0.0, 40.0, &mut input[2]);
+          if let Ok(value) = input[0].parse::<u64>() {
+            let value = u64::min(value, 1440);
+            gui.clock_data[0] = value;
+            gui.clock_data[1] = value;
+          }
+          if let Ok(value) = input[2].parse::<u64>() {
+            let value = u64::min(value, 1440);
+            gui.clock_data[2] = value;
+            gui.clock_data[3] = value;
+          }
+        });
       }
-    });
-  match gui.clock_type {
-    Type::None => (),
-    Type::Increment => {
-      ui.horizontal_top(|ui| {
+      Type::Handicap => {
         let mut input: Vec<String> = gui.clock_data.iter().map(u64::to_string).collect();
-        ui.label("Time (minutes):".to_string());
-        text_edit(ui, 0.0, 40.0, &mut input[0]);
-        ui.label("Increment (seconds):");
-        text_edit(ui, 0.0, 40.0, &mut input[2]);
-        if let Ok(value) = input[0].parse::<u64>() {
-          let value = u64::min(value, 1440);
-          gui.clock_data[0] = value;
-          gui.clock_data[1] = value;
-        }
-        if let Ok(value) = input[2].parse::<u64>() {
-          let value = u64::min(value, 1440);
-          gui.clock_data[2] = value;
-          gui.clock_data[3] = value;
-        }
-      });
-    }
-    Type::Handicap => {
-      let mut input: Vec<String> = gui.clock_data.iter().map(u64::to_string).collect();
-      ui.horizontal_top(|ui| {
-        ui.label("White Time (minutes):");
-        text_edit(ui, 0.0, 40.0, &mut input[0]);
-        ui.label("White Increment (seconds):");
-        text_edit(ui, 0.0, 40.0, &mut input[2]);
-      });
-      ui.horizontal_top(|ui| {
-        ui.label("Black Time (minutes):");
-        text_edit(ui, 0.0, 40.0, &mut input[1]);
-        ui.label("Black Increment (seconds):");
-        text_edit(ui, 0.0, 40.0, &mut input[3]);
-      });
-      for (i, value) in input.iter().enumerate() {
-        if let Ok(value) = value.parse::<u64>() {
-          gui.clock_data[i] = u64::min(value, 1440);
+        ui.horizontal_top(|ui| {
+          ui.label("White Time (minutes):");
+          text_edit(ui, 0.0, 40.0, &mut input[0]);
+          ui.label("White Increment (seconds):");
+          text_edit(ui, 0.0, 40.0, &mut input[2]);
+        });
+        ui.horizontal_top(|ui| {
+          ui.label("Black Time (minutes):");
+          text_edit(ui, 0.0, 40.0, &mut input[1]);
+          ui.label("Black Increment (seconds):");
+          text_edit(ui, 0.0, 40.0, &mut input[3]);
+        });
+        for (i, value) in input.iter().enumerate() {
+          if let Ok(value) = value.parse::<u64>() {
+            gui.clock_data[i] = u64::min(value, 1440);
+          }
         }
       }
     }
