@@ -13,8 +13,17 @@ use threadpool::ThreadPool;
 // 30 million = 27s
 // 100 million = 53s
 // 200 million = 208s
-// max = 870s
-const LIMIT: usize = 5_000_000;
+// max = 14 1/2 mins
+// Updated 18 Nov 2022
+// i5 8400 benchmarks - multithreaded
+// 2 million = 2.8s
+// 5 million = 9.7s
+// 10 million = 18.5s
+// 30 million = 48s
+// 100 million = 97s
+// 200 million = 380s
+// max = 26 1/2 mins
+const LIMIT: usize = 2_000_000;
 
 fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
   let secs = time.as_secs();
@@ -131,8 +140,8 @@ fn main() {
 
   //liberty chess - not tested with external sources
   perft_test(
-    "ruabhqkbhcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKBHCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
-    &[1, 194, 37_464, 7_293_830],
+    "ruabhqkhbcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKHBCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
+    &[1, 194, 37_464, 7_294_214],
   );
 
   //mini chess

@@ -45,6 +45,8 @@ const ICON_SIZE_FLOAT: f32 = ICON_SIZE as f32;
 const DEFAULT_TEXT_SIZE: u8 = 24;
 #[cfg(feature = "sound")]
 const DEFAULT_VOLUME: u8 = 100;
+#[cfg(feature = "clock")]
+const MAX_TIME: u64 = 360;
 
 enum Screen {
   Menu,
@@ -482,7 +484,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   if let GameMode::Preset(preset) = gui.gamemode {
     gui.fen = preset.value();
   } else {
-    text_edit(ui, 11.5, 220.0, &mut gui.fen);
+    text_edit(ui, f32::from(gui.text_size) / 1.35, 220.0, &mut gui.fen);
   }
   ui.checkbox(&mut gui.friendly, "Friendly Fire");
   if ui.button("Start Game").clicked() {
@@ -523,42 +525,29 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
       Type::None => (),
       Type::Increment => {
         ui.horizontal_top(|ui| {
-          let mut input: Vec<String> = gui.clock_data.iter().map(u64::to_string).collect();
           ui.label("Time (minutes):".to_string());
-          text_edit(ui, 0.0, 40.0, &mut input[0]);
+          let value = clock_input(ui, f32::from(gui.text_size), gui.clock_data[0]);
+          gui.clock_data[0] = value;
+          gui.clock_data[1] = value;
           ui.label("Increment (seconds):");
-          text_edit(ui, 0.0, 40.0, &mut input[2]);
-          if let Ok(value) = input[0].parse::<u64>() {
-            let value = u64::min(value, 1440);
-            gui.clock_data[0] = value;
-            gui.clock_data[1] = value;
-          }
-          if let Ok(value) = input[2].parse::<u64>() {
-            let value = u64::min(value, 1440);
-            gui.clock_data[2] = value;
-            gui.clock_data[3] = value;
-          }
+          let value = clock_input(ui, f32::from(gui.text_size), gui.clock_data[2]);
+          gui.clock_data[2] = value;
+          gui.clock_data[3] = value;
         });
       }
       Type::Handicap => {
-        let mut input: Vec<String> = gui.clock_data.iter().map(u64::to_string).collect();
         ui.horizontal_top(|ui| {
           ui.label("White Time (minutes):");
-          text_edit(ui, 0.0, 40.0, &mut input[0]);
+          gui.clock_data[0] = clock_input(ui, f32::from(gui.text_size), gui.clock_data[0]);
           ui.label("White Increment (seconds):");
-          text_edit(ui, 0.0, 40.0, &mut input[2]);
+          gui.clock_data[2] = clock_input(ui, f32::from(gui.text_size), gui.clock_data[2]);
         });
         ui.horizontal_top(|ui| {
           ui.label("Black Time (minutes):");
-          text_edit(ui, 0.0, 40.0, &mut input[1]);
+          gui.clock_data[1] = clock_input(ui, f32::from(gui.text_size), gui.clock_data[2]);
           ui.label("Black Increment (seconds):");
-          text_edit(ui, 0.0, 40.0, &mut input[3]);
+          gui.clock_data[3] = clock_input(ui, f32::from(gui.text_size), gui.clock_data[3]);
         });
-        for (i, value) in input.iter().enumerate() {
-          if let Ok(value) = value.parse::<u64>() {
-            gui.clock_data[i] = u64::min(value, 1440);
-          }
-        }
       }
     }
   }
@@ -751,6 +740,17 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui) {
 }
 
 // general helper functions
+
+#[cfg(feature = "clock")]
+fn clock_input(ui: &mut Ui, size: f32, input: u64) -> u64 {
+  let mut input_str = input.to_string();
+  text_edit(ui, 0.0, size * 0.7 * input_str.len() as f32, &mut input_str);
+  if let Ok(value) = input_str.parse::<u64>() {
+    u64::min(value, MAX_TIME)
+  } else {
+    input
+  }
+}
 
 fn menu_button(gui: &mut LibertyChessGUI, ui: &mut Ui) {
   if ui.button("Menu").clicked() {

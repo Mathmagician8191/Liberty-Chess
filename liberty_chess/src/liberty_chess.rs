@@ -40,7 +40,7 @@ pub const WALL: Piece = 18;
 // 2 = Basic
 // 3 = Powerful
 const ATTACK: [Piece; 19] = [0, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 1, 1];
-const DEFENCE: [Piece; 19] = [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2];
+const DEFENCE: [Piece; 19] = [0, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2];
 
 /// An enum to represent the reasons for an L-FEN to be invalid.
 #[derive(Debug)]
@@ -645,9 +645,15 @@ impl Board {
       for j in 0..self.width() {
         let piece = self.pieces[(i, j)];
         if piece != 0 && self.to_move == (piece > 0) {
-          let skip_legality = match piece.abs() {
-            KING | PAWN => false,
-            _ => king_safe && !self.is_attacked((i, j), !self.to_move),
+          let mut skip_legality = match piece.abs() {
+            KING | PAWN => Some(false),
+            _ => {
+              if king_safe {
+                None
+              } else {
+                Some(false)
+              }
+            }
           };
           // TODO: movegen based on piece type
           match piece.abs() {
@@ -675,37 +681,37 @@ impl Board {
             }
             ROOK => {
               for k in 0..self.height() {
-                self.add_if_legal(&mut boards, (i, j), (k, j), skip_legality);
+                self.add_if_legal(&mut boards, (i, j), (k, j), &mut skip_legality);
               }
               for l in 0..self.width() {
-                self.add_if_legal(&mut boards, (i, j), (i, l), skip_legality);
+                self.add_if_legal(&mut boards, (i, j), (i, l), &mut skip_legality);
               }
             }
             KNIGHT => {
               for (k, l) in Self::jump_coords((i as isize, j as isize), 2, 1) {
                 if k < self.height() && l < self.width() {
-                  self.add_if_legal(&mut boards, (i, j), (k, l), skip_legality);
+                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
                 }
               }
             }
             CAMEL => {
               for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 1) {
                 if k < self.height() && l < self.width() {
-                  self.add_if_legal(&mut boards, (i, j), (k, l), skip_legality);
+                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
                 }
               }
             }
             ZEBRA => {
               for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 2) {
                 if k < self.height() && l < self.width() {
-                  self.add_if_legal(&mut boards, (i, j), (k, l), skip_legality);
+                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
                 }
               }
             }
             _ => {
               for k in 0..self.height() {
                 for l in 0..self.width() {
-                  self.add_if_legal(&mut boards, (i, j), (k, l), skip_legality);
+                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
                 }
               }
             }
@@ -723,9 +729,17 @@ impl Board {
     boards: &mut Vec<Self>,
     start: (usize, usize),
     end: (usize, usize),
-    skip_legality: bool,
+    skip_legality: &mut Option<bool>,
   ) {
     if self.check_pseudolegal(start, end) {
+      let skip_legality = match skip_legality {
+        Some(bool) => *bool,
+        None => {
+          let bool = !self.is_attacked(start, !self.to_move);
+          *skip_legality = Some(bool);
+          bool
+        }
+      };
       if skip_legality {
         let mut board = self.clone();
         board.make_move(start, end);
@@ -751,9 +765,7 @@ impl Board {
       return false;
     }
     let destination = self.pieces[end];
-    if (destination != 0
-      && (!self.friendly_fire || destination.abs() == KING)
-      && (piece > 0) == (destination > 0))
+    if (destination != 0 && !self.friendly_fire && (piece > 0) == (destination > 0))
       || DEFENCE[destination.unsigned_abs() as usize] >= ATTACK[piece.unsigned_abs() as usize]
     {
       return false;
