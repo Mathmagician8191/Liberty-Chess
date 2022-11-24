@@ -5,10 +5,7 @@ For a list of the authors see the commit log.
 Sound copyright:
 
 
-Copyright information for sounds:
-| Sounds| Author | License |
-| --- | --- | --- |
-| Move.ogg, Capture.ogg | Enigmahack | AGPLv3+ |
+The sounds in resources/sounds are copyright Enigmahack and licensed under AGPLv3+
 
 ## CC-BY-SA 3.0
 

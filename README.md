@@ -2,11 +2,8 @@
 
 The sequel to Totally Normal Chess, now written in Rust
 
-This is currently in a pre-alpha state where key functionality (e.g. move validation, loading L-FENs and moving pieces) is only partially implemented.
-
 TODO for version 1.0:
 - Promotion for help screen
-- Friendly fire mode
 - Support for chess engines
 
 For information on the copyright of the images, see COPYING.md.

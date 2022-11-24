@@ -11,10 +11,11 @@ fn load_audio(data: &[u8]) -> Wav {
 }
 
 #[cfg(feature = "sound")]
-pub fn get() -> [Wav; 2] {
+pub fn get() -> [Wav; 3] {
   [
     load_audio(include_bytes!("../../resources/sounds/Move.ogg")),
     load_audio(include_bytes!("../../resources/sounds/Capture.ogg")),
+    load_audio(include_bytes!("../../resources/sounds/Check.ogg")),
   ]
 }
 

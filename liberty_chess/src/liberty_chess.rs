@@ -561,7 +561,7 @@ impl Board {
       }
     }
 
-    if fields.len() > 7 {
+    if fields.len() > 7 && !fields[7].is_empty() {
       let mut promotion = Vec::with_capacity(fields[7].len());
       for c in fields[7].chars() {
         promotion.push(to_piece(c)?.abs());
