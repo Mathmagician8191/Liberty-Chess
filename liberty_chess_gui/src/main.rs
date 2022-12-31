@@ -6,16 +6,13 @@ use crate::themes::Theme;
 use eframe::egui;
 use egui::{
   Align2, Area, Button, ColorImage, ComboBox, Context, Image, RichText, SidePanel, Slider,
-  TextStyle, TextureFilter, TopBottomPanel, Ui, Vec2,
+  TextStyle, TextureOptions, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
 use liberty_chess::{to_name, Board, Gamestate, Piece};
 use resvg::usvg::{FitTo, Tree};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tiny_skia::{Pixmap, Transform};
-
-#[cfg(feature = "benchmarking")]
-use std::time::Instant;
 
 #[cfg(feature = "clock")]
 use liberty_chess::{print_secs, Clock, Type};
@@ -43,6 +40,7 @@ const ICON_SIZE: u32 = 48;
 #[allow(clippy::cast_precision_loss)]
 const ICON_SIZE_FLOAT: f32 = ICON_SIZE as f32;
 const DEFAULT_TEXT_SIZE: u8 = 24;
+const DEFAULT_FRAME_DELAY: u64 = 200;
 #[cfg(feature = "sound")]
 const DEFAULT_VOLUME: u8 = 100;
 #[cfg(feature = "clock")]
@@ -104,12 +102,13 @@ struct LibertyChessGUI {
   images: [Tree; 36],
   renders: [Option<egui::TextureHandle>; 37],
 
+  // fields for general rendering
+  log_fps: bool,
+  frame_delay: u64,
+
   // for measuring FPS
-  #[cfg(feature = "benchmarking")]
   instant: Instant,
-  #[cfg(feature = "benchmarking")]
   frames: u32,
-  #[cfg(feature = "benchmarking")]
   seconds: u64,
 }
 
@@ -117,11 +116,13 @@ impl LibertyChessGUI {
   fn new(ctx: &eframe::CreationContext) -> Self {
     let theme;
     let text_size;
+    let screen;
+    let log_fps;
+    let mut frame_delay = DEFAULT_FRAME_DELAY;
     #[cfg(feature = "sound")]
     let sound;
     #[cfg(feature = "sound")]
     let volume;
-    let screen;
     if let Some(data) = ctx.storage {
       theme = themes::get_theme(data.get_string("Theme"));
       text_size = load_data(data.get_string("TextSize"), DEFAULT_TEXT_SIZE);
@@ -134,6 +135,10 @@ impl LibertyChessGUI {
       } else {
         Screen::Menu
       };
+      log_fps = data.get_string("LogFPS") == Some("true".to_string());
+      if let Some(string) = data.get_string("Frametime") {
+        frame_delay = string.parse::<u64>().unwrap_or(DEFAULT_FRAME_DELAY);
+      }
       #[cfg(feature = "sound")]
       {
         sound = data.get_string("Sound") != Some("false".to_string());
@@ -144,6 +149,7 @@ impl LibertyChessGUI {
       theme = Theme::Dark;
       text_size = DEFAULT_TEXT_SIZE;
       screen = Screen::Menu;
+      log_fps = false;
       #[cfg(feature = "sound")]
       {
         sound = true;
@@ -190,11 +196,11 @@ impl LibertyChessGUI {
       images: images::get(),
       renders: [(); 37].map(|_| None),
 
-      #[cfg(feature = "benchmarking")]
+      log_fps,
+      frame_delay,
+
       instant: Instant::now(),
-      #[cfg(feature = "benchmarking")]
       frames: 0,
-      #[cfg(feature = "benchmarking")]
       seconds: 0,
     }
   }
@@ -212,7 +218,7 @@ impl LibertyChessGUI {
         let texture = ctx.load_texture(
           "square",
           ColorImage::new([size as usize; 2], egui::Color32::from_black_alpha(0)),
-          TextureFilter::Nearest,
+          TextureOptions::NEAREST,
         );
         self.renders[36] = Some(texture.clone());
         return texture.id();
@@ -232,7 +238,7 @@ impl LibertyChessGUI {
     )
     .unwrap();
     let image = ColorImage::from_rgba_unmultiplied([size as usize; 2], pixmap.data());
-    let texture = ctx.load_texture("piece", image, TextureFilter::Nearest);
+    let texture = ctx.load_texture("piece", image, TextureOptions::NEAREST);
     self.renders[index] = Some(texture.clone());
     texture.id()
   }
@@ -303,8 +309,7 @@ impl eframe::App for LibertyChessGUI {
     });
 
     // Add no delay between rendering frames and log FPS when benchmarking
-    #[cfg(feature = "benchmarking")]
-    {
+    if self.log_fps {
       self.frames += 1;
       let duration = self.instant.elapsed().as_secs();
       if duration - self.seconds > 0 {
@@ -312,18 +317,16 @@ impl eframe::App for LibertyChessGUI {
         println!("{} FPS", self.frames);
         self.frames = 0;
       }
-      ctx.request_repaint_after(Duration::ZERO);
     }
-    #[cfg(not(feature = "benchmarking"))]
-    {
-      ctx.request_repaint_after(Duration::from_millis(200));
-    }
+    ctx.request_repaint_after(Duration::from_millis(self.frame_delay));
   }
 
   fn save(&mut self, storage: &mut dyn eframe::Storage) {
     storage.set_string("Theme", self.theme.to_string());
     storage.set_string("TextSize", self.text_size.to_string());
     storage.set_string("Board", get_fen(self));
+    storage.set_string("LogFPS", self.log_fps.to_string());
+    storage.set_string("Frametime", self.frame_delay.to_string());
     #[cfg(feature = "sound")]
     {
       storage.set_string("Sound", self.effect_player.is_some().to_string());
@@ -534,7 +537,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         });
         ui.horizontal_top(|ui| {
           ui.label("Black Time (minutes):");
-          gui.clock_data[1] = clock_input(ui, f32::from(gui.text_size), gui.clock_data[2]);
+          gui.clock_data[1] = clock_input(ui, f32::from(gui.text_size), gui.clock_data[1]);
           ui.label("Black Increment (seconds):");
           gui.clock_data[3] = clock_input(ui, f32::from(gui.text_size), gui.clock_data[3]);
         });
@@ -873,8 +876,8 @@ fn main() {
   )
   .unwrap();
   let options = eframe::NativeOptions {
-    // Disable vsync when benchmarking to remove the framerate limit
-    vsync: !cfg!(feature = "benchmarking"),
+    // enable vsync for uncapped framerates while benchmarking
+    vsync: true,
     icon_data: Some(eframe::IconData {
       rgba: Pixmap::take(pixmap),
       width: size,

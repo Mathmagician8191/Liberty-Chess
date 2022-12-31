@@ -1,4 +1,4 @@
-use eframe::egui::style::Visuals;
+use eframe::egui::{style::Visuals, Color32};
 use enum_iterator::{all, Sequence};
 
 #[derive(Clone, Copy, Eq, PartialEq, Sequence)]
@@ -32,23 +32,23 @@ impl Theme {
     match self {
       Self::Dark => Visuals::dark(),
       Self::Red => Visuals {
-        override_text_color: Some(eframe::egui::Color32::from_rgb(255, 0, 0)),
+        override_text_color: Some(Color32::from_rgb(255, 0, 0)),
         ..Visuals::dark()
       },
       Self::Yellow => Visuals {
-        override_text_color: Some(eframe::egui::Color32::from_rgb(255, 255, 0)),
+        override_text_color: Some(Color32::from_rgb(255, 255, 0)),
         ..Visuals::dark()
       },
       Self::Green => Visuals {
-        override_text_color: Some(eframe::egui::Color32::from_rgb(0, 255, 0)),
+        override_text_color: Some(Color32::from_rgb(0, 255, 0)),
         ..Visuals::dark()
       },
       Self::Blue => Visuals {
-        override_text_color: Some(eframe::egui::Color32::from_rgb(0, 0, 255)),
+        override_text_color: Some(Color32::from_rgb(0, 0, 255)),
         ..Visuals::dark()
       },
       Self::Purple => Visuals {
-        override_text_color: Some(eframe::egui::Color32::from_rgb(192, 0, 192)),
+        override_text_color: Some(Color32::from_rgb(192, 0, 192)),
         ..Visuals::dark()
       },
       Self::Light => Visuals::light(),

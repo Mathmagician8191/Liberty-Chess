@@ -23,7 +23,7 @@ use threadpool::ThreadPool;
 // 100 million = 97s
 // 200 million = 380s
 // max = 26 1/2 mins
-const LIMIT: usize = 2_000_000;
+const LIMIT: usize = 5_000_000;
 
 fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
   let secs = time.as_secs();

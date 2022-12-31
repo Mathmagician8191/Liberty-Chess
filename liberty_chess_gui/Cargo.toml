@@ -1,6 +1,6 @@
 [package]
 name = "liberty_chess_gui"
-version = "0.13.0"
+version = "0.13.1"
 authors.workspace = true
 edition.workspace = true
 
@@ -15,7 +15,6 @@ tiny-skia = {workspace = true}
 
 [features]
 default = ["clipboard", "clock", "sound"]
-benchmarking = []
 clipboard = ["dep:clipboard"]
 clock = []
 sound = ["dep:soloud"]

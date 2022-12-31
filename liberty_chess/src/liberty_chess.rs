@@ -975,8 +975,10 @@ impl Board {
               let rook = (start.0, self.queen_column);
               let end = (start.0, start.1 - 1);
               let rook_type = self.pieces[rook];
-              self.hash ^= keys.pieces[rook][(rook_type.unsigned_abs() - 1) as usize];
-              self.hash ^= keys.pieces[end][(rook_type.unsigned_abs() - 1) as usize];
+              if rook_type != 0 {
+                self.hash ^= keys.pieces[rook][(rook_type.unsigned_abs() - 1) as usize];
+                self.hash ^= keys.pieces[end][(rook_type.unsigned_abs() - 1) as usize];
+              }
               if rook_type > 0 {
                 self.hash ^= keys.colour[rook];
                 self.hash ^= keys.colour[end];
@@ -989,8 +991,10 @@ impl Board {
               let rook = (start.0, self.king_column);
               let end = (start.0, start.1 + 1);
               let rook_type = self.pieces[rook];
-              self.hash ^= keys.pieces[rook][(rook_type.unsigned_abs() - 1) as usize];
-              self.hash ^= keys.pieces[end][(rook_type.unsigned_abs() - 1) as usize];
+              if rook_type != 0 {
+                self.hash ^= keys.pieces[rook][(rook_type.unsigned_abs() - 1) as usize];
+                self.hash ^= keys.pieces[end][(rook_type.unsigned_abs() - 1) as usize];
+              }
               if rook_type > 0 {
                 self.hash ^= keys.colour[rook];
                 self.hash ^= keys.colour[end];
@@ -1070,6 +1074,7 @@ impl Board {
     if self.to_move {
       self.moves += 1;
     }
+    //assert_eq!(self.hash, self.get_hash());
   }
 
   /// Returns a `Board` if the move is legal, and `None` otherwise.
@@ -1097,6 +1102,13 @@ impl Board {
       self.hash ^= keys.pieces[target][(piece - 1) as usize];
       self.pieces[target] = piece * (self.pieces[target] / PAWN);
       self.promotion_target = None;
+      if piece == KING {
+        if self.to_move {
+          self.black_kings.push(target)
+        } else {
+          self.white_kings.push(target)
+        }
+      }
       self.update();
     }
   }

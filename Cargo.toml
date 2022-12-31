@@ -2,7 +2,7 @@
 members = ["liberty_chess_gui", "test", "perft"]
 
 [workspace.package]
-version = "0.13.0"
+version = "0.13.1"
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
 edition = "2021"
 
@@ -12,7 +12,7 @@ edition = "2021"
 liberty_chess = {path = "liberty_chess"}
 array2d = "0.2.1"
 clipboard = "0.4.6"
-eframe = {version = "0.19.0", features = ["persistence"]}
+eframe = {version = "0.20.1", features = ["persistence"]}
 enum-iterator = "1.2.0"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
