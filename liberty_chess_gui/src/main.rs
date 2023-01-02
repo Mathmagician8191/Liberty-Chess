@@ -410,8 +410,10 @@ fn render_board(
             colour = Colours::Selected;
           }
           let texture = gui.get_image(ctx, piece, size as u32);
-          let icon = Image::new(texture, [size; 2]).bg_fill(colour.value());
-          let response = ui.add(icon).interact(egui::Sense::click());
+          let icon = Image::new(texture, [size; 2])
+            .sense(egui::Sense::click())
+            .bg_fill(colour.value());
+          let response = ui.add(icon);
           if clickable && response.clicked() {
             if let Some(selected) = gui.selected {
               if gamestate.check_pseudolegal(selected, coords) {
