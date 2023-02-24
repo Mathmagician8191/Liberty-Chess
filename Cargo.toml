@@ -1,15 +1,18 @@
 [workspace]
-members = ["liberty_chess_gui", "test", "perft"]
+members = ["liberty_chess_gui", "perft"]
 
 [workspace.package]
-version = "0.13.1"
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
+version = "0.14.0"
+repository = "https://github.com/Mathmagician8191/Liberty-Chess"
+license = "GPL-3.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace.dependencies]
 liberty_chess = {path = "liberty_chess"}
+sound = {path = "sound"}
 array2d = "0.2.1"
 clipboard = "0.4.6"
 eframe = {version = "0.20.1", features = ["persistence"]}
@@ -19,7 +22,6 @@ rand_chacha = "0.3.1"
 resvg = "0.25.0"
 soloud = "1.0.2"
 threadpool = "1.8.1"
-tiny-skia = "0.8.2"
 
 [profile.dev]
 opt-level = 3
@@ -27,6 +29,8 @@ debug = 0
 
 [profile.release]
 opt-level = 3
+lto = true
+codegen-units = 1
 panic = "abort"
 strip = true
-lto = true
+debug = 0

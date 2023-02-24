@@ -105,23 +105,20 @@ impl Clock {
 /// A type of clock to use
 #[derive(Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum Type {
+  /// No clock
   None,
+  /// Basic Fischer increment
   Increment,
+  /// Fischer increment where both sides have differing amounts of time and increment.
   Handicap,
 }
 
 impl ToString for Type {
   fn to_string(&self) -> String {
     match self {
-      Self::None => "No Clock".to_string(),
-      Self::Increment => "Increment".to_string(),
-      Self::Handicap => "Increment with Handicap".to_string(),
+      Self::None => "No Clock".to_owned(),
+      Self::Increment => "Increment".to_owned(),
+      Self::Handicap => "Increment with Handicap".to_owned(),
     }
   }
-}
-
-/// Convert a number of seconds to a MM:SS time.
-#[must_use]
-pub fn print_secs(secs: u64) -> String {
-  (secs / 60).to_string() + &format!(":{:0>2}", secs % 60)
 }

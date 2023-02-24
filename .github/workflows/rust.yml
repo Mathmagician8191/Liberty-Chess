@@ -32,3 +32,13 @@ jobs:
     - uses: actions/checkout@v3
     - name: Run Tests
       run: cargo test
+  appease_microsoft:
+    runs-on: windows
+    steps:
+    - uses: actions/checkout@v3
+    - name: Appease Microsoft by supporting their OS monopoly
+      run: cargo build --release -p liberty_chess_gui
+    - uses: actions/upload-artifact@v3
+      with:
+        name: monopoly-chess
+        path: target/release/liberty_chess_gui

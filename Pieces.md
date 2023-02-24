@@ -32,6 +32,9 @@ Defence: None
 
 Moves the same as standard chess.
 
+Special additional move: El Vaticano
+Two bishops of the same colour, two squares apart horizontally or vertically can capture a piece lying in between them.
+
 Attack: Basic \
 Defence: None
 

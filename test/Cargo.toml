@@ -1,8 +1,0 @@
-[package]
-name = "test"
-version.workspace = true
-authors.workspace = true
-edition.workspace = true
-
-[dependencies]
-liberty_chess = {workspace = true}

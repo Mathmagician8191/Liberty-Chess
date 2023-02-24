@@ -24,6 +24,7 @@ pub enum HelpPage {
   Obstacle,
   Wall,
   EnPassant,
+  ElVaticano,
   Castling,
   Check,
 }
@@ -52,6 +53,7 @@ impl HelpPage {
       Self::Obstacle => "Obstacle",
       Self::Wall => "Wall",
       Self::EnPassant => "En passant",
+      Self::ElVaticano => "El Vaticano",
       Self::Castling => "Castling",
       Self::Check => "Check",
     }
@@ -80,6 +82,7 @@ impl HelpPage {
       Self::Obstacle => Board::new("7/ppppppp/7/3O3/7/7/7 w").unwrap(),
       Self::Wall => Board::new("7/ppppppp/7/3W3/7/7/7 w").unwrap(),
       Self::EnPassant => Board::new("7/pp1pppp/7/2pP3/7/7/7 w - c5").unwrap(),
+      Self::ElVaticano => Board::new("7/7/7/2BpB2/7/7/7 w - c5").unwrap(),
       Self::Castling => Board::new("8/8/8/8/8/8/8/R3K2R w KQ").unwrap(),
       Self::Check => Board::new("3r3/7/7/7/7/7/3K3 w").unwrap(),
     }
@@ -90,6 +93,7 @@ impl HelpPage {
       Self::PawnForward => (2, 3),
       Self::PawnDouble => (1, 3),
       Self::Nightrider => (4, 4),
+      Self::ElVaticano => (3, 2),
       Self::Castling => (0, 4),
       Self::Check => (0, 3),
       _ => (3, 3),
@@ -115,10 +119,11 @@ impl HelpPage {
       Self::Champion => "The Champion can go 1 or 2 spaces in any direction, and can jump over other pieces. However, it cannot make a Knight move.",
       Self::Centaur => "The Centaur moves as the combination of the Knight and the Mann.",
       Self::Amazon => "The Amazon moves as a combination of the Queen and the Knight.",
-      Self::Elephant => "The Elephant moves like a Mann, but is immune to capture from pieces other than another Elephant or a King.",
+      Self::Elephant => "The Elephant moves like a Mann, but is immune to capture except by another Elephant or a King.",
       Self::Obstacle => "The Obstacle can teleport to any empty square on the board, but cannot capture other pieces.",
-      Self::Wall => "The Wall moves like the Obstacle, but it can only be captured by an Elephant or King",
+      Self::Wall => "The Wall moves like the Obstacle, but is immune to capture except by an Elephant or King",
       Self::EnPassant => "When a pawn moves more than one space, another pawn can capture it as if it had only moved one. This option is only available on the next move.",
+      Self::ElVaticano => "2 bishops that are 2 squares apart orthogonally can capture the piece between them. This is represented by one bishop capturing the other one.",
       Self::Castling => "If a King hasn't moved, it can move 2 squares to castle with another piece. The piece that can be castled with is configurable, and the piece moves to the other side of the king.",
       Self::Check => "If a King is in danger of being captured, it is in check. The King must get out of check on the next move. If that is not possible, the game ends in checkmate.",
     }

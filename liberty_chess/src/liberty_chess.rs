@@ -1,11 +1,13 @@
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
 //! The backend for Liberty Chess
 
 use crate::keys::{Hash, Zobrist};
 use array2d::Array2D;
+use core::str::FromStr;
 use std::rc::Rc;
 
-pub use crate::clock::{print_secs, Clock, Type};
-
+/// A struct to represent a clock
 pub mod clock;
 
 mod keys;
@@ -14,24 +16,43 @@ mod keys;
 /// Positive values indicate a white piece, negative values indicate a black piece and 0 indicates an empty square.
 pub type Piece = i8;
 
+/// An empty square
 pub const SQUARE: Piece = 0;
+/// A pawn with more configuration options
 pub const PAWN: Piece = 1;
+/// The standard chess knight
 pub const KNIGHT: Piece = 2;
+/// The standard chess bishop, plus a new move called "El Vaticano"
 pub const BISHOP: Piece = 3;
+/// The standard chess rook
 pub const ROOK: Piece = 4;
+/// The standard chess queen
 pub const QUEEN: Piece = 5;
+/// The standard chess king. Can castle with any piece at the right location.
 pub const KING: Piece = 6;
+/// Combo of bishop and knight
 pub const ARCHBISHOP: Piece = 7;
+/// Combo of rook and knight
 pub const CHANCELLOR: Piece = 8;
+/// Like the knight, but jumping a different number of squares
 pub const CAMEL: Piece = 9;
+/// Like the knight, but jumping a different number of squares
 pub const ZEBRA: Piece = 10;
+/// Like a king, but disposable
 pub const MANN: Piece = 11;
+/// Like a knight, but as a ray attack like a bishop or rook
 pub const NIGHTRIDER: Piece = 12;
+/// Moves like a mann but up to 2 spaces and can jump
 pub const CHAMPION: Piece = 13;
+/// Combo of mann and knight
 pub const CENTAUR: Piece = 14;
+/// Combo of queen and knight
 pub const AMAZON: Piece = 15;
+/// Like a mann, but immune to attack from most pieces
 pub const ELEPHANT: Piece = 16;
+/// Teleports to empty squares, but never captures
 pub const OBSTACLE: Piece = 17;
+/// Like an obstacle, but immune to attack from most pieces
 pub const WALL: Piece = 18;
 
 // attack and defence values of pieces
@@ -49,19 +70,16 @@ pub enum FenError {
   InvalidPiece(char),
   /// The board has a non-uniform width
   NonRectangular,
-  /// The board is less than 2 units wide on 1 axis
+  /// The board has a width or height less than 2
   Size,
-  /// Required fields are missing
-  MissingFields,
 }
 
 impl ToString for FenError {
   fn to_string(&self) -> String {
     match self {
-      Self::InvalidPiece(c) => format!("Invalid piece found: {}", c),
-      Self::NonRectangular => "Non-rectangular board found".to_string(),
-      Self::Size => "Board is too small (must be at least 2x2)".to_string(),
-      Self::MissingFields => "Required field (side to move) missing".to_string(),
+      Self::InvalidPiece(c) => format!("Invalid piece found: {c}"),
+      Self::NonRectangular => "Non-rectangular board found".to_owned(),
+      Self::Size => "Board must be at least 2x2".to_owned(),
     }
   }
 }
@@ -69,10 +87,15 @@ impl ToString for FenError {
 /// represents the status of the game
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Gamestate {
+  /// The game is still ongoing.
   InProgress,
+  /// The game is over by checkmate. True = White win, False = Black win
   Checkmate(bool),
+  /// The game is drawn by stalemate.
   Stalemate,
+  /// The game is drawn by the 50-move rule.
   Repetition,
+  /// The game is drawn by 3-fold repitition.
   Move50,
 }
 
@@ -99,6 +122,7 @@ pub struct Board {
   previous: Vec<Hash>,
   hash: Hash,
   keys: Rc<Zobrist>,
+  /// Whether friendly fire mode is enabled
   pub friendly_fire: bool,
 }
 
@@ -171,7 +195,7 @@ impl ToString for Board {
     let mut optional = Vec::new();
 
     if self.friendly_fire {
-      optional.push("ff".to_string());
+      optional.push("ff".to_owned());
     }
 
     let custom_promotion =
@@ -215,7 +239,7 @@ impl ToString for Board {
     }
 
     if misc.is_empty() && custom_promotion {
-      misc.push("-".to_string());
+      misc.push("-".to_owned());
     }
 
     if !misc.is_empty() {
@@ -233,10 +257,10 @@ impl ToString for Board {
   }
 }
 
-impl std::str::FromStr for Board {
+impl FromStr for Board {
   type Err = FenError;
 
-  fn from_str(fen: &str) -> Result<Self, FenError> {
+  fn from_str(fen: &str) -> Result<Self, Self::Err> {
     Self::new(fen)
   }
 }
@@ -303,6 +327,7 @@ const fn to_char(piece: Piece) -> char {
   }
 }
 
+/// Convert a `Piece` into a string representing the type of piece it is.
 #[must_use]
 pub fn to_name(piece: Piece) -> &'static str {
   match piece.abs() {
@@ -376,7 +401,7 @@ fn to_indices(mut column: usize, row_min: usize, row_max: usize) -> String {
       column -= 1;
     }
     let c = get_letter(column % 26);
-    result.push(c as char);
+    result.push(c);
     column /= 26;
   }
   if !result.is_empty() {
@@ -436,7 +461,7 @@ fn process_board(board: &str) -> Result<Board, FenError> {
       vec.append(&mut vec![0; squares]);
     }
     if let Some(i) = width {
-      if vec.len() != (i) {
+      if vec.len() != i {
         return Err(FenError::NonRectangular);
       }
     } else {
@@ -488,13 +513,10 @@ impl Board {
   /// ```
   pub fn new(fen: &str) -> Result<Self, FenError> {
     let fields: Vec<&str> = fen.split(' ').collect();
-    if fields.len() < 2 {
-      return Err(FenError::MissingFields);
-    }
 
     let mut board = process_board(fields[0])?;
 
-    board.to_move = fields[1] == "w";
+    board.to_move = fields.len() == 1 || fields[1] == "w";
 
     if fields.len() > 2 {
       let mut castling = [false; 4];
@@ -585,6 +607,12 @@ impl Board {
     self.pieces[coords]
   }
 
+  /// Returns the piece at the given coordinates if the coordinates are valid
+  #[must_use]
+  pub fn fetch_piece(&self, row: usize, column: usize) -> Option<&Piece> {
+    self.pieces.get(row, column)
+  }
+
   /// The number of ranks the board has
   #[must_use]
   #[inline(always)]
@@ -646,7 +674,7 @@ impl Board {
         let piece = self.pieces[(i, j)];
         if piece != 0 && self.to_move == (piece > 0) {
           let mut skip_legality = match piece.abs() {
-            KING | PAWN => Some(false),
+            KING | BISHOP | PAWN => Some(false),
             _ => {
               if king_safe {
                 None
@@ -655,7 +683,6 @@ impl Board {
               }
             }
           };
-          // TODO: movegen based on piece type
           match piece.abs() {
             PAWN => {
               let left_column = usize::saturating_sub(j, 1);
@@ -732,14 +759,11 @@ impl Board {
     skip_legality: &mut Option<bool>,
   ) {
     if self.check_pseudolegal(start, end) {
-      let skip_legality = match skip_legality {
-        Some(bool) => *bool,
-        None => {
-          let bool = !self.is_attacked(start, !self.to_move);
-          *skip_legality = Some(bool);
-          bool
-        }
-      };
+      let skip_legality = skip_legality.unwrap_or_else(|| {
+        let bool = !self.is_attacked(start, !self.to_move);
+        *skip_legality = Some(bool);
+        bool
+      });
       if skip_legality {
         let mut board = self.clone();
         board.make_move(start, end);
@@ -765,9 +789,23 @@ impl Board {
       return false;
     }
     let destination = self.pieces[end];
-    if (destination != 0 && !self.friendly_fire && (piece > 0) == (destination > 0))
-      || DEFENCE[destination.unsigned_abs() as usize] >= ATTACK[piece.unsigned_abs() as usize]
-    {
+    if (piece > 0) == (destination > 0) {
+      // El Vaticano
+      if piece.abs() == BISHOP && destination.abs() == BISHOP {
+        let rows = start.0.abs_diff(end.0);
+        let cols = start.1.abs_diff(end.1);
+        if (rows == 2 && cols == 0) || (rows == 0 && cols == 2) {
+          let target = self.pieces[((start.0 + end.0) / 2, (start.1 + end.1) / 2)];
+          return target != 0
+            && DEFENCE[destination.unsigned_abs() as usize] < ATTACK[BISHOP as usize]
+            && ((target > 0) != (piece > 0) || self.friendly_fire);
+        }
+      }
+      if destination != 0 && !self.friendly_fire {
+        return false;
+      }
+    }
+    if DEFENCE[destination.unsigned_abs() as usize] >= ATTACK[piece.unsigned_abs() as usize] {
       return false;
     }
     let istart = (start.0 as isize, start.1 as isize);
@@ -898,13 +936,36 @@ impl Board {
   fn make_move(&mut self, start: (usize, usize), end: (usize, usize)) {
     let keys = self.keys.as_ref();
     self.halfmoves += 1;
-    let piece = self.pieces[start];
-    if piece > 0 {
-      self.hash ^= keys.colour[start];
-      self.hash ^= keys.colour[end];
+    self.to_move = !self.to_move;
+    self.hash ^= keys.to_move;
+    if self.to_move {
+      self.moves += 1;
     }
-    self.hash ^= keys.pieces[start][(piece.unsigned_abs() - 1) as usize];
-    self.hash ^= keys.pieces[end][(piece.unsigned_abs() - 1) as usize];
+    let piece = self.pieces[start];
+    if piece.abs() == BISHOP {
+      // Test for El Vaticano
+      if start.0 == end.0 {
+        let lowest = usize::min(start.1, end.1);
+        let highest = usize::max(start.1, end.1);
+        for i in lowest + 1..highest {
+          let position = (start.0, i);
+          keys.update_hash(&mut self.hash, self.pieces[position], position);
+          self.pieces[position] = SQUARE;
+        }
+        return;
+      } else if start.1 == end.1 {
+        let lowest = usize::min(start.0, end.0);
+        let highest = usize::max(start.0, end.0);
+        for i in lowest + 1..highest {
+          let position = (i, start.1);
+          keys.update_hash(&mut self.hash, self.pieces[position], position);
+          self.pieces[position] = SQUARE;
+        }
+        return;
+      }
+    }
+    keys.update_hash(&mut self.hash, piece, start);
+    keys.update_hash(&mut self.hash, piece, end);
     match piece.abs() {
       PAWN => {
         self.halfmoves = 0;
@@ -913,54 +974,42 @@ impl Board {
         if start.1 == end.1 {
           let lowest = usize::min(start.0, end.0);
           let highest = usize::max(start.0, end.0);
-          if let Some([column, row_min, row_max]) = self.en_passant {
-            self.hash ^= keys.en_passant[(row_min, column)];
-            if row_min != row_max {
-              self.hash ^= keys.en_passant[(row_max, column)];
-            }
+          if let Some(en_passant) = self.en_passant {
+            keys.update_en_passant(&mut self.hash, en_passant);
           }
           self.en_passant = if highest - lowest > 1 {
-            self.hash ^= keys.en_passant[(lowest + 1, start.1)];
-            if lowest + 1 != highest - 1 {
-              self.hash ^= keys.en_passant[(highest - 1, start.1)];
-            }
+            keys.update_en_passant(&mut self.hash, [start.1, lowest + 1, highest - 1]);
             Some([start.1, lowest + 1, highest - 1])
           } else {
             None
           }
         } else if let Some([column, row_min, row_max]) = self.en_passant {
           if end.1 == column && row_min <= end.0 && end.0 <= row_max {
-            if piece > 0 {
+            let (coords, piece) = if piece > 0 {
               let coords = (row_min - 1, end.1);
-              self.hash ^= keys.pieces[coords][(-self.pieces[coords] - 1) as usize];
-              self.pieces[coords] = SQUARE;
+              (coords, -self.pieces[coords])
             } else {
               let coords = (row_max + 1, end.1);
-              self.hash ^= keys.pieces[coords][(self.pieces[coords] - 1) as usize];
               self.hash ^= keys.colour[coords];
-              self.pieces[coords] = SQUARE;
-            }
+              (coords, self.pieces[coords])
+            };
+            self.hash ^= keys.pieces[coords][(piece - 1) as usize];
+            self.pieces[coords] = SQUARE;
           }
-          self.hash ^= keys.en_passant[(row_min, column)];
-          if row_min != row_max {
-            self.hash ^= keys.en_passant[(row_max, column)];
-          }
+          keys.update_en_passant(&mut self.hash, [column, row_min, row_max]);
           self.en_passant = None;
         }
-        if end.0 == (if self.to_move { self.height() - 1 } else { 0 }) {
+        if end.0 == (if self.to_move { 0 } else { self.height() - 1 }) {
           self.promotion_target = Some(end);
         }
       }
       KING => {
-        if let Some([column, row_min, row_max]) = self.en_passant {
-          self.hash ^= keys.en_passant[(row_min, column)];
-          if row_min != row_max {
-            self.hash ^= keys.en_passant[(row_max, column)];
-          }
+        if let Some(en_passant) = self.en_passant {
+          keys.update_en_passant(&mut self.hash, en_passant);
           self.en_passant = None;
         }
-        if start.0 == self.castle_row(self.to_move) {
-          let offset = Self::castle_offset(self.to_move);
+        if start.0 == self.castle_row(!self.to_move) {
+          let offset = Self::castle_offset(!self.to_move);
           if self.castling[offset] {
             self.castling[offset] = false;
             self.hash ^= keys.castling[offset];
@@ -975,14 +1024,8 @@ impl Board {
               let rook = (start.0, self.queen_column);
               let end = (start.0, start.1 - 1);
               let rook_type = self.pieces[rook];
-              if rook_type != 0 {
-                self.hash ^= keys.pieces[rook][(rook_type.unsigned_abs() - 1) as usize];
-                self.hash ^= keys.pieces[end][(rook_type.unsigned_abs() - 1) as usize];
-              }
-              if rook_type > 0 {
-                self.hash ^= keys.colour[rook];
-                self.hash ^= keys.colour[end];
-              }
+              keys.update_hash(&mut self.hash, rook_type, rook);
+              keys.update_hash(&mut self.hash, rook_type, end);
               self.pieces[end] = rook_type;
               self.pieces[rook] = SQUARE;
             }
@@ -991,14 +1034,8 @@ impl Board {
               let rook = (start.0, self.king_column);
               let end = (start.0, start.1 + 1);
               let rook_type = self.pieces[rook];
-              if rook_type != 0 {
-                self.hash ^= keys.pieces[rook][(rook_type.unsigned_abs() - 1) as usize];
-                self.hash ^= keys.pieces[end][(rook_type.unsigned_abs() - 1) as usize];
-              }
-              if rook_type > 0 {
-                self.hash ^= keys.colour[rook];
-                self.hash ^= keys.colour[end];
-              }
+              keys.update_hash(&mut self.hash, rook_type, rook);
+              keys.update_hash(&mut self.hash, rook_type, end);
               self.pieces[end] = rook_type;
               self.pieces[rook] = SQUARE;
             }
@@ -1024,17 +1061,14 @@ impl Board {
         }
       }
       _ => {
-        if let Some([column, row_min, row_max]) = self.en_passant {
-          self.hash ^= keys.en_passant[(row_min, column)];
-          if row_min != row_max {
-            self.hash ^= keys.en_passant[(row_max, column)];
-          }
+        if let Some(en_passant) = self.en_passant {
+          keys.update_en_passant(&mut self.hash, en_passant);
           self.en_passant = None;
         }
       }
     }
-    if start.0 == self.castle_row(self.to_move) {
-      let offset = Self::castle_offset(self.to_move);
+    if start.0 == self.castle_row(!self.to_move) {
+      let offset = Self::castle_offset(!self.to_move);
       if start.1 == self.queen_column {
         if self.castling[offset + 1] {
           self.castling[offset + 1] = false;
@@ -1047,15 +1081,12 @@ impl Board {
     }
     let capture = self.pieces[end];
     if capture != SQUARE {
-      if capture > 0 {
-        self.hash ^= keys.colour[end];
-      }
-      self.hash ^= keys.pieces[end][(capture.unsigned_abs() - 1) as usize];
+      keys.update_hash(&mut self.hash, capture, end);
       self.halfmoves = 0;
       self.previous = Vec::new();
       self.duplicates = Vec::new();
-      if end.0 == self.castle_row(!self.to_move) {
-        let offset = Self::castle_offset(!self.to_move);
+      if end.0 == self.castle_row(self.to_move) {
+        let offset = Self::castle_offset(self.to_move);
         if end.1 == self.queen_column {
           if self.castling[offset + 1] {
             self.castling[offset + 1] = false;
@@ -1069,12 +1100,8 @@ impl Board {
     }
     self.pieces[end] = piece;
     self.pieces[start] = SQUARE;
-    self.to_move = !self.to_move;
-    self.hash ^= keys.to_move;
-    if self.to_move {
-      self.moves += 1;
-    }
-    //assert_eq!(self.hash, self.get_hash());
+    // Debugging option, uncomment to enable hashing checks
+    // assert_eq!(self.hash, self.get_hash());
   }
 
   /// Returns a `Board` if the move is legal, and `None` otherwise.
@@ -1100,14 +1127,15 @@ impl Board {
       let keys = self.keys.as_ref();
       self.hash ^= keys.pieces[target][(PAWN - 1) as usize];
       self.hash ^= keys.pieces[target][(piece - 1) as usize];
-      self.pieces[target] = piece * (self.pieces[target] / PAWN);
+      self.pieces[target] *= piece;
       self.promotion_target = None;
       if piece == KING {
         if self.to_move {
-          self.black_kings.push(target)
+          &mut self.black_kings
         } else {
-          self.white_kings.push(target)
+          &mut self.white_kings
         }
+        .push(target);
       }
       self.update();
     }
@@ -1117,6 +1145,8 @@ impl Board {
   #[must_use]
   // automatic flatten is 5% slower
   #[allow(clippy::manual_flatten)]
+  // inlining gives approc 2% speed improvement
+  #[inline(always)]
   fn is_attacked(&self, (row, column): (usize, usize), side: bool) -> bool {
     let multiplier = if side { 1 } else { -1 };
     for piece in self.straight((row, column), 1) {
@@ -1157,7 +1187,7 @@ impl Board {
         return true;
       }
     }
-    for piece in self.straight((row as usize, column as usize), 2) {
+    for piece in self.straight((row, column), 2) {
       if piece == Some(&(CHAMPION * multiplier)) {
         return true;
       }
@@ -1360,7 +1390,7 @@ impl Board {
       self.state = if self.attacked_kings().is_empty() {
         Gamestate::Stalemate
       } else {
-        Gamestate::Checkmate(self.to_move)
+        Gamestate::Checkmate(!self.to_move)
       }
     } else if self.halfmoves > 100 {
       self.state = Gamestate::Move50;
@@ -1388,23 +1418,14 @@ impl Board {
       }
     }
 
-    if let Some([column, row_min, row_max]) = self.en_passant {
-      result ^= keys.en_passant[(row_min, column)];
-      if row_min != row_max {
-        result ^= keys.en_passant[(row_max, column)];
-      }
+    if let Some(en_passant) = self.en_passant {
+      keys.update_en_passant(&mut result, en_passant);
     }
 
     for i in 0..self.height() {
       for j in 0..self.width() {
         let piece = self.pieces[(i, j)];
-        if piece != SQUARE {
-          if piece > 0 {
-            result ^= keys.colour[(i, j)];
-          }
-          let piece_type: usize = (piece.unsigned_abs() - 1) as usize;
-          result ^= keys.pieces[(i, j)][piece_type];
-        }
+        keys.update_hash(&mut result, piece, (i, j));
       }
     }
 
@@ -1452,7 +1473,7 @@ impl Board {
             _ => {
               for k in 0..self.height() {
                 for l in 0..self.width() {
-                  if self.test_legal((i, j), (k as usize, l as usize)) {
+                  if self.test_legal((i, j), (k, l)) {
                     return true;
                   }
                 }

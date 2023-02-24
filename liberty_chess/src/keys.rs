@@ -1,3 +1,4 @@
+use crate::{Piece, SQUARE};
 use array2d::Array2D;
 use rand::Rng;
 use rand_chacha::rand_core::SeedableRng;
@@ -8,8 +9,7 @@ pub type Hash = u64;
 pub struct Zobrist {
   pub colour: Array2D<Hash>,
   pub pieces: Array2D<[Hash; 18]>,
-  pub en_passant: Array2D<Hash>,
-
+  en_passant: Array2D<Hash>,
   pub to_move: Hash,
   pub castling: [Hash; 4],
 }
@@ -22,7 +22,6 @@ impl Zobrist {
       colour: Array2D::filled_with(0, height, width),
       pieces: Array2D::filled_with([0; 18], height, width),
       en_passant: Array2D::filled_with(0, height, width),
-
       to_move: rng.gen(),
       castling: [0; 4],
     };
@@ -38,5 +37,24 @@ impl Zobrist {
     }
 
     keys
+  }
+
+  // inlining gives approx 2% performance improvement
+  // same performance as when manually inlined, but with reliability and readability gain
+  #[inline(always)]
+  pub fn update_hash(&self, hash: &mut Hash, piece: Piece, index: (usize, usize)) {
+    if piece > 0 {
+      *hash ^= self.colour[index];
+    }
+    if piece != SQUARE {
+      *hash ^= self.pieces[index][(piece.unsigned_abs() - 1) as usize];
+    }
+  }
+
+  pub fn update_en_passant(&self, hash: &mut Hash, [column, row_min, row_max]: [usize; 3]) {
+    *hash ^= self.en_passant[(row_min, column)];
+    if row_min != row_max {
+      *hash ^= self.en_passant[(row_max, column)];
+    }
   }
 }

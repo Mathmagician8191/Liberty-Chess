@@ -10,7 +10,7 @@ impl ToString for GameMode {
   fn to_string(&self) -> String {
     match self {
       Self::Preset(preset) => preset.to_string(),
-      Self::Custom => "Custom".to_string(),
+      Self::Custom => "Custom".to_owned(),
     }
   }
 }
@@ -42,10 +42,10 @@ impl Presets {
       Self::African => "lnzekznl/pppppppp/8/8/8/8/PPPPPPPP/LNZEKZNL w - - 0 1 - enzl",
       Self::Narnia => "uuqkkquu/pppppppp/8/8/8/8/PPPPPPPP/UUQKKQUU w - - 0 1 - u",
       Self::Trump => "rwwwkwwr/pppppppp/8/8/8/8/PPPPPPPP/RWWWKWWR w KQkq - 0 1 - mrw",
-      Self::LoadedBoard => "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1",
+      Self::LoadedBoard => "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1 1",
       Self::Double => "rnbqkbnrrnbqkbnr/pppppppppppppppp/16/16/16/16/PPPPPPPPPPPPPPPP/RNBQKBNRRNBQKBNR w KQkq - 0 1",
     }
-    .to_string()
+    .to_owned()
   }
 }
 
@@ -64,6 +64,6 @@ impl ToString for Presets {
       Self::LoadedBoard => "Loaded board",
       Self::Double => "Double chess",
     }
-    .to_string()
+    .to_owned()
   }
 }

@@ -1,19 +1,26 @@
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+//! A helpful program to test and benchmark the move generation
+
 use liberty_chess::Board;
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
 #[cfg(feature = "parallel")]
+use std::sync::mpsc::Sender;
+#[cfg(feature = "parallel")]
 use threadpool::ThreadPool;
 
-// Updated 10 Nov 2022
+// Updated 7 Februrary 2023
 // 5600x benchmarks - multithreaded
-// 1 million = 1.4s
-// 5 million = 5.6s
-// 10 million = 10.5s
-// 30 million = 27s
-// 100 million = 53s
-// 200 million = 208s
-// max = 14 1/2 mins
+// 5 million = 5.7s
+// 10 million = 9.9s
+// 30 million = 26.5s
+// 100 million = 53.6s
+// 150 million = 131s
+// 200 million = 209 s
+// 500 million = 384s
+// max = 955s
 // Updated 18 Nov 2022
 // i5 8400 benchmarks - multithreaded
 // 2 million = 2.8s
@@ -25,19 +32,22 @@ use threadpool::ThreadPool;
 // max = 26 1/2 mins
 const LIMIT: usize = 5_000_000;
 
+fn format_time(millis: u128) -> String {
+  let secs = millis / 1000;
+  if secs >= 180 {
+    format!("{secs} s")
+  } else if secs >= 20 {
+    format!("{secs}.{} s", (millis / 100) % 10)
+  } else {
+    format!("{millis} ms")
+  }
+}
+
 fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
-  let secs = time.as_secs();
   let millis = time.as_millis();
   let kilonodes = nodes / usize::max(millis as usize, 1);
-  let time = if secs >= 30 {
-    format!("{} s", secs)
-  } else {
-    format!("{} ms", millis)
-  };
-  println!(
-    "{} {} for depth {} ({} knodes/s)",
-    fen, time, depth, kilonodes
-  );
+  let time = format_time(millis);
+  println!("{time} for depth {depth} ({kilonodes} knodes/s) {fen}");
 }
 
 fn perft(board: &Board, depth: usize) -> usize {
@@ -50,6 +60,20 @@ fn perft(board: &Board, depth: usize) -> usize {
   } else {
     1
   }
+}
+
+#[cfg(feature = "parallel")]
+fn perft_process_final(pool: &ThreadPool, tx: Sender<usize>, board: &Board, depth: usize) {
+  let fen = board.to_string();
+  let closure = move || tx.send(perft(&Board::new(&fen).unwrap(), depth)).unwrap();
+  pool.execute(closure);
+}
+
+#[cfg(feature = "parallel")]
+fn perft_process_other(pool: &ThreadPool, board: &Board, depth: usize, result: usize) {
+  let fen = board.to_string();
+  let closure = move || assert_eq!(perft(&Board::new(&fen).unwrap(), depth), result);
+  pool.execute(closure);
 }
 
 fn perft_test(fen: &'static str, results: &[usize]) {
@@ -66,30 +90,39 @@ fn perft_test(fen: &'static str, results: &[usize]) {
       break;
     }
   }
+
   #[cfg(feature = "parallel")]
-  let pool = ThreadPool::default();
+  let cores = std::thread::available_parallelism().unwrap().get();
+  #[cfg(feature = "parallel")]
+  let pool = ThreadPool::new(cores);
 
   for (i, result) in results.iter().enumerate().take(max) {
-    let fen = board.to_string();
-    let result = *result;
-    let closure = move || assert_eq!(perft(&Board::new(&fen).unwrap(), i), result);
     #[cfg(feature = "parallel")]
-    pool.execute(closure);
+    perft_process_other(&pool, &board, i, *result);
     #[cfg(not(feature = "parallel"))]
-    closure();
+    assert_eq!(perft(&board, i), *result);
   }
 
   let (tx, rx) = channel();
   let moves = board.generate_legal();
-  let num_moves = moves.len();
+  #[cfg(feature = "parallel")]
+  let extra_cores = results[1] < 2 * cores;
+  #[cfg(not(feature = "parallel"))]
+  let extra_cores = false;
+  let num_moves = if extra_cores { results[2] } else { moves.len() };
   for board in moves {
-    let tx = tx.clone();
-    let fen = board.to_string();
-    let closure = move || tx.send(perft(&Board::new(&fen).unwrap(), max - 1)).unwrap();
     #[cfg(feature = "parallel")]
-    pool.execute(closure);
+    {
+      if extra_cores {
+        for new_board in board.generate_legal() {
+          perft_process_final(&pool, tx.clone(), &new_board, max - 2);
+        }
+      } else {
+        perft_process_final(&pool, tx.clone(), &board, max - 1);
+      }
+    }
     #[cfg(not(feature = "parallel"))]
-    closure();
+    tx.send(perft(&board, max - 1)).unwrap();
   }
   #[cfg(feature = "parallel")]
   pool.join();
@@ -119,9 +152,10 @@ fn main() {
     "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1",
     &[1, 6, 264, 9_467, 422_333, 15_833_292, 706_045_033],
   );
+  // results are modified due to El Vaticano
   perft_test(
     "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8",
-    &[1, 44, 1_486, 62_379, 2_103_487, 89_941_194],
+    &[1, 44, 1_486, 62_379, 2_103_487, 89_941_236],
   );
   perft_test(
     "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10",
@@ -174,10 +208,10 @@ fn main() {
     &[1, 176, 30_856, 5_410_950],
   );
 
-  //loaded board
+  //loaded board - results modified by El Vaticano
   perft_test(
-    "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1",
-    &[1, 28, 778, 21_974, 617_017, 17_962_678, 527_226_103],
+    "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1 1",
+    &[1, 28, 778, 21_974, 618_165, 18_025_422, 531_219_743],
   );
 
   //double chess - not tested with external sources
@@ -210,5 +244,5 @@ fn main() {
     &[1, 40, 1_600, 71_502, 3_178_819],
   );
 
-  println!("{} ms", start.elapsed().as_millis());
+  println!("{}", format_time(start.elapsed().as_millis()));
 }

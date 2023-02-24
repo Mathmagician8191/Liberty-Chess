@@ -1,7 +1,9 @@
 [package]
 name = "perft"
-version.workspace = true
 authors.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
 edition.workspace = true
 
 [dependencies]

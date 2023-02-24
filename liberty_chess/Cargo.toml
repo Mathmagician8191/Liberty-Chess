@@ -1,7 +1,9 @@
 [package]
 name = "liberty_chess"
-version.workspace = true
 authors.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
 edition.workspace = true
 
 [lib]
