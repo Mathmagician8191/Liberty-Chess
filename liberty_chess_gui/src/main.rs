@@ -24,6 +24,8 @@ use resvg::usvg::{FitTo, Tree};
 use std::time::Instant;
 
 #[cfg(feature = "clock")]
+use crate::helpers::clock_input;
+#[cfg(feature = "clock")]
 use liberty_chess::clock::{Clock, Type};
 
 #[cfg(feature = "clipboard")]
@@ -45,9 +47,6 @@ mod help_page;
 mod helpers;
 mod images;
 mod themes;
-
-#[cfg(feature = "clock")]
-const MAX_TIME: u64 = 360;
 
 enum Screen {
   Menu,
@@ -215,7 +214,7 @@ impl App for LibertyChessGUI {
       Screen::Game(board) => {
         let board = board.clone();
         SidePanel::right("Sidebar")
-          .min_width(self.config.get_text_size() as f32 * 4.425 + 7.5)
+          .min_width((f32::from(self.config.get_text_size())).mul_add(4.425, 7.5))
           .resizable(false)
           .show(ctx, |ui| draw_game_sidebar(self, ui, board));
         #[cfg(feature = "clock")]
@@ -564,17 +563,17 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
           ui.selectable_value(&mut gui.clock_type, clock_type, clock_type.to_string());
         }
       });
-    let text_size = gui.config.get_text_size();
+    let size = f32::from(gui.config.get_text_size()) * 2.0;
     match gui.clock_type {
       Type::None => (),
       Type::Increment => {
         ui.horizontal_top(|ui| {
           ui.label("Time (minutes):".to_owned());
-          let value = clock_input(ui, f32::from(text_size), gui.clock_data[0]);
+          let value = clock_input(ui, size, gui.clock_data[0]);
           gui.clock_data[0] = value;
           gui.clock_data[1] = value;
           ui.label("Increment (seconds):");
-          let value = clock_input(ui, f32::from(text_size), gui.clock_data[2]);
+          let value = clock_input(ui, size, gui.clock_data[2]);
           gui.clock_data[2] = value;
           gui.clock_data[3] = value;
         });
@@ -582,15 +581,15 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
       Type::Handicap => {
         ui.horizontal_top(|ui| {
           ui.label("White Time (minutes):");
-          gui.clock_data[0] = clock_input(ui, f32::from(text_size), gui.clock_data[0]);
+          gui.clock_data[0] = clock_input(ui, size, gui.clock_data[0]);
           ui.label("White Increment (seconds):");
-          gui.clock_data[2] = clock_input(ui, f32::from(text_size), gui.clock_data[2]);
+          gui.clock_data[2] = clock_input(ui, size, gui.clock_data[2]);
         });
         ui.horizontal_top(|ui| {
           ui.label("Black Time (minutes):");
-          gui.clock_data[1] = clock_input(ui, f32::from(text_size), gui.clock_data[1]);
+          gui.clock_data[1] = clock_input(ui, f32::from(size), gui.clock_data[1]);
           ui.label("Black Increment (seconds):");
-          gui.clock_data[3] = clock_input(ui, f32::from(text_size), gui.clock_data[3]);
+          gui.clock_data[3] = clock_input(ui, f32::from(size), gui.clock_data[3]);
         });
       }
     }
@@ -800,15 +799,6 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
 }
 
 // general helper functions
-
-#[cfg(feature = "clock")]
-fn clock_input(ui: &mut Ui, size: f32, input: u64) -> u64 {
-  let mut input_str = input.to_string();
-  text_edit(ui, 0.0, size * 0.7 * input_str.len() as f32, &mut input_str);
-  input_str
-    .parse::<u64>()
-    .map_or(input, |value| u64::min(value, MAX_TIME))
-}
 
 #[cfg(feature = "clock")]
 fn print_clock(time: Duration) -> String {

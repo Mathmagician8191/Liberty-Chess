@@ -33,7 +33,7 @@ jobs:
     - name: Run Tests
       run: cargo test
   appease_microsoft:
-    runs-on: windows
+    runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
     - name: Appease Microsoft by supporting their OS monopoly

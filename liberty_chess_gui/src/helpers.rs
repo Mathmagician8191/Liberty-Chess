@@ -1,10 +1,13 @@
 use crate::{switch_screen, LibertyChessGUI, Screen};
-use eframe::egui::{Context, Image, TextEdit, Ui};
+use eframe::egui::{Context, Image, TextBuffer, TextEdit, Ui};
 
 //sizes of things
 pub const ICON_SIZE: u32 = 48;
 #[allow(clippy::cast_precision_loss)]
 const ICON_SIZE_FLOAT: f32 = ICON_SIZE as f32;
+
+#[cfg(feature = "clock")]
+const MAX_TIME: u64 = 360;
 
 pub(crate) fn menu_button(gui: &mut LibertyChessGUI, ui: &mut Ui) {
   if ui.button("Menu").clicked() {
@@ -40,5 +43,63 @@ pub(crate) fn get_fen(gui: &LibertyChessGUI) -> String {
     }
   } else {
     String::new()
+  }
+}
+
+#[cfg(feature = "clock")]
+pub fn clock_input(ui: &mut Ui, size: f32, input: u64) -> u64 {
+  let mut input = NumericalInput::new(input);
+  ui.add_sized([size, 0.0], TextEdit::singleline(&mut input));
+  input.get_value()
+}
+
+#[cfg(feature = "clock")]
+struct NumericalInput {
+  number: u64,
+  string: String,
+}
+
+impl NumericalInput {
+  fn new(number: u64) -> Self {
+    Self {
+      number,
+      string: number.to_string(),
+    }
+  }
+
+  fn get_value(&self) -> u64 {
+    self.number
+  }
+}
+
+impl TextBuffer for NumericalInput {
+  fn is_mutable(&self) -> bool {
+    true
+  }
+
+  fn as_str(&self) -> &str {
+    &self.string
+  }
+
+  fn insert_text(&mut self, text: &str, index: usize) -> usize {
+    let mut string = self.string.clone();
+    let chars = string.insert_text(text, index);
+    match string.parse::<u64>() {
+      Ok(mut number) => {
+        number = u64::min(number, MAX_TIME);
+        self.number = number;
+        self.string = number.to_string();
+        chars
+      }
+      Err(_) => 0,
+    }
+  }
+
+  fn delete_char_range(&mut self, char_range: std::ops::Range<usize>) {
+    let mut string = self.string.clone();
+    string.delete_char_range(char_range);
+    let number = string.parse::<u64>().unwrap_or(0);
+    self.number = number;
+    self.string = number.to_string();
   }
 }
