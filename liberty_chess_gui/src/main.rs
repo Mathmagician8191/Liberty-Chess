@@ -214,7 +214,7 @@ impl App for LibertyChessGUI {
       Screen::Game(board) => {
         let board = board.clone();
         SidePanel::right("Sidebar")
-          .min_width((f32::from(self.config.get_text_size())).mul_add(4.425, 7.5))
+          .min_width((f32::from(self.config.get_text_size())).mul_add(4.45, 6.8))
           .resizable(false)
           .show(ctx, |ui| draw_game_sidebar(self, ui, board));
         #[cfg(feature = "clock")]
@@ -376,7 +376,7 @@ fn render_board(
   let rect = response.rect;
   painter.rect_filled(rect, Rounding::none(), Colours::WhiteSquare.value());
   if response.clicked() {
-    register_click(gui, gamestate, &response, size as usize);
+    register_click(gui, gamestate, &response, size as usize, flipped);
   }
   for i in (0..rows).rev() {
     let (min_y, max_y) = if flipped {
@@ -446,11 +446,22 @@ fn render_board(
   }
 }
 
-fn register_click(gui: &mut LibertyChessGUI, gamestate: &Board, response: &Response, size: usize) {
+fn register_click(
+  gui: &mut LibertyChessGUI,
+  gamestate: &Board,
+  response: &Response,
+  size: usize,
+  flipped: bool,
+) {
   if let Some(location) = response.interact_pointer_pos() {
     let rect = response.rect;
     let x = (location.x - rect.min.x) as usize / size;
-    let y = (rect.max.y - location.y) as usize / size;
+    let y = if flipped {
+      location.y - rect.min.y
+    } else {
+      rect.max.y - location.y
+    } as usize
+      / size;
     if let Some(piece) = gamestate.fetch_piece(y, x) {
       let coords = (y, x);
       let capture = *piece != 0;
@@ -587,9 +598,9 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         });
         ui.horizontal_top(|ui| {
           ui.label("Black Time (minutes):");
-          gui.clock_data[1] = clock_input(ui, f32::from(size), gui.clock_data[1]);
+          gui.clock_data[1] = clock_input(ui, size, gui.clock_data[1]);
           ui.label("Black Increment (seconds):");
-          gui.clock_data[3] = clock_input(ui, f32::from(size), gui.clock_data[3]);
+          gui.clock_data[3] = clock_input(ui, size, gui.clock_data[3]);
         });
       }
     }
