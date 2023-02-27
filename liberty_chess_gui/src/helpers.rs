@@ -16,6 +16,31 @@ pub(crate) fn menu_button(gui: &mut LibertyChessGUI, ui: &mut Ui) {
   }
 }
 
+pub(crate) fn get_icon(gui: &mut LibertyChessGUI, ctx: &Context, piece: char) -> Image {
+  Image::new(
+    gui.get_image(ctx, liberty_chess::to_piece(piece).unwrap(), ICON_SIZE),
+    [ICON_SIZE_FLOAT, ICON_SIZE_FLOAT],
+  )
+}
+
+pub(crate) fn get_fen(gui: &LibertyChessGUI) -> String {
+  if let Screen::Game(ref gamestate) = gui.screen {
+    if gamestate.promotion_available() {
+      gui
+        .undo
+        .last()
+        .expect("Promotion available with no previous position")
+    } else {
+      gamestate
+    }
+    .to_string()
+  } else {
+    String::new()
+  }
+}
+
+// Wrappers for text editing
+
 fn raw_text_edit(ui: &mut Ui, size: f32, input: &mut impl TextBuffer) {
   ui.add_sized([size, 0.0], TextEdit::singleline(input));
 }
@@ -35,29 +60,6 @@ pub fn label_text_edit(ui: &mut Ui, size: f32, input: &mut impl TextBuffer, labe
   });
 }
 
-pub(crate) fn get_icon(gui: &mut LibertyChessGUI, ctx: &Context, piece: char) -> Image {
-  Image::new(
-    gui.get_image(ctx, liberty_chess::to_piece(piece).unwrap(), ICON_SIZE),
-    [ICON_SIZE_FLOAT, ICON_SIZE_FLOAT],
-  )
-}
-
-pub(crate) fn get_fen(gui: &LibertyChessGUI) -> String {
-  if let Screen::Game(ref gamestate) = gui.screen {
-    if gamestate.promotion_available() {
-      gui
-        .undo
-        .last()
-        .expect("Promotion available with no previous position")
-        .to_string()
-    } else {
-      gamestate.to_string()
-    }
-  } else {
-    String::new()
-  }
-}
-
 #[cfg(feature = "clock")]
 pub fn clock_input(ui: &mut Ui, size: f32, input: u64) -> u64 {
   let mut input = NumericalInput::<u64>::new(input, 0, MAX_TIME);
@@ -65,7 +67,6 @@ pub fn clock_input(ui: &mut Ui, size: f32, input: u64) -> u64 {
   input.get_value()
 }
 
-#[cfg(feature = "clock")]
 #[derive(Eq, PartialEq)]
 pub struct NumericalInput<T: Copy + ToString> {
   number: T,

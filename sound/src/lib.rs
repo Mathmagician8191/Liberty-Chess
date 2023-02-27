@@ -72,8 +72,10 @@ impl MusicTrack {
     Self { music, handle }
   }
 
-  fn reload(&mut self, player: &Soloud) {
-    self.handle = player.play(&self.music);
+  fn reload(&mut self, player: &mut Soloud, volume: f32) {
+    let handle = player.play(&self.music);
+    player.set_volume(handle, volume);
+    self.handle = handle;
   }
 }
 
@@ -82,6 +84,7 @@ impl MusicTrack {
 struct MusicPlayer {
   volume: u8,
   dramatic_scale: f32,
+  clock_drama: f32,
   calm: MusicTrack,
   extra: Option<MusicTrack>,
 }
@@ -100,18 +103,25 @@ impl MusicPlayer {
     Self {
       volume,
       dramatic_scale: 0.0,
+      clock_drama: 0.0,
       calm,
       extra,
     }
   }
 
   fn refresh_music(&mut self, player: &mut Soloud) {
+    let volume = convert_volume(self.volume);
     player.stop(self.calm.handle);
-    self.calm.reload(player);
+    self.calm.reload(player, volume);
+    let drama = self.get_dramatic();
     if let Some(extra) = &mut self.extra {
       player.stop(extra.handle);
-      extra.reload(player);
+      extra.reload(player, volume * drama);
     }
+  }
+
+  fn get_dramatic(&self) -> f32 {
+    self.dramatic_scale + self.clock_drama
   }
 
   fn load_dramatic(player: &mut Soloud) -> MusicTrack {
@@ -119,6 +129,15 @@ impl MusicPlayer {
     let extra = MusicTrack::new(player, dramatic);
     player.set_volume(extra.handle, 0.0);
     extra
+  }
+
+  fn update_dramatic(&self, player: &mut Soloud) {
+    if let Some(track) = &self.extra {
+      player.set_volume(
+        track.handle,
+        convert_volume(self.volume) * self.get_dramatic(),
+      );
+    }
   }
 }
 
@@ -226,11 +245,7 @@ impl Engine {
       player.volume = volume;
       let volume = convert_volume(volume);
       self.player.set_volume(player.calm.handle, volume);
-      if let Some(track) = &player.extra {
-        self
-          .player
-          .set_volume(track.handle, volume * player.dramatic_scale);
-      }
+      player.update_dramatic(&mut self.player);
     }
   }
 
@@ -238,11 +253,28 @@ impl Engine {
   #[cfg(feature = "music")]
   pub fn set_dramatic(&mut self, dramatic: f32) {
     if let Some(player) = &mut self.music_player {
-      if let Some(track) = &player.extra {
-        player.dramatic_scale = dramatic;
-        self
-          .player
-          .set_volume(track.handle, convert_volume(player.volume) * dramatic);
+      player.dramatic_scale = player.dramatic_scale.mul_add(0.5, dramatic);
+      player.update_dramatic(&mut self.player);
+    }
+  }
+
+  /// Reset the drama level of the music to 0
+  #[cfg(feature = "music")]
+  pub fn clear_dramatic(&mut self) {
+    if let Some(player) = &mut self.music_player {
+      player.dramatic_scale = 0.0;
+      player.clock_drama = 0.0;
+      player.update_dramatic(&mut self.player);
+    }
+  }
+
+  /// Update how dramatic the clock is
+  #[cfg(feature = "music")]
+  pub fn set_clock_bonus(&mut self, clock_drama: f32) {
+    if let Some(player) = &mut self.music_player {
+      if clock_drama != player.clock_drama {
+        player.clock_drama = clock_drama;
+        player.update_dramatic(&mut self.player);
       }
     }
   }

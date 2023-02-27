@@ -98,10 +98,6 @@ pub(crate) struct LibertyChessGUI {
   #[cfg(feature = "sound")]
   audio_engine: Option<Engine>,
 
-  // whether the most recent move was a capture
-  #[cfg(feature = "music")]
-  capture: bool,
-
   // for measuring FPS
   #[cfg(feature = "benchmarking")]
   instant: Instant,
@@ -166,9 +162,6 @@ impl LibertyChessGUI {
       #[cfg(feature = "sound")]
       audio_engine,
 
-      #[cfg(feature = "music")]
-      capture: false,
-
       #[cfg(feature = "benchmarking")]
       instant: Instant::now(),
       #[cfg(feature = "benchmarking")]
@@ -219,7 +212,7 @@ impl App for LibertyChessGUI {
           .show(ctx, |ui| draw_game_sidebar(self, ui, board));
         #[cfg(feature = "clock")]
         if let Some(clock) = &mut self.clock {
-          draw_clock(ctx, clock);
+          draw_clock(ctx, clock, self.flipped);
         }
       }
       Screen::Help => {
@@ -274,22 +267,9 @@ impl App for LibertyChessGUI {
       };
     });
 
-    #[cfg(feature = "music")]
+    #[cfg(all(feature = "music", feature = "clock"))]
     if let Some(player) = &mut self.audio_engine {
-      let dramatic = if let Screen::Game(board) = &self.screen {
-        let mut dramatic = get_dramatic(board);
-        if self.capture {
-          dramatic += 0.5;
-        }
-        #[cfg(feature = "clock")]
-        if let Some(clock) = &mut self.clock {
-          dramatic += get_clock_drama(clock);
-        }
-        dramatic
-      } else {
-        0.0
-      };
-      player.set_dramatic(dramatic);
+      player.set_clock_bonus(get_clock_drama(&mut self.clock));
     }
 
     // Add no delay between rendering frames and log FPS when benchmarking
@@ -334,8 +314,8 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
       gui.moved = None;
       gui.undo = Vec::new();
       #[cfg(feature = "music")]
-      {
-        gui.capture = false;
+      if let Some(ref mut player) = gui.audio_engine {
+        player.clear_dramatic();
       }
     }
     Screen::Help => {
@@ -491,7 +471,10 @@ fn register_click(
             }
             #[cfg(feature = "music")]
             {
-              gui.capture = capture;
+              let dramatic = get_dramatic(&newstate) + if capture { 0.5 } else { 0.0 };
+              if let Some(ref mut player) = gui.audio_engine {
+                player.set_dramatic(dramatic);
+              }
             }
             gui.screen = Screen::Game(Box::new(newstate));
             gui.moved = Some([selected, coords]);
@@ -566,6 +549,10 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         }
         if gui.friendly {
           board.friendly_fire = true;
+        }
+        #[cfg(feature = "music")]
+        if let Some(ref mut player) = gui.audio_engine {
+          player.set_dramatic(get_dramatic(&board));
         }
         switch_screen(gui, Screen::Game(Box::new(board)));
       }
@@ -714,9 +701,12 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
 
 // draw areas for specific screens
 #[cfg(feature = "clock")]
-fn draw_clock(ctx: &Context, clock: &mut Clock) {
+fn draw_clock(ctx: &Context, clock: &mut Clock, flipped: bool) {
   clock.update();
-  let (white, black) = clock.get_clocks();
+  let (mut white, mut black) = clock.get_clocks();
+  if flipped {
+    (black, white) = (white, black);
+  }
   let mut white_text = RichText::new(print_clock(white));
   let mut black_text = RichText::new(print_clock(black));
   let color = if clock.is_flagged() {
@@ -743,16 +733,17 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
     gui.flipped = !gui.flipped;
   }
   if !gui.undo.is_empty() && ui.button("Undo").clicked() {
-    gui.screen = Screen::Game(Box::new(gui.undo.pop().expect("Scrodinger's vector")));
+    let gamestate = gui.undo.pop().expect("Scrodinger's vector");
+    #[cfg(feature = "music")]
+    if let Some(ref mut player) = gui.audio_engine {
+      player.set_dramatic(get_dramatic(&gamestate));
+    }
+    gui.screen = Screen::Game(Box::new(gamestate));
     gui.moved = None;
     #[cfg(feature = "clock")]
     if let Some(clock) = &mut gui.clock {
       clock.switch_clocks();
     };
-    #[cfg(feature = "music")]
-    {
-      gui.capture = false;
-    }
   }
 
   #[cfg(feature = "clock")]
@@ -849,15 +840,19 @@ fn get_dramatic(board: &Board) -> f32 {
 }
 
 #[cfg(all(feature = "clock", feature = "music"))]
-fn get_clock_drama(clock: &mut Clock) -> f32 {
-  let data = clock.get_clocks();
-  let data = if clock.to_move() { data.0 } else { data.1 };
-  // Running out of time is dramatic
-  // Returns a linear scale from 0 at 30s to 0.75 at 0s
-  if clock.is_paused() {
-    0.0
+fn get_clock_drama(clock: &mut Option<Clock>) -> f32 {
+  if let Some(ref mut clock) = clock {
+    let data = clock.get_clocks();
+    let data = if clock.to_move() { data.0 } else { data.1 };
+    // Running out of time is dramatic
+    // Returns a linear scale from 0 at 30s to 0.75 at 0s
+    if clock.is_paused() {
+      0.0
+    } else {
+      u128::saturating_sub(30000, data.as_millis()) as f32 / 40000.0
+    }
   } else {
-    u128::saturating_sub(30000, data.as_millis()) as f32 / 40000.0
+    0.0
   }
 }
 
