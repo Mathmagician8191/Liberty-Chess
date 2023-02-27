@@ -4,9 +4,9 @@
 
 use crate::config::{Configuration, BOARD_KEY};
 use crate::credits::Credits;
-use crate::gamemodes::{GameMode, Presets};
+use crate::gamemodes::{GameMode, Presets, RandomConfig};
 use crate::help_page::HelpPage;
-use crate::helpers::{get_fen, menu_button, text_edit};
+use crate::helpers::{char_text_edit, get_fen, label_text_edit, menu_button};
 use crate::themes::{Colours, Theme};
 use core::time::Duration;
 use eframe::{egui, App, CreationContext, Frame, Storage};
@@ -528,20 +528,33 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
           gamemode.to_string(),
         );
       }
-      ui.selectable_value(&mut gui.gamemode, GameMode::Custom, "Custom")
+      ui.selectable_value(&mut gui.gamemode, GameMode::Custom, "Custom");
+      ui.selectable_value(
+        &mut gui.gamemode,
+        GameMode::Random(RandomConfig::default()),
+        "Random",
+      );
     });
-  if let GameMode::Preset(preset) = gui.gamemode {
-    gui.fen = preset.value();
-  } else {
-    text_edit(
-      ui,
-      f32::from(gui.config.get_text_size()) / 1.35,
-      220.0,
-      &mut gui.fen,
-    );
+  let size = f32::from(gui.config.get_text_size());
+  match gui.gamemode {
+    GameMode::Preset(ref preset) => {
+      gui.fen = preset.value();
+    }
+    GameMode::Custom => {
+      char_text_edit(ui, size, &mut gui.fen);
+    }
+    GameMode::Random(ref mut config) => {
+      char_text_edit(ui, size, &mut config.pieces);
+      let size = size * 1.5;
+      label_text_edit(ui, size, &mut config.width, "Width");
+      label_text_edit(ui, size, &mut config.height, "Height");
+    }
   }
   ui.checkbox(&mut gui.friendly, "Friendly Fire");
   if ui.button("Start Game").clicked() {
+    if let GameMode::Random(ref config) = gui.gamemode {
+      gui.fen = config.to_string();
+    }
     match Board::new(&gui.fen) {
       Ok(mut board) => {
         #[cfg(feature = "clock")]
@@ -568,22 +581,22 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   #[cfg(feature = "clock")]
   {
     ComboBox::from_id_source("Clock")
-      .selected_text(gui.clock_type.to_string())
+      .selected_text("Clock: ".to_owned() + &gui.clock_type.to_string())
       .show_ui(ui, |ui| {
         for clock_type in all::<Type>() {
           ui.selectable_value(&mut gui.clock_type, clock_type, clock_type.to_string());
         }
       });
-    let size = f32::from(gui.config.get_text_size()) * 2.0;
+    let size = size * 2.0;
     match gui.clock_type {
       Type::None => (),
       Type::Increment => {
         ui.horizontal_top(|ui| {
-          ui.label("Time (minutes):".to_owned());
+          ui.label("Time (min):".to_owned());
           let value = clock_input(ui, size, gui.clock_data[0]);
           gui.clock_data[0] = value;
           gui.clock_data[1] = value;
-          ui.label("Increment (seconds):");
+          ui.label("Increment (s):");
           let value = clock_input(ui, size, gui.clock_data[2]);
           gui.clock_data[2] = value;
           gui.clock_data[3] = value;
@@ -591,15 +604,15 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
       }
       Type::Handicap => {
         ui.horizontal_top(|ui| {
-          ui.label("White Time (minutes):");
+          ui.label("White Time (min):");
           gui.clock_data[0] = clock_input(ui, size, gui.clock_data[0]);
-          ui.label("White Increment (seconds):");
+          ui.label("Increment (s):");
           gui.clock_data[2] = clock_input(ui, size, gui.clock_data[2]);
         });
         ui.horizontal_top(|ui| {
-          ui.label("Black Time (minutes):");
+          ui.label("Black Time (min):");
           gui.clock_data[1] = clock_input(ui, size, gui.clock_data[1]);
-          ui.label("Black Increment (seconds):");
+          ui.label("Increment (s):");
           gui.clock_data[3] = clock_input(ui, size, gui.clock_data[3]);
         });
       }

@@ -116,9 +116,9 @@ pub enum Type {
 impl ToString for Type {
   fn to_string(&self) -> String {
     match self {
-      Self::None => "No Clock".to_owned(),
+      Self::None => "None".to_owned(),
       Self::Increment => "Increment".to_owned(),
-      Self::Handicap => "Increment with Handicap".to_owned(),
+      Self::Handicap => "Handicap".to_owned(),
     }
   }
 }

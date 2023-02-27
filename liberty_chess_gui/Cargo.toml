@@ -1,6 +1,6 @@
 [package]
 name = "liberty_chess_gui"
-version = "0.14.0"
+version = "0.14.1"
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -11,6 +11,7 @@ liberty_chess = {workspace = true}
 clipboard = {workspace = true, optional = true}
 eframe = {workspace = true}
 enum-iterator = {workspace = true}
+rand = {workspace = true}
 resvg = {workspace = true}
 sound = {workspace = true, optional = true}
 

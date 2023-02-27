@@ -3,7 +3,7 @@ members = ["liberty_chess_gui", "perft"]
 
 [workspace.package]
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
-version = "0.14.0"
+version = "0.14.1"
 repository = "https://github.com/Mathmagician8191/Liberty-Chess"
 license = "GPL-3.0"
 edition = "2021"

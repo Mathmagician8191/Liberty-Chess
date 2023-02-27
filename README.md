@@ -6,7 +6,7 @@ TODO for version 1.0:
 - Promotion for help screen
 - Support for chess engines
 
-For information on the copyright of the images, see COPYING.md.
+For information on the copyright of the images and sounds can be found in the in-game credits.
 
 For information on the types of pieces and their moves, see Pieces.md
 
