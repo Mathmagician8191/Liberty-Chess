@@ -7,9 +7,11 @@ use crate::credits::Credits;
 use crate::gamemodes::{GameMode, Presets, RandomConfig};
 use crate::help_page::HelpPage;
 use crate::helpers::{char_text_edit, get_fen, label_text_edit, menu_button};
-use crate::themes::{Colours, Theme};
+use crate::themes::{Colours, PresetTheme, Theme};
 use core::time::Duration;
+use eframe::epaint::Rgba;
 use eframe::{egui, App, CreationContext, Frame, Storage};
+use egui::color_picker::color_edit_button_rgb;
 use egui::{
   pos2, Align2, Area, Button, CentralPanel, Color32, ColorImage, ComboBox, Context, Label, Rect,
   Response, RichText, Rounding, ScrollArea, Sense, SidePanel, Slider, TextureHandle, TextureId,
@@ -19,6 +21,7 @@ use enum_iterator::all;
 use liberty_chess::{to_name, Board, Gamestate, Piece};
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{FitTo, Tree};
+use themes::CustomTheme;
 
 #[cfg(feature = "benchmarking")]
 use std::time::Instant;
@@ -641,12 +644,32 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
   let mut new_theme = gui.config.get_theme();
   menu_button(gui, ui);
   ComboBox::from_id_source("Theme")
-    .selected_text("Theme: ".to_owned() + &new_theme.to_string())
+    .selected_text("Theme: ".to_owned() + &new_theme.show())
     .show_ui(ui, |ui| {
-      for theme in all::<Theme>() {
-        ui.selectable_value(&mut new_theme, theme, theme.to_string());
+      for theme in all::<PresetTheme>() {
+        ui.selectable_value(&mut new_theme, Theme::Preset(theme), theme.to_string());
       }
+      ui.selectable_value(
+        &mut new_theme,
+        Theme::Custom(CustomTheme::new(gui.config.get_theme())),
+        "Custom",
+      );
     });
+  match new_theme {
+    Theme::Preset(_) => (),
+    Theme::Custom(ref mut custom) => {
+      let bg = custom.background.to_tuple();
+      let mut background = [bg.0, bg.1, bg.2];
+      color_edit_button_rgb(ui, &mut background);
+      let [r, g, b] = background;
+      custom.background = Rgba::from_rgb(r, g, b);
+      let text = custom.text.to_tuple();
+      let mut text = [text.0, text.1, text.2];
+      color_edit_button_rgb(ui, &mut text);
+      let [r, g, b] = text;
+      custom.text = Rgba::from_rgb(r, g, b);
+    }
+  }
   if gui.config.get_theme() != new_theme {
     gui.config.set_theme(ctx, new_theme);
   }

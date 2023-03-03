@@ -1,4 +1,4 @@
-use crate::themes::Theme;
+use crate::themes::{GetVisuals, PresetTheme, Theme};
 use core::str::FromStr;
 use eframe::{egui, Storage};
 use egui::{Context, TextStyle};
@@ -115,7 +115,6 @@ impl Configuration {
     let font = egui::FontId::new(text_size, egui::FontFamily::Proportional);
     style.spacing.icon_width = text_size * 0.7;
     style.spacing.icon_width_inner = text_size * 0.5;
-    //style.spacing.slider_width = text_size * 1.5 + 200.0;
     style.spacing.combo_height = 460.0;
     style.text_styles = [
       (TextStyle::Body, font.clone()),
@@ -133,7 +132,7 @@ impl Configuration {
 
 impl Parameter<Self> for Theme {
   fn default_value() -> Self {
-    Self::Dark
+    Self::Preset(PresetTheme::Dark)
   }
 }
 

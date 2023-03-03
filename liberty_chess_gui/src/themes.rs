@@ -1,9 +1,122 @@
 use core::str::FromStr;
-use eframe::egui::{style::Visuals, Color32};
+use eframe::egui;
+use egui::epaint::Rgba;
+use egui::style::Visuals;
+use egui::Color32;
 use enum_iterator::{all, Sequence};
 
-#[derive(Clone, Copy, Eq, PartialEq, Sequence)]
+fn rgba_to_string(rgba: Rgba) -> String {
+  let colour = Color32::from(rgba).to_array();
+  let mut result = 0;
+  for (i, value) in colour.iter().enumerate() {
+    result += (*value as u32) << (24 - 8 * i);
+  }
+  format!("{result:X}")
+}
+
+pub trait GetVisuals {
+  fn get_visuals(&self) -> Visuals;
+}
+
+#[derive(Clone, Copy, PartialEq)]
 pub enum Theme {
+  Preset(PresetTheme),
+  Custom(CustomTheme),
+}
+
+impl Theme {
+  pub fn show(&self) -> String {
+    match self {
+      Self::Preset(preset) => preset.to_string(),
+      Self::Custom(_) => "Custom".to_owned(),
+    }
+  }
+}
+
+impl GetVisuals for Theme {
+  fn get_visuals(&self) -> Visuals {
+    match self {
+      Self::Preset(preset) => preset.get_visuals(),
+      Self::Custom(custom) => custom.get_visuals(),
+    }
+  }
+}
+
+impl ToString for Theme {
+  fn to_string(&self) -> String {
+    match self {
+      Self::Preset(preset) => preset.to_string(),
+      Self::Custom(custom) => custom.to_string(),
+    }
+  }
+}
+
+impl FromStr for Theme {
+  type Err = ();
+
+  fn from_str(theme: &str) -> Result<Self, Self::Err> {
+    theme.parse::<PresetTheme>().map_or_else(
+      |_| Ok(Self::Custom(theme.parse::<CustomTheme>()?)),
+      |theme| Ok(Self::Preset(theme)),
+    )
+  }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub struct CustomTheme {
+  pub background: Rgba,
+  pub text: Rgba,
+}
+
+impl CustomTheme {
+  pub fn new(theme: Theme) -> Self {
+    match theme {
+      Theme::Preset(preset) => preset.get_custom(),
+      Theme::Custom(custom) => custom,
+    }
+  }
+}
+
+impl GetVisuals for CustomTheme {
+  fn get_visuals(&self) -> Visuals {
+    Visuals {
+      override_text_color: Some(self.text.into()),
+      panel_fill: self.background.into(),
+      ..Visuals::dark()
+    }
+  }
+}
+
+impl ToString for CustomTheme {
+  fn to_string(&self) -> String {
+    rgba_to_string(self.background) + &rgba_to_string(self.text)
+  }
+}
+
+impl FromStr for CustomTheme {
+  type Err = ();
+
+  fn from_str(theme: &str) -> Result<Self, Self::Err> {
+    let value = u64::from_str_radix(theme, 16).map_err(|_| ())?;
+    Ok(Self {
+      background: Rgba::from_srgba_unmultiplied(
+        (value >> 56) as u8,
+        (value >> 48) as u8,
+        (value >> 40) as u8,
+        (value >> 32) as u8,
+      ),
+      text: Rgba::from_srgba_unmultiplied(
+        (value >> 24) as u8,
+        (value >> 16) as u8,
+        (value >> 8) as u8,
+        value as u8,
+      ),
+    })
+  }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Sequence)]
+pub enum PresetTheme {
   Dark,
   Red,
   Yellow,
@@ -13,11 +126,17 @@ pub enum Theme {
   Light,
 }
 
-pub enum ThemeError {
-  NotFound,
+impl PresetTheme {
+  fn get_custom(&self) -> CustomTheme {
+    let visuals = self.get_visuals();
+    CustomTheme {
+      background: visuals.extreme_bg_color.into(),
+      text: visuals.text_color().into(),
+    }
+  }
 }
 
-impl ToString for Theme {
+impl ToString for PresetTheme {
   fn to_string(&self) -> String {
     match self {
       Self::Dark => "Dark",
@@ -32,8 +151,8 @@ impl ToString for Theme {
   }
 }
 
-impl Theme {
-  pub fn get_visuals(self) -> Visuals {
+impl GetVisuals for PresetTheme {
+  fn get_visuals(&self) -> Visuals {
     match self {
       Self::Dark => Visuals::dark(),
       Self::Red => Visuals {
@@ -61,13 +180,13 @@ impl Theme {
   }
 }
 
-impl FromStr for Theme {
-  type Err = ThemeError;
+impl FromStr for PresetTheme {
+  type Err = ();
 
-  fn from_str(theme: &str) -> Result<Self, ThemeError> {
+  fn from_str(theme: &str) -> Result<Self, Self::Err> {
     all::<Self>()
       .find(|&possible_theme| possible_theme.to_string() == theme)
-      .ok_or(ThemeError::NotFound)
+      .ok_or(())
   }
 }
 

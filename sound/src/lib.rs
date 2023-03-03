@@ -204,7 +204,7 @@ impl Engine {
     #[cfg(feature = "music")] music_volume: &Option<String>,
     #[cfg(feature = "music")] dramatic: &Option<String>,
   ) -> Option<Self> {
-    let enabled = enabled?.parse::<bool>().ok()?;
+    let enabled = enabled.as_deref() != Some("false");
     #[cfg(feature = "music")]
     let dramatic = dramatic.as_deref() != Some("false");
     if enabled {

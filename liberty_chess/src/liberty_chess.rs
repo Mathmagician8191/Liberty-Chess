@@ -462,7 +462,7 @@ fn process_board(board: &str) -> Result<Board, FenError> {
     }
     if let Some(i) = width {
       if vec.len() != i {
-        return Err(FenError::NonRectangular);
+        Err(FenError::NonRectangular)?;
       }
     } else {
       width = Some(vec.len());
@@ -472,7 +472,7 @@ fn process_board(board: &str) -> Result<Board, FenError> {
 
   let width = width.unwrap_or(0);
   if width < 2 || height < 2 {
-    return Err(FenError::Size);
+    Err(FenError::Size)?;
   }
 
   Ok(Board {
@@ -1113,7 +1113,7 @@ impl Board {
     board.make_move(start, end);
     for king in board.kings(!board.to_move) {
       if board.is_attacked((king.0, king.1), board.to_move) {
-        return None;
+        None?;
       }
     }
 
