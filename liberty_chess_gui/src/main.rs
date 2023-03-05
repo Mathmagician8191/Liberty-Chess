@@ -6,12 +6,13 @@ use crate::config::{Configuration, BOARD_KEY};
 use crate::credits::Credits;
 use crate::gamemodes::{GameMode, Presets, RandomConfig};
 use crate::help_page::HelpPage;
-use crate::helpers::{char_text_edit, get_fen, label_text_edit, menu_button};
+use crate::helpers::{
+  char_text_edit, checkbox, colour_edit, get_fen, label_text_edit, menu_button, UV,
+};
 use crate::themes::{Colours, PresetTheme, Theme};
 use core::time::Duration;
-use eframe::epaint::Rgba;
+use eframe::epaint::Shape;
 use eframe::{egui, App, CreationContext, Frame, Storage};
-use egui::color_picker::color_edit_button_rgb;
 use egui::{
   pos2, Align2, Area, Button, CentralPanel, Color32, ColorImage, ComboBox, Context, Label, Rect,
   Response, RichText, Rounding, ScrollArea, Sense, SidePanel, Slider, TextureHandle, TextureId,
@@ -31,9 +32,6 @@ use crate::helpers::clock_input;
 #[cfg(feature = "clock")]
 use liberty_chess::clock::{Clock, Type};
 
-#[cfg(feature = "clipboard")]
-use clipboard::{ClipboardContext, ClipboardProvider};
-
 #[cfg(feature = "music")]
 use crate::config::{DRAMATIC_ENABLED_KEY, MUSIC_VOLUME_KEY};
 
@@ -51,6 +49,7 @@ mod helpers;
 mod images;
 mod themes;
 
+#[derive(Eq, PartialEq)]
 enum Screen {
   Menu,
   Game(Box<Board>),
@@ -86,8 +85,6 @@ pub(crate) struct LibertyChessGUI {
   #[cfg(feature = "clock")]
   clock: Option<Clock>,
   promotion: Piece,
-  #[cfg(feature = "clipboard")]
-  clipboard: Option<ClipboardContext>,
 
   // fields for different screens
   help_page: HelpPage,
@@ -122,7 +119,7 @@ impl LibertyChessGUI {
     #[cfg(feature = "sound")]
     let audio_engine = match ctx.storage {
       Some(data) => Engine::load(
-        data.get_string(SOUND_KEY),
+        &data.get_string(SOUND_KEY),
         &data.get_string(EFFECT_VOLUME_KEY),
         #[cfg(feature = "music")]
         &data.get_string(MUSIC_VOLUME_KEY),
@@ -153,8 +150,6 @@ impl LibertyChessGUI {
       #[cfg(feature = "clock")]
       clock: None,
       promotion: liberty_chess::QUEEN,
-      #[cfg(feature = "clipboard")]
-      clipboard: ClipboardProvider::new().ok(),
 
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
@@ -177,8 +172,7 @@ impl LibertyChessGUI {
   fn get_image(&mut self, ctx: &Context, piece: Piece, size: u32) -> TextureId {
     let index = match piece {
       _ if piece > 0 => (piece - 1) as usize,
-      _ if piece < 0 => (17 - piece) as usize,
-      _ => unreachable!(),
+      _ => (17 - piece) as usize,
     };
     if let Some(map) = &self.renders[index] {
       if map.size() == [size as usize; 2] {
@@ -195,8 +189,9 @@ impl LibertyChessGUI {
     .unwrap();
     let image = ColorImage::from_rgba_unmultiplied([size as usize; 2], pixmap.data());
     let texture = ctx.load_texture("piece", image, TextureOptions::NEAREST);
-    self.renders[index] = Some(texture.clone());
-    texture.id()
+    let id = texture.id();
+    self.renders[index] = Some(texture);
+    id
   }
 }
 
@@ -327,6 +322,14 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
     }
     Screen::Credits | Screen::Settings => (),
   }
+  #[cfg(feature = "sound")]
+  if let Some(player) = &mut gui.audio_engine {
+    player.play(&if screen == Screen::Menu {
+      Effect::Return
+    } else {
+      Effect::Navigate
+    });
+  }
   gui.screen = screen;
 }
 
@@ -340,9 +343,9 @@ fn render_board(
 ) {
   let available_size = ctx.available_rect().size();
   let rows = gamestate.height();
-  let columns = gamestate.width();
+  let cols = gamestate.width();
   let rows_float = rows as f32;
-  let cols_float = columns as f32;
+  let cols_float = cols as f32;
   let row_size = (available_size.y / rows_float).floor();
   let column_size = (available_size.x / cols_float).floor();
   let size = f32::max(1.0, f32::min(row_size, column_size));
@@ -361,19 +364,21 @@ fn render_board(
   if response.clicked() {
     register_click(gui, gamestate, &response, size as usize, flipped);
   }
+  let mut images = Vec::new();
   for i in (0..rows).rev() {
+    let (min_y, max_y) = (i as f32, (i + 1) as f32);
     let (min_y, max_y) = if flipped {
       (
-        (i as f32).mul_add(size, rect.min.y),
-        ((i + 1) as f32).mul_add(size, rect.min.y),
+        min_y.mul_add(size, rect.min.y),
+        max_y.mul_add(size, rect.min.y),
       )
     } else {
       (
-        ((i + 1) as f32).mul_add(-size, rect.max.y),
-        (i as f32).mul_add(-size, rect.max.y),
+        max_y.mul_add(-size, rect.max.y),
+        min_y.mul_add(-size, rect.max.y),
       )
     };
-    for j in 0..columns {
+    for j in 0..cols {
       let coords = (i, j);
       let black_square = (i + j) % 2 == 0;
       let mut colour = if black_square {
@@ -381,13 +386,12 @@ fn render_board(
       } else {
         Colours::WhiteSquare
       };
-      if let Some([from, to]) = gui.moved {
+      if gamestate.attacked_kings().contains(&&coords) {
+        colour = Colours::Check;
+      } else if let Some([from, to]) = gui.moved {
         if coords == from || coords == to {
           colour = Colours::Moved;
         }
-      }
-      if gamestate.attacked_kings().contains(&&coords) {
-        colour = Colours::Check;
       }
       let piece = gamestate.get_piece(coords);
       if let Some(start) = gui.selected {
@@ -410,23 +414,19 @@ fn render_board(
         }
       }
       let rect = Rect {
-        min: ((j as f32).mul_add(size, rect.min.x), min_y).into(),
-        max: (((j + 1) as f32).mul_add(size, rect.min.x), max_y).into(),
+        min: pos2((j as f32).mul_add(size, rect.min.x), min_y),
+        max: pos2(((j + 1) as f32).mul_add(size, rect.min.x), max_y),
       };
       if colour != Colours::WhiteSquare {
         painter.rect_filled(rect, Rounding::none(), colour.value());
       }
       if piece != 0 {
         let texture = gui.get_image(ctx, piece, size as u32);
-        painter.image(
-          texture,
-          rect,
-          Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-          Color32::WHITE,
-        );
+        images.push(Shape::image(texture, rect, UV, Color32::WHITE));
       };
     }
   }
+  painter.extend(images);
 }
 
 fn register_click(
@@ -449,6 +449,8 @@ fn register_click(
       let coords = (y, x);
       let capture = *piece != 0;
       if let Some(selected) = gui.selected {
+        #[cfg(feature = "sound")]
+        let mut effect = Effect::Illegal;
         if gamestate.check_pseudolegal(selected, coords) {
           if let Some(mut newstate) = gamestate.get_legal(selected, coords) {
             if !newstate.promotion_available() {
@@ -460,17 +462,22 @@ fn register_click(
             }
             gui.undo.push(gamestate.clone());
             #[cfg(feature = "sound")]
-            if let Some(player) = &mut gui.audio_engine {
-              let effect = if newstate.attacked_kings().is_empty() {
-                if capture {
-                  Effect::Capture
-                } else {
-                  Effect::Move
+            {
+              effect = match newstate.state() {
+                Gamestate::Checkmate(_) => Effect::Victory,
+                Gamestate::Stalemate | Gamestate::Repetition | Gamestate::Move50 => Effect::Draw,
+                Gamestate::InProgress => {
+                  if newstate.attacked_kings().is_empty() {
+                    if capture {
+                      Effect::Capture
+                    } else {
+                      Effect::Move
+                    }
+                  } else {
+                    Effect::Check
+                  }
                 }
-              } else {
-                Effect::Check
               };
-              player.play(&effect);
             }
             #[cfg(feature = "music")]
             {
@@ -482,6 +489,10 @@ fn register_click(
             gui.screen = Screen::Game(Box::new(newstate));
             gui.moved = Some([selected, coords]);
           }
+        }
+        #[cfg(feature = "sound")]
+        if let Some(player) = &mut gui.audio_engine {
+          player.play(&effect);
         }
         gui.selected = None;
       } else if capture && gamestate.to_move() == (*piece > 0) {
@@ -536,7 +547,13 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
       label_text_edit(ui, size, &mut config.height, "Height");
     }
   }
-  ui.checkbox(&mut gui.friendly, "Friendly Fire");
+  checkbox(
+    ui,
+    &mut gui.friendly,
+    "Friendly Fire",
+    #[cfg(feature = "sound")]
+    gui.audio_engine.as_mut(),
+  );
   if ui.button("Start Game").clicked() {
     if let GameMode::Random(ref config) = gui.gamemode {
       gui.fen = config.to_string();
@@ -658,16 +675,8 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
   match new_theme {
     Theme::Preset(_) => (),
     Theme::Custom(ref mut custom) => {
-      let bg = custom.background.to_tuple();
-      let mut background = [bg.0, bg.1, bg.2];
-      color_edit_button_rgb(ui, &mut background);
-      let [r, g, b] = background;
-      custom.background = Rgba::from_rgb(r, g, b);
-      let text = custom.text.to_tuple();
-      let mut text = [text.0, text.1, text.2];
-      color_edit_button_rgb(ui, &mut text);
-      let [r, g, b] = text;
-      custom.text = Rgba::from_rgb(r, g, b);
+      colour_edit(ui, &mut custom.background, "Background");
+      colour_edit(ui, &mut custom.text, "Text");
     }
   }
   if gui.config.get_theme() != new_theme {
@@ -681,13 +690,16 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
   #[cfg(feature = "sound")]
   {
     let mut sound = gui.audio_engine.is_some();
-    ui.checkbox(&mut sound, "Sound");
-    match (sound, gui.audio_engine.is_some()) {
-      (true, false) => gui.audio_engine = Engine::new(),
-      (false, true) => gui.audio_engine = None,
-      _ => (),
-    }
-    if let Some(engine) = &mut gui.audio_engine {
+    if checkbox(
+      ui,
+      &mut sound,
+      "Sound",
+      #[cfg(feature = "sound")]
+      None,
+    ) {
+      gui.audio_engine = if sound { Engine::new() } else { None }
+    };
+    if let Some(ref mut engine) = gui.audio_engine {
       let mut volume = engine.get_sound_volume();
       ui.add(Slider::new(&mut volume, 0..=DEFAULT_VOLUME).text("Move Volume"));
       if volume != engine.get_sound_volume() {
@@ -696,15 +708,12 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       #[cfg(feature = "music")]
       {
         let mut music = engine.music_enabled();
-        ui.checkbox(&mut music, "Music");
-        let enabled = engine.music_enabled();
-        if music != enabled {
+        if checkbox(ui, &mut music, "Music", Some(engine)) {
           engine.toggle_music();
         }
-        if enabled {
+        if music {
           let mut dramatic = engine.dramatic_enabled();
-          ui.checkbox(&mut dramatic, "Dramatic Music");
-          if dramatic != engine.dramatic_enabled() {
+          if checkbox(ui, &mut dramatic, "Dramatic Music", Some(engine)) {
             engine.toggle_dramatic();
           }
           let mut volume = engine.get_music_volume();
@@ -807,14 +816,8 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
   }
 
   // let the user copy the FEN to clipboard
-  #[cfg(feature = "clipboard")]
-  {
-    let fen = get_fen(gui);
-    if let Some(clipboard) = &mut gui.clipboard {
-      if ui.button("Copy FEN").clicked() {
-        clipboard.set_contents(fen).unwrap();
-      }
-    }
+  if ui.button("Copy FEN").clicked() {
+    ui.output().copied_text = get_fen(gui);
   }
 
   // if the game is over, report the reason

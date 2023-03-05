@@ -14,12 +14,11 @@ edition = "2021"
 liberty_chess = {path = "liberty_chess"}
 sound = {path = "sound"}
 array2d = "0.2.1"
-clipboard = "0.4.6"
 eframe = {version = "0.20.1", features = ["persistence"]}
 enum-iterator = "1.2.0"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
-resvg = "0.25.0"
+resvg = "0.29.0"
 soloud = "1.0.2"
 threadpool = "1.8.1"
 

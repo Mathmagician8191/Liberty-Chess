@@ -41,11 +41,18 @@ fn load_audio(data: &[u8]) -> Wav {
   wav
 }
 
-fn get_effects() -> [Wav; 3] {
+fn get_effects() -> [Wav; 10] {
   [
     load_audio(include_bytes!("../../resources/sounds/Move.ogg")),
+    load_audio(include_bytes!("../../resources/sounds/Illegal.ogg")),
     load_audio(include_bytes!("../../resources/sounds/Capture.ogg")),
     load_audio(include_bytes!("../../resources/sounds/Check.ogg")),
+    load_audio(include_bytes!("../../resources/sounds/Victory.ogg")),
+    load_audio(include_bytes!("../../resources/sounds/Draw.ogg")),
+    load_audio(include_bytes!("../../resources/sounds/Navigate.ogg")),
+    load_audio(include_bytes!("../../resources/sounds/Return.ogg")),
+    load_audio(include_bytes!("../../resources/sounds/Enable.ogg")),
+    load_audio(include_bytes!("../../resources/sounds/Disable.ogg")),
   ]
 }
 
@@ -53,10 +60,24 @@ fn get_effects() -> [Wav; 3] {
 pub enum Effect {
   /// The default move sound
   Move,
+  /// The sound for an illegal move attempt
+  Illegal,
   /// The sound for a capture occuring
   Capture,
   /// The sound for check. Has priority over capture if they both occur
   Check,
+  /// The sound for victory
+  Victory,
+  /// The sound for a draw
+  Draw,
+  /// The sound for navigating to another page
+  Navigate,
+  /// The sound for returning to the main menu
+  Return,
+  /// The sound for enabling a checkbox
+  Enable,
+  /// The sound for disabling a checkbox
+  Disable,
 }
 
 #[cfg(feature = "music")]
@@ -145,7 +166,7 @@ impl MusicPlayer {
 pub struct Engine {
   player: Soloud,
   sound_volume: u8,
-  sounds: [Wav; 3],
+  sounds: [Wav; 10],
   #[cfg(feature = "music")]
   music_player: Option<MusicPlayer>,
 }
@@ -199,7 +220,7 @@ impl Engine {
   /// Returns `None` if it is disabled or fails to load.
   #[must_use]
   pub fn load(
-    enabled: Option<String>,
+    enabled: &Option<String>,
     sound_volume: &Option<String>,
     #[cfg(feature = "music")] music_volume: &Option<String>,
     #[cfg(feature = "music")] dramatic: &Option<String>,
@@ -284,8 +305,15 @@ impl Engine {
     let handle = self.player.play(
       &self.sounds[match *sound {
         Effect::Move => 0,
-        Effect::Capture => 1,
-        Effect::Check => 2,
+        Effect::Illegal => 1,
+        Effect::Capture => 2,
+        Effect::Check => 3,
+        Effect::Victory => 4,
+        Effect::Draw => 5,
+        Effect::Navigate => 6,
+        Effect::Return => 7,
+        Effect::Enable => 8,
+        Effect::Disable => 9,
       }],
     );
     self

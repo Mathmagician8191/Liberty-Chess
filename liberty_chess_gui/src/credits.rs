@@ -98,9 +98,12 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
     }
     #[cfg(feature = "sound")]
     Credits::Sound => {
-      ui.label("Sound effects for piece moving done by:");
+      ui.label("Piece moving and victory/draw sound effects were done by:");
       github(ui, "Enigmahack");
       ui.label("They are licensed under AGPLv3+");
+      ui.label("Illegal move, menu navigation and checkbox sounds done by:");
+      link(ui, "KofiiCup", "https://steamcommunity.com/id/kofiicup/");
+      ui.label("They are licensed under CC BY-NC-SA 4.0");
     }
     #[cfg(feature = "music")]
     Credits::Music => {

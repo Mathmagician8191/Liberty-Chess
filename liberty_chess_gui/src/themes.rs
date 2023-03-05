@@ -1,15 +1,14 @@
 use core::str::FromStr;
 use eframe::egui;
-use egui::epaint::Rgba;
 use egui::style::Visuals;
 use egui::Color32;
 use enum_iterator::{all, Sequence};
 
-fn rgba_to_string(rgba: Rgba) -> String {
-  let colour = Color32::from(rgba).to_array();
+fn rgba_to_string(rgba: Color32) -> String {
+  let colour = rgba.to_array();
   let mut result = 0;
   for (i, value) in colour.iter().enumerate() {
-    result += (*value as u32) << (24 - 8 * i);
+    result += u32::from(*value) << (24 - 8 * i);
   }
   format!("{result:X}")
 }
@@ -18,7 +17,7 @@ pub trait GetVisuals {
   fn get_visuals(&self) -> Visuals;
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum Theme {
   Preset(PresetTheme),
   Custom(CustomTheme),
@@ -62,10 +61,10 @@ impl FromStr for Theme {
   }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct CustomTheme {
-  pub background: Rgba,
-  pub text: Rgba,
+  pub background: Color32,
+  pub text: Color32,
 }
 
 impl CustomTheme {
@@ -80,8 +79,8 @@ impl CustomTheme {
 impl GetVisuals for CustomTheme {
   fn get_visuals(&self) -> Visuals {
     Visuals {
-      override_text_color: Some(self.text.into()),
-      panel_fill: self.background.into(),
+      override_text_color: Some(self.text),
+      panel_fill: self.background,
       ..Visuals::dark()
     }
   }
@@ -96,16 +95,17 @@ impl ToString for CustomTheme {
 impl FromStr for CustomTheme {
   type Err = ();
 
+  #[allow(clippy::cast_possible_truncation)]
   fn from_str(theme: &str) -> Result<Self, Self::Err> {
     let value = u64::from_str_radix(theme, 16).map_err(|_| ())?;
     Ok(Self {
-      background: Rgba::from_srgba_unmultiplied(
+      background: Color32::from_rgba_unmultiplied(
         (value >> 56) as u8,
         (value >> 48) as u8,
         (value >> 40) as u8,
         (value >> 32) as u8,
       ),
-      text: Rgba::from_srgba_unmultiplied(
+      text: Color32::from_rgba_unmultiplied(
         (value >> 24) as u8,
         (value >> 16) as u8,
         (value >> 8) as u8,
@@ -127,11 +127,11 @@ pub enum PresetTheme {
 }
 
 impl PresetTheme {
-  fn get_custom(&self) -> CustomTheme {
+  fn get_custom(self) -> CustomTheme {
     let visuals = self.get_visuals();
     CustomTheme {
-      background: visuals.extreme_bg_color.into(),
-      text: visuals.text_color().into(),
+      background: visuals.panel_fill,
+      text: visuals.text_color(),
     }
   }
 }

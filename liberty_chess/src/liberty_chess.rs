@@ -126,6 +126,14 @@ pub struct Board {
   pub friendly_fire: bool,
 }
 
+impl PartialEq for Board {
+  fn eq(&self, other: &Self) -> bool {
+    self.hash == other.hash
+  }
+}
+
+impl Eq for Board {}
+
 impl ToString for Board {
   fn to_string(&self) -> String {
     // save board layout

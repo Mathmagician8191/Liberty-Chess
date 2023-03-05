@@ -1,11 +1,20 @@
 use crate::{switch_screen, LibertyChessGUI, Screen};
 use core::str::FromStr;
-use eframe::egui::{Context, Image, TextBuffer, TextEdit, Ui};
+use eframe::egui;
+use eframe::epaint::{pos2, Rect};
+use egui::color_picker::{color_edit_button_srgba, Alpha};
+use egui::{Color32, Context, Image, TextBuffer, TextEdit, Ui};
+
+#[cfg(feature = "sound")]
+use sound::{Effect, Engine};
 
 //sizes of things
 pub const ICON_SIZE: u32 = 48;
 #[allow(clippy::cast_precision_loss)]
 const ICON_SIZE_FLOAT: f32 = ICON_SIZE as f32;
+
+//UV that does nothing
+pub const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 
 #[cfg(feature = "clock")]
 const MAX_TIME: u64 = 360;
@@ -37,6 +46,34 @@ pub(crate) fn get_fen(gui: &LibertyChessGUI) -> String {
   } else {
     String::new()
   }
+}
+
+pub fn colour_edit(ui: &mut Ui, colour: &mut Color32, text: &'static str) {
+  ui.horizontal(|ui| {
+    color_edit_button_srgba(ui, colour, Alpha::Opaque);
+    ui.label(text);
+  });
+}
+
+// Checkbox wrapper with selection/deselection sounds
+pub fn checkbox(
+  ui: &mut Ui,
+  checked: &mut bool,
+  text: &'static str,
+  #[cfg(feature = "sound")] player: Option<&mut Engine>,
+) -> bool {
+  let clicked = ui.checkbox(checked, text).clicked();
+  #[cfg(feature = "sound")]
+  if let Some(player) = player {
+    if clicked {
+      player.play(&if *checked {
+        Effect::Enable
+      } else {
+        Effect::Disable
+      });
+    }
+  }
+  clicked
 }
 
 // Wrappers for text editing
