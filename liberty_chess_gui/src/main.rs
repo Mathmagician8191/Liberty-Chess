@@ -11,12 +11,12 @@ use crate::helpers::{
 };
 use crate::themes::{Colours, PresetTheme, Theme};
 use core::time::Duration;
-use eframe::epaint::Shape;
+use eframe::epaint::{Pos2, Shape};
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
-  pos2, Align2, Area, Button, CentralPanel, Color32, ColorImage, ComboBox, Context, Label, Rect,
-  Response, RichText, Rounding, ScrollArea, Sense, SidePanel, Slider, TextureHandle, TextureId,
-  TextureOptions, TopBottomPanel, Ui, Vec2,
+  pos2, Align2, Area, Button, CentralPanel, Color32, ColorImage, ComboBox, Context, Label,
+  PointerButton, Rect, Response, RichText, Rounding, ScrollArea, Sense, SidePanel, Slider,
+  TextureHandle, TextureId, TextureOptions, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
 use liberty_chess::{to_name, Board, Gamestate, Piece};
@@ -28,7 +28,7 @@ use themes::CustomTheme;
 use std::time::Instant;
 
 #[cfg(feature = "clock")]
-use crate::helpers::clock_input;
+use crate::helpers::draw_clock_edit;
 #[cfg(feature = "clock")]
 use liberty_chess::clock::{Clock, Type};
 
@@ -67,6 +67,7 @@ pub(crate) struct LibertyChessGUI {
 
   // fields for board rendering
   selected: Option<(usize, usize)>,
+  drag: Option<((usize, usize), Pos2)>,
   moved: Option<[(usize, usize); 2]>,
   flipped: bool,
 
@@ -134,6 +135,7 @@ impl LibertyChessGUI {
       config,
 
       selected: None,
+      drag: None,
       moved: None,
       flipped: false,
 
@@ -359,23 +361,43 @@ fn render_board(
     y: size * rows_float,
   };
   let (response, painter) = ui.allocate_painter(rect, sense);
-  let rect = response.rect;
-  painter.rect_filled(rect, Rounding::none(), Colours::WhiteSquare.value());
-  if response.clicked() {
-    register_click(gui, gamestate, &response, size as usize, flipped);
+  let board_rect = response.rect;
+  painter.rect_filled(board_rect, Rounding::none(), Colours::WhiteSquare.value());
+  if let Some(location) = response.interact_pointer_pos() {
+    let hover = if board_rect.contains(location) {
+      let size = size as usize;
+      let x = (location.x - board_rect.min.x) as usize / size;
+      let y = if flipped {
+        location.y - board_rect.min.y
+      } else {
+        board_rect.max.y - location.y
+      } as usize
+        / size;
+      let coords = (y, x);
+      gamestate.fetch_piece(coords).map(|piece| (coords, *piece))
+    } else {
+      None
+    };
+    register_response(gui, gamestate, &response, hover);
   }
+  let (dragged, offset) = if let Some((coords, offset)) = gui.drag {
+    (Some(coords), offset)
+  } else {
+    (None, Pos2::default())
+  };
+  let mut dragged_image = None;
   let mut images = Vec::new();
   for i in (0..rows).rev() {
     let (min_y, max_y) = (i as f32, (i + 1) as f32);
     let (min_y, max_y) = if flipped {
       (
-        min_y.mul_add(size, rect.min.y),
-        max_y.mul_add(size, rect.min.y),
+        min_y.mul_add(size, board_rect.min.y),
+        max_y.mul_add(size, board_rect.min.y),
       )
     } else {
       (
-        max_y.mul_add(-size, rect.max.y),
-        min_y.mul_add(-size, rect.max.y),
+        max_y.mul_add(-size, board_rect.max.y),
+        min_y.mul_add(-size, board_rect.max.y),
       )
     };
     for j in 0..cols {
@@ -393,8 +415,23 @@ fn render_board(
           colour = Colours::Moved;
         }
       }
+      let rect = Rect {
+        min: pos2((j as f32).mul_add(size, board_rect.min.x), min_y),
+        max: pos2(((j + 1) as f32).mul_add(size, board_rect.min.x), max_y),
+      };
       let piece = gamestate.get_piece(coords);
-      if let Some(start) = gui.selected {
+      let (selected, piece_rect) = if let Some(dragged) = dragged {
+        let mut rect = rect;
+        if dragged == coords {
+          rect = rect.translate(offset.to_vec2());
+          let center = rect.center().clamp(board_rect.min, board_rect.max);
+          rect.set_center(center);
+        }
+        (Some(dragged), rect)
+      } else {
+        (gui.selected, rect)
+      };
+      if let Some(start) = selected {
         if start == coords {
           colour = Colours::Selected;
         } else if gamestate.check_pseudolegal(start, coords)
@@ -413,93 +450,127 @@ fn render_board(
           }
         }
       }
-      let rect = Rect {
-        min: pos2((j as f32).mul_add(size, rect.min.x), min_y),
-        max: pos2(((j + 1) as f32).mul_add(size, rect.min.x), max_y),
-      };
       if colour != Colours::WhiteSquare {
         painter.rect_filled(rect, Rounding::none(), colour.value());
       }
       if piece != 0 {
         let texture = gui.get_image(ctx, piece, size as u32);
-        images.push(Shape::image(texture, rect, UV, Color32::WHITE));
+        let image = Shape::image(texture, piece_rect, UV, Color32::WHITE);
+        if dragged == Some(coords) {
+          dragged_image = Some(image);
+        } else {
+          images.push(image);
+        }
       };
     }
   }
   painter.extend(images);
+  if let Some(image) = dragged_image {
+    painter.add(image);
+  }
 }
 
-fn register_click(
+fn register_response(
   gui: &mut LibertyChessGUI,
   gamestate: &Board,
   response: &Response,
-  size: usize,
-  flipped: bool,
+  hover: Option<((usize, usize), Piece)>,
 ) {
-  if let Some(location) = response.interact_pointer_pos() {
-    let rect = response.rect;
-    let x = (location.x - rect.min.x) as usize / size;
-    let y = if flipped {
-      location.y - rect.min.y
-    } else {
-      rect.max.y - location.y
-    } as usize
-      / size;
-    if let Some(piece) = gamestate.fetch_piece(y, x) {
-      let coords = (y, x);
-      let capture = *piece != 0;
+  if let Some((coords, piece)) = hover {
+    let capture = piece != 0;
+    let valid_piece = capture && gamestate.to_move() == (piece > 0);
+    if response.clicked() {
       if let Some(selected) = gui.selected {
-        #[cfg(feature = "sound")]
-        let mut effect = Effect::Illegal;
-        if gamestate.check_pseudolegal(selected, coords) {
-          if let Some(mut newstate) = gamestate.get_legal(selected, coords) {
-            if !newstate.promotion_available() {
-              newstate.update();
-              #[cfg(feature = "clock")]
-              if let Some(clock) = &mut gui.clock {
-                clock.switch_clocks();
-              }
-            }
-            gui.undo.push(gamestate.clone());
-            #[cfg(feature = "sound")]
-            {
-              effect = match newstate.state() {
-                Gamestate::Checkmate(_) => Effect::Victory,
-                Gamestate::Stalemate | Gamestate::Repetition | Gamestate::Move50 => Effect::Draw,
-                Gamestate::InProgress => {
-                  if newstate.attacked_kings().is_empty() {
-                    if capture {
-                      Effect::Capture
-                    } else {
-                      Effect::Move
-                    }
-                  } else {
-                    Effect::Check
-                  }
-                }
-              };
-            }
-            #[cfg(feature = "music")]
-            {
-              let dramatic = get_dramatic(&newstate) + if capture { 0.5 } else { 0.0 };
-              if let Some(ref mut player) = gui.audio_engine {
-                player.set_dramatic(dramatic);
-              }
-            }
-            gui.screen = Screen::Game(Box::new(newstate));
-            gui.moved = Some([selected, coords]);
-          }
-        }
-        #[cfg(feature = "sound")]
-        if let Some(player) = &mut gui.audio_engine {
-          player.play(&effect);
-        }
-        gui.selected = None;
-      } else if capture && gamestate.to_move() == (*piece > 0) {
+        attempt_move(
+          gui,
+          gamestate,
+          selected,
+          coords,
+          #[cfg(feature = "sound")]
+          capture,
+        );
+      } else if valid_piece {
         gui.selected = Some(coords);
       }
     }
+    if response.drag_started() && response.dragged_by(PointerButton::Primary) && valid_piece {
+      gui.drag = Some((coords, Pos2::default()));
+    }
   }
+  if let Some((start, ref mut offset)) = gui.drag {
+    *offset += response.drag_delta();
+    if response.drag_released() {
+      #[cfg(feature = "sound")]
+      if let Some((coords, piece)) = hover {
+        if start != coords {
+          let capture = piece != 0;
+          attempt_move(gui, gamestate, start, coords, capture);
+        }
+      }
+      #[cfg(not(feature = "sound"))]
+      if let Some((coords, _)) = hover {
+        if start != coords {
+          attempt_move(gui, gamestate, start, coords);
+        }
+      }
+      gui.drag = None;
+    }
+  }
+}
+
+fn attempt_move(
+  gui: &mut LibertyChessGUI,
+  gamestate: &Board,
+  selected: (usize, usize),
+  coords: (usize, usize),
+  #[cfg(feature = "sound")] capture: bool,
+) {
+  #[cfg(feature = "sound")]
+  let mut effect = Effect::Illegal;
+  if gamestate.check_pseudolegal(selected, coords) {
+    if let Some(mut newstate) = gamestate.get_legal(selected, coords) {
+      if !newstate.promotion_available() {
+        newstate.update();
+        #[cfg(feature = "clock")]
+        if let Some(clock) = &mut gui.clock {
+          clock.switch_clocks();
+        }
+      }
+      gui.undo.push(gamestate.clone());
+      #[cfg(feature = "sound")]
+      {
+        effect = match newstate.state() {
+          Gamestate::Checkmate(_) => Effect::Victory,
+          Gamestate::Stalemate | Gamestate::Repetition | Gamestate::Move50 => Effect::Draw,
+          Gamestate::InProgress => {
+            if newstate.attacked_kings().is_empty() {
+              if capture {
+                Effect::Capture
+              } else {
+                Effect::Move
+              }
+            } else {
+              Effect::Check
+            }
+          }
+        };
+      }
+      #[cfg(feature = "music")]
+      {
+        let dramatic = get_dramatic(&newstate) + if capture { 0.5 } else { 0.0 };
+        if let Some(ref mut player) = gui.audio_engine {
+          player.set_dramatic(dramatic);
+        }
+      }
+      gui.screen = Screen::Game(Box::new(newstate));
+      gui.moved = Some([selected, coords]);
+    }
+  }
+  #[cfg(feature = "sound")]
+  if let Some(player) = &mut gui.audio_engine {
+    player.play(&effect);
+  }
+  gui.selected = None;
 }
 
 // draw main areas for each screen
@@ -586,45 +657,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   }
 
   #[cfg(feature = "clock")]
-  {
-    ComboBox::from_id_source("Clock")
-      .selected_text("Clock: ".to_owned() + &gui.clock_type.to_string())
-      .show_ui(ui, |ui| {
-        for clock_type in all::<Type>() {
-          ui.selectable_value(&mut gui.clock_type, clock_type, clock_type.to_string());
-        }
-      });
-    let size = size * 2.0;
-    match gui.clock_type {
-      Type::None => (),
-      Type::Increment => {
-        ui.horizontal_top(|ui| {
-          ui.label("Time (min):".to_owned());
-          let value = clock_input(ui, size, gui.clock_data[0]);
-          gui.clock_data[0] = value;
-          gui.clock_data[1] = value;
-          ui.label("Increment (s):");
-          let value = clock_input(ui, size, gui.clock_data[2]);
-          gui.clock_data[2] = value;
-          gui.clock_data[3] = value;
-        });
-      }
-      Type::Handicap => {
-        ui.horizontal_top(|ui| {
-          ui.label("White Time (min):");
-          gui.clock_data[0] = clock_input(ui, size, gui.clock_data[0]);
-          ui.label("Increment (s):");
-          gui.clock_data[2] = clock_input(ui, size, gui.clock_data[2]);
-        });
-        ui.horizontal_top(|ui| {
-          ui.label("Black Time (min):");
-          gui.clock_data[1] = clock_input(ui, size, gui.clock_data[1]);
-          ui.label("Increment (s):");
-          gui.clock_data[3] = clock_input(ui, size, gui.clock_data[3]);
-        });
-      }
-    }
-  }
+  draw_clock_edit(gui, ui, size * 2.0);
 }
 
 fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board) {

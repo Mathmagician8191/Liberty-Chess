@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
+#![allow(clippy::inline_always)]
 //! The backend for Liberty Chess
 
 use crate::keys::{Hash, Zobrist};
@@ -617,8 +618,8 @@ impl Board {
 
   /// Returns the piece at the given coordinates if the coordinates are valid
   #[must_use]
-  pub fn fetch_piece(&self, row: usize, column: usize) -> Option<&Piece> {
-    self.pieces.get(row, column)
+  pub fn fetch_piece(&self, coords: (usize, usize)) -> Option<&Piece> {
+    self.pieces.get(coords.0, coords.1)
   }
 
   /// The number of ranks the board has
@@ -1153,7 +1154,7 @@ impl Board {
   #[must_use]
   // automatic flatten is 5% slower
   #[allow(clippy::manual_flatten)]
-  // inlining gives approc 2% speed improvement
+  // inlining gives approx 2% speed improvement
   #[inline(always)]
   fn is_attacked(&self, (row, column): (usize, usize), side: bool) -> bool {
     let multiplier = if side { 1 } else { -1 };

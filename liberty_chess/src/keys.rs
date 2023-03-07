@@ -1,3 +1,5 @@
+#![allow(clippy::inline_always)]
+
 use crate::{Piece, SQUARE};
 use array2d::Array2D;
 use rand::Rng;

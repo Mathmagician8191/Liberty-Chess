@@ -289,6 +289,8 @@ impl Engine {
     }
   }
 
+  // Float comparison used to tell if value needs to be updated
+  #[allow(clippy::float_cmp)]
   /// Update how dramatic the clock is
   #[cfg(feature = "music")]
   pub fn set_clock_bonus(&mut self, clock_drama: f32) {

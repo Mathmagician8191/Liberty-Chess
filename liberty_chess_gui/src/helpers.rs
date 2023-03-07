@@ -5,6 +5,13 @@ use eframe::epaint::{pos2, Rect};
 use egui::color_picker::{color_edit_button_srgba, Alpha};
 use egui::{Color32, Context, Image, TextBuffer, TextEdit, Ui};
 
+#[cfg(feature = "clock")]
+use egui::ComboBox;
+#[cfg(feature = "clock")]
+use enum_iterator::all;
+#[cfg(feature = "clock")]
+use liberty_chess::clock::Type;
+
 #[cfg(feature = "sound")]
 use sound::{Effect, Engine};
 
@@ -95,6 +102,46 @@ pub fn label_text_edit(ui: &mut Ui, size: f32, input: &mut impl TextBuffer, labe
     ui.label(label);
     raw_text_edit(ui, size, input);
   });
+}
+
+#[cfg(feature = "clock")]
+pub(crate) fn draw_clock_edit(gui: &mut LibertyChessGUI, ui: &mut Ui, size: f32) {
+  ComboBox::from_id_source("Clock")
+    .selected_text("Clock: ".to_owned() + &gui.clock_type.to_string())
+    .show_ui(ui, |ui| {
+      for clock_type in all::<Type>() {
+        ui.selectable_value(&mut gui.clock_type, clock_type, clock_type.to_string());
+      }
+    });
+  match gui.clock_type {
+    Type::None => (),
+    Type::Increment => {
+      ui.horizontal_top(|ui| {
+        ui.label("Time (min):".to_owned());
+        let value = clock_input(ui, size, gui.clock_data[0]);
+        gui.clock_data[0] = value;
+        gui.clock_data[1] = value;
+        ui.label("Increment (s):");
+        let value = clock_input(ui, size, gui.clock_data[2]);
+        gui.clock_data[2] = value;
+        gui.clock_data[3] = value;
+      });
+    }
+    Type::Handicap => {
+      ui.horizontal_top(|ui| {
+        ui.label("White Time (min):");
+        gui.clock_data[0] = clock_input(ui, size, gui.clock_data[0]);
+        ui.label("Increment (s):");
+        gui.clock_data[2] = clock_input(ui, size, gui.clock_data[2]);
+      });
+      ui.horizontal_top(|ui| {
+        ui.label("Black Time (min):");
+        gui.clock_data[1] = clock_input(ui, size, gui.clock_data[1]);
+        ui.label("Increment (s):");
+        gui.clock_data[3] = clock_input(ui, size, gui.clock_data[3]);
+      });
+    }
+  }
 }
 
 #[cfg(feature = "clock")]
