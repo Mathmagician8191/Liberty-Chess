@@ -14,6 +14,10 @@ rand = {workspace = true}
 resvg = {workspace = true}
 sound = {workspace = true, optional = true}
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = {workspace = true}
+wasm-bindgen-futures = {workspace = true}
+
 [features]
 default = ["clock", "sound", "music"]
 benchmarking = []

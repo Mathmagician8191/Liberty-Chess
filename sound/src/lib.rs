@@ -1,19 +1,20 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
-#![no_std]
 //! An engine to handle playing sounds for Liberty Chess
 
 extern crate alloc;
 
 use alloc::string::String;
-use soloud::{AudioExt, LoadExt, Soloud, Wav};
-
-#[cfg(feature = "music")]
-use soloud::Handle;
+use kira::manager::backend::cpal::{CpalBackend, Error};
+use kira::manager::{AudioManager, AudioManagerSettings};
+use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings};
+use kira::tween::Tween;
+use kira::LoopBehavior;
+use std::io::Cursor;
 
 /// 100%, which is the default volume
 pub const DEFAULT_VOLUME: u8 = 100;
-const DEFAULT_VOUME_FLOAT: f32 = DEFAULT_VOLUME as f32;
+const DEFAULT_VOUME_FLOAT: f64 = DEFAULT_VOLUME as f64;
 
 // The paths for music
 #[cfg(feature = "music")]
@@ -22,8 +23,8 @@ const MUSIC: &[u8] = include_bytes!("../../resources/music/Hydrangeas-for-a-Frie
 const MUSIC_EXTRA: &[u8] =
   include_bytes!("../../resources/music/Hydrangeas-for-a-Friend-Extra.ogg");
 
-fn convert_volume(volume: u8) -> f32 {
-  f32::from(volume) / DEFAULT_VOUME_FLOAT
+fn convert_volume(volume: u8) -> f64 {
+  f64::from(volume) / DEFAULT_VOUME_FLOAT
 }
 
 fn load_volume(volume: Option<&str>) -> u8 {
@@ -35,13 +36,26 @@ fn load_volume(volume: Option<&str>) -> u8 {
   DEFAULT_VOLUME
 }
 
-fn load_audio(data: &[u8]) -> Wav {
-  let mut wav = Wav::default();
-  wav.load_mem(data).unwrap();
-  wav
+fn load_raw(data: &'static [u8], loop_behavior: Option<LoopBehavior>) -> StaticSoundData {
+  let settings = StaticSoundSettings::default().loop_behavior(loop_behavior);
+  StaticSoundData::from_cursor(Cursor::new(data), settings).unwrap()
 }
 
-fn get_effects() -> [Wav; 10] {
+fn load_audio(data: &'static [u8]) -> StaticSoundData {
+  load_raw(data, None)
+}
+
+#[cfg(feature = "music")]
+fn load_music(data: &'static [u8]) -> StaticSoundData {
+  load_raw(
+    data,
+    Some(LoopBehavior {
+      start_position: 0.0,
+    }),
+  )
+}
+
+fn get_effects() -> [StaticSoundData; 10] {
   [
     load_audio(include_bytes!("../../resources/sounds/Move.ogg")),
     load_audio(include_bytes!("../../resources/sounds/Illegal.ogg")),
@@ -54,6 +68,23 @@ fn get_effects() -> [Wav; 10] {
     load_audio(include_bytes!("../../resources/sounds/Enable.ogg")),
     load_audio(include_bytes!("../../resources/sounds/Disable.ogg")),
   ]
+}
+
+fn get_manager() -> Result<AudioManager, Error> {
+  AudioManager::<CpalBackend>::new(AudioManagerSettings::default())
+}
+
+// If it fails, we don't care
+#[allow(unused_must_use)]
+fn set_volume(handle: &mut StaticSoundHandle, volume: f64) {
+  handle.set_volume(volume, Tween::default());
+}
+
+// If it fails, we don't care
+#[allow(unused_must_use)]
+#[cfg(feature = "music")]
+fn stop(handle: &mut StaticSoundHandle) {
+  handle.stop(Tween::default());
 }
 
 /// A sound effect option to play
@@ -82,91 +113,92 @@ pub enum Effect {
 
 #[cfg(feature = "music")]
 struct MusicTrack {
-  music: Wav,
-  handle: Handle,
+  handle: StaticSoundHandle,
 }
 
 #[cfg(feature = "music")]
 impl MusicTrack {
-  fn new(player: &Soloud, music: Wav) -> Self {
-    let handle = player.play(&music);
-    Self { music, handle }
-  }
-
-  fn reload(&mut self, player: &mut Soloud, volume: f32) {
-    let handle = player.play(&self.music);
-    player.set_volume(handle, volume);
-    self.handle = handle;
+  fn new(player: &mut AudioManager, music: StaticSoundData) -> Option<Self> {
+    Some(Self {
+      handle: player.play(music).ok()?,
+    })
   }
 }
 
-// takes about 750 ms to load, check again when replacing with lewton
+#[cfg(feature = "music")]
+impl Drop for MusicTrack {
+  fn drop(&mut self) {
+    stop(&mut self.handle);
+  }
+}
+
+// takes about 670 ms to load on a 5600x, consider putting on another thread
 #[cfg(feature = "music")]
 struct MusicPlayer {
   volume: u8,
-  dramatic_scale: f32,
-  clock_drama: f32,
+  dramatic_scale: f64,
+  clock_drama: f64,
   calm: MusicTrack,
   extra: Option<MusicTrack>,
 }
 
 #[cfg(feature = "music")]
 impl MusicPlayer {
-  fn new(player: &mut Soloud, volume: u8, dramatic: bool) -> Self {
-    let music = load_audio(MUSIC);
-    let extra = if dramatic {
-      Some(Self::load_dramatic(player))
-    } else {
-      None
-    };
-    let calm = MusicTrack::new(player, music);
-    player.set_volume(calm.handle, convert_volume(volume));
-    Self {
+  fn new(player: &mut AudioManager, volume: u8, dramatic: bool) -> Option<Self> {
+    let (calm, extra) = Self::load_music(player, volume, dramatic)?;
+    Some(Self {
       volume,
       dramatic_scale: 0.0,
       clock_drama: 0.0,
       calm,
       extra,
+    })
+  }
+
+  // Always enables dramatic music
+  fn reload(&mut self, player: &mut AudioManager) {
+    if let Some((calm, extra)) = Self::load_music(player, self.volume, true) {
+      self.calm = calm;
+      self.extra = extra;
     }
   }
 
-  fn refresh_music(&mut self, player: &mut Soloud) {
-    let volume = convert_volume(self.volume);
-    player.stop(self.calm.handle);
-    self.calm.reload(player, volume);
-    let drama = self.get_dramatic();
-    if let Some(extra) = &mut self.extra {
-      player.stop(extra.handle);
-      extra.reload(player, volume * drama);
-    }
-  }
-
-  fn get_dramatic(&self) -> f32 {
+  fn get_dramatic(&self) -> f64 {
     self.dramatic_scale + self.clock_drama
   }
 
-  fn load_dramatic(player: &mut Soloud) -> MusicTrack {
-    let dramatic = load_audio(MUSIC_EXTRA);
-    let extra = MusicTrack::new(player, dramatic);
-    player.set_volume(extra.handle, 0.0);
-    extra
+  fn load_music(
+    player: &mut AudioManager,
+    volume: u8,
+    dramatic: bool,
+  ) -> Option<(MusicTrack, Option<MusicTrack>)> {
+    let music = load_music(MUSIC);
+    let extra = if dramatic {
+      let dramatic = load_music(MUSIC_EXTRA);
+      let mut extra = MusicTrack::new(player, dramatic)?;
+      set_volume(&mut extra.handle, 0.0);
+      Some(extra)
+    } else {
+      None
+    };
+    let mut calm = MusicTrack::new(player, music)?;
+    set_volume(&mut calm.handle, convert_volume(volume));
+    Some((calm, extra))
   }
 
-  fn update_dramatic(&self, player: &mut Soloud) {
-    if let Some(track) = &self.extra {
-      player.set_volume(
-        track.handle,
-        convert_volume(self.volume) * self.get_dramatic(),
-      );
+  fn update_dramatic(&mut self) {
+    let dramatic = self.get_dramatic();
+    if let Some(ref mut track) = self.extra {
+      set_volume(&mut track.handle, convert_volume(self.volume) * dramatic);
     }
   }
 }
 
 /// The sound engine
 pub struct Engine {
-  player: Soloud,
+  player: AudioManager,
   sound_volume: u8,
-  sounds: [Wav; 10],
+  sounds: [StaticSoundData; 10],
   #[cfg(feature = "music")]
   music_player: Option<MusicPlayer>,
 }
@@ -182,18 +214,18 @@ impl Engine {
     {
       let music_volume = load_volume(music_volume);
       if music_volume != 0 {
-        let mut player = Soloud::default().ok()?;
+        let mut player = get_manager().ok()?;
         let music_player = MusicPlayer::new(&mut player, music_volume, dramatic);
         return Some(Self {
           player,
           sound_volume: load_volume(sound_volume),
           sounds: get_effects(),
-          music_player: Some(music_player),
+          music_player,
         });
       };
     }
     Some(Self {
-      player: Soloud::default().ok()?,
+      player: get_manager().ok()?,
       sound_volume: load_volume(sound_volume),
       sounds: get_effects(),
       #[cfg(feature = "music")]
@@ -265,17 +297,17 @@ impl Engine {
     if let Some(player) = &mut self.music_player {
       player.volume = volume;
       let volume = convert_volume(volume);
-      self.player.set_volume(player.calm.handle, volume);
-      player.update_dramatic(&mut self.player);
+      set_volume(&mut player.calm.handle, volume);
+      player.update_dramatic();
     }
   }
 
   /// Update how dramatic the music should be
   #[cfg(feature = "music")]
-  pub fn set_dramatic(&mut self, dramatic: f32) {
+  pub fn set_dramatic(&mut self, dramatic: f64) {
     if let Some(player) = &mut self.music_player {
       player.dramatic_scale = player.dramatic_scale.mul_add(0.5, dramatic);
-      player.update_dramatic(&mut self.player);
+      player.update_dramatic();
     }
   }
 
@@ -285,7 +317,7 @@ impl Engine {
     if let Some(player) = &mut self.music_player {
       player.dramatic_scale = 0.0;
       player.clock_drama = 0.0;
-      player.update_dramatic(&mut self.player);
+      player.update_dramatic();
     }
   }
 
@@ -293,19 +325,19 @@ impl Engine {
   #[allow(clippy::float_cmp)]
   /// Update how dramatic the clock is
   #[cfg(feature = "music")]
-  pub fn set_clock_bonus(&mut self, clock_drama: f32) {
+  pub fn set_clock_bonus(&mut self, clock_drama: f64) {
     if let Some(player) = &mut self.music_player {
       if clock_drama != player.clock_drama {
         player.clock_drama = clock_drama;
-        player.update_dramatic(&mut self.player);
+        player.update_dramatic();
       }
     }
   }
 
   /// Play the specified sound effect
   pub fn play(&mut self, sound: &Effect) {
-    let handle = self.player.play(
-      &self.sounds[match *sound {
+    let mut handle = self.player.play(
+      self.sounds[match *sound {
         Effect::Move => 0,
         Effect::Illegal => 1,
         Effect::Capture => 2,
@@ -316,20 +348,11 @@ impl Engine {
         Effect::Return => 7,
         Effect::Enable => 8,
         Effect::Disable => 9,
-      }],
+      }]
+      .clone(),
     );
-    self
-      .player
-      .set_volume(handle, convert_volume(self.sound_volume));
-  }
-
-  /// Refresh the music if it has stopped playing. Call regularly to make sure the music loops.
-  #[cfg(feature = "music")]
-  pub fn update_music(&mut self) {
-    if let Some(player) = &mut self.music_player {
-      if self.player.active_voice_count() == 0 {
-        player.refresh_music(&mut self.player);
-      }
+    if let Ok(ref mut handle) = handle {
+      set_volume(handle, convert_volume(self.sound_volume));
     }
   }
 
@@ -355,7 +378,7 @@ impl Engine {
   pub fn toggle_music(&mut self) {
     self.music_player = match self.music_player {
       Some(_) => None,
-      None => Some(MusicPlayer::new(&mut self.player, DEFAULT_VOLUME, true)),
+      None => MusicPlayer::new(&mut self.player, DEFAULT_VOLUME, true),
     }
   }
 
@@ -365,10 +388,7 @@ impl Engine {
     if let Some(player) = &mut self.music_player {
       match &player.extra {
         Some(_) => player.extra = None,
-        None => {
-          player.extra = Some(MusicPlayer::load_dramatic(&mut self.player));
-          player.refresh_music(&mut self.player);
-        }
+        None => player.reload(&mut self.player),
       }
     }
   }

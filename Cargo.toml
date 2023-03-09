@@ -8,19 +8,21 @@ repository = "https://github.com/Mathmagician8191/Liberty-Chess"
 license = "GPL-3.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [workspace.dependencies]
 liberty_chess = {path = "liberty_chess"}
 sound = {path = "sound"}
 array2d = "0.2.1"
 eframe = {version = "0.20.1", features = ["persistence"]}
 enum-iterator = "1.2.0"
+kira = {version = "0.7.1", default-features = false, features = ["cpal", "ogg"]}
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 resvg = "0.29.0"
-soloud = "1.0.2"
 threadpool = "1.8.1"
+
+# Wasm only
+getrandom = {version = "0.2.8", features = ["js"]}
+wasm-bindgen-futures = "0.4"
 
 [profile.dev]
 opt-level = 3

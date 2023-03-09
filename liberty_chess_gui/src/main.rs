@@ -10,7 +10,6 @@ use crate::helpers::{
   char_text_edit, checkbox, colour_edit, get_fen, label_text_edit, menu_button, UV,
 };
 use crate::themes::{Colours, PresetTheme, Theme};
-use core::time::Duration;
 use eframe::epaint::{Pos2, Shape};
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
@@ -28,6 +27,9 @@ use themes::CustomTheme;
 use std::time::Instant;
 
 #[cfg(feature = "clock")]
+use core::time::Duration;
+
+#[cfg(feature = "clock")]
 use crate::helpers::draw_clock_edit;
 #[cfg(feature = "clock")]
 use liberty_chess::clock::{Clock, Type};
@@ -39,6 +41,9 @@ use crate::config::{DRAMATIC_ENABLED_KEY, MUSIC_VOLUME_KEY};
 use crate::config::{EFFECT_VOLUME_KEY, SOUND_KEY};
 #[cfg(feature = "sound")]
 use sound::{Effect, Engine, DEFAULT_VOLUME};
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::spawn_local;
 
 // submodules
 mod config;
@@ -199,10 +204,6 @@ impl LibertyChessGUI {
 
 impl App for LibertyChessGUI {
   fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
-    #[cfg(feature = "music")]
-    if let Some(player) = &mut self.audio_engine {
-      player.update_music();
-    }
     match &self.screen {
       Screen::Game(board) => {
         let board = board.clone();
@@ -261,7 +262,7 @@ impl App for LibertyChessGUI {
         Screen::Settings => {
           let width = ui.available_width();
           Area::new("Settings")
-            .anchor(Align2::LEFT_TOP, ((width / 2.0) - 200.0, 0.0))
+            .fixed_pos(((width / 2.0) - 200.0, 0.0))
             .show(ctx, |ui| draw_settings(self, ctx, ui));
         }
       };
@@ -282,10 +283,8 @@ impl App for LibertyChessGUI {
         println!("{} FPS", self.frames);
         self.frames = 0;
       }
-      ctx.request_repaint_after(Duration::ZERO);
+      ctx.request_repaint();
     }
-    #[cfg(not(feature = "benchmarking"))]
-    ctx.request_repaint_after(Duration::from_millis(100));
   }
 
   fn save(&mut self, storage: &mut dyn Storage) {
@@ -790,6 +789,8 @@ fn draw_clock(ctx: &Context, clock: &mut Clock, flipped: bool) {
   TopBottomPanel::top("Black Clock")
     .resizable(false)
     .show(ctx, |ui| ui.label(black_text));
+  #[cfg(not(feature = "benchmarking"))]
+  ctx.request_repaint_after(Duration::from_millis(100));
 }
 
 fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<Board>) {
@@ -887,7 +888,7 @@ fn print_clock(time: Duration) -> String {
 }
 
 #[cfg(feature = "music")]
-fn get_dramatic(board: &Board) -> f32 {
+fn get_dramatic(board: &Board) -> f64 {
   let mut dramatic = 0.0;
   if board.state() != Gamestate::InProgress {
     dramatic += 0.5;
@@ -899,7 +900,7 @@ fn get_dramatic(board: &Board) -> f32 {
 }
 
 #[cfg(all(feature = "clock", feature = "music"))]
-fn get_clock_drama(clock: &mut Option<Clock>) -> f32 {
+fn get_clock_drama(clock: &mut Option<Clock>) -> f64 {
   if let Some(ref mut clock) = clock {
     let data = clock.get_clocks();
     let data = if clock.to_move() { data.0 } else { data.1 };
@@ -908,7 +909,7 @@ fn get_clock_drama(clock: &mut Option<Clock>) -> f32 {
     if clock.is_paused() {
       0.0
     } else {
-      u128::saturating_sub(30000, data.as_millis()) as f32 / 40000.0
+      u128::saturating_sub(30000, data.as_millis()) as f64 / 40000.0
     }
   } else {
     0.0
@@ -917,12 +918,15 @@ fn get_clock_drama(clock: &mut Option<Clock>) -> f32 {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
-  eframe::start_web(
-    "Liberty Chess",
-    eframe::WebOptions::default(),
-    Box::new(|cc| Box::new(LibertyChessGUI::new(cc))),
-  )
-  .expect("Wasm failed to load");
+  spawn_local(async {
+    eframe::start_web(
+      "Liberty Chess",
+      eframe::WebOptions::default(),
+      Box::new(|cc| Box::new(LibertyChessGUI::new(cc))),
+    )
+    .await
+    .expect("Wasm failed to load");
+  });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
