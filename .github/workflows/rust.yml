@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Install alsa
+      run: sudo apt update; sudo apt install libasound2-dev
     - name: Build
       run: cargo build --release -p liberty_chess_gui
     - uses: actions/upload-artifact@v3
@@ -30,8 +32,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    - name: Install alsa
+      run: sudo apt update; sudo apt install libasound2-dev
+    - name: install cargo-all-features
+      run: cargo install cargo-all-features
     - name: Run Tests
-      run: cargo test
+      run: cargo test-all-features
   appease_microsoft:
     runs-on: windows-latest
     steps:
