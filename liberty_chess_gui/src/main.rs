@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-#![warn(missing_docs)]
+#![warn(missing_docs, unused)]
 //! The GUI for Liberty Chess
 
 use crate::config::{Configuration, BOARD_KEY};
@@ -27,10 +27,7 @@ use themes::CustomTheme;
 use std::time::Instant;
 
 #[cfg(feature = "clock")]
-use core::time::Duration;
-
-#[cfg(feature = "clock")]
-use crate::helpers::draw_clock_edit;
+use crate::clock::{draw_clock, draw_clock_edit};
 #[cfg(feature = "clock")]
 use liberty_chess::clock::{Clock, Type};
 
@@ -53,6 +50,9 @@ mod help_page;
 mod helpers;
 mod images;
 mod themes;
+
+#[cfg(feature = "clock")]
+mod clock;
 
 #[derive(Eq, PartialEq)]
 enum Screen {
@@ -186,7 +186,7 @@ impl LibertyChessGUI {
         return map.id();
       }
     }
-    let mut pixmap = Pixmap::new(size, size).unwrap();
+    let mut pixmap = Pixmap::new(size, size).expect("SVG is 0x0");
     resvg::render(
       &self.images[index],
       FitTo::Size(size, size),
@@ -363,20 +363,7 @@ fn render_board(
   let board_rect = response.rect;
   painter.rect_filled(board_rect, Rounding::none(), Colours::WhiteSquare.value());
   if let Some(location) = response.interact_pointer_pos() {
-    let hover = if board_rect.contains(location) {
-      let size = size as usize;
-      let x = (location.x - board_rect.min.x) as usize / size;
-      let y = if flipped {
-        location.y - board_rect.min.y
-      } else {
-        board_rect.max.y - location.y
-      } as usize
-        / size;
-      let coords = (y, x);
-      gamestate.fetch_piece(coords).map(|piece| (coords, *piece))
-    } else {
-      None
-    };
+    let hover = get_hovered(board_rect, location, size as usize, flipped, gamestate);
     register_response(gui, gamestate, &response, hover);
   }
   let (dragged, offset) = if let Some((coords, offset)) = gui.drag {
@@ -467,6 +454,22 @@ fn render_board(
   if let Some(image) = dragged_image {
     painter.add(image);
   }
+}
+
+fn get_hovered(board_rect: Rect, location: Pos2, size: usize, flipped: bool, gamestate: &Board) -> Option<((usize, usize), i8)> {
+    if board_rect.contains(location) {
+      let x = (location.x - board_rect.min.x) as usize / size;
+      let y = if flipped {
+        location.y - board_rect.min.y
+      } else {
+        board_rect.max.y - location.y
+      } as usize
+        / size;
+      let coords = (y, x);
+      gamestate.fetch_piece(coords).map(|piece| (coords, *piece))
+    } else {
+      None
+    }
 }
 
 fn register_response(
@@ -722,13 +725,7 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
   #[cfg(feature = "sound")]
   {
     let mut sound = gui.audio_engine.is_some();
-    if checkbox(
-      ui,
-      &mut sound,
-      "Sound",
-      #[cfg(feature = "sound")]
-      None,
-    ) {
+    if checkbox(ui, &mut sound, "Sound", None) {
       gui.audio_engine = if sound { Engine::new() } else { None }
     };
     if let Some(ref mut engine) = gui.audio_engine {
@@ -764,34 +761,6 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
 }
 
 // draw areas for specific screens
-#[cfg(feature = "clock")]
-fn draw_clock(ctx: &Context, clock: &mut Clock, flipped: bool) {
-  clock.update();
-  let (mut white, mut black) = clock.get_clocks();
-  if flipped {
-    (black, white) = (white, black);
-  }
-  let mut white_text = RichText::new(print_clock(white));
-  let mut black_text = RichText::new(print_clock(black));
-  let color = if clock.is_flagged() {
-    Colours::Check
-  } else {
-    Colours::Selected
-  };
-  if clock.to_move() {
-    white_text = white_text.color(color.value());
-  } else {
-    black_text = black_text.color(color.value());
-  }
-  TopBottomPanel::bottom("White Clock")
-    .resizable(false)
-    .show(ctx, |ui| ui.label(white_text));
-  TopBottomPanel::top("Black Clock")
-    .resizable(false)
-    .show(ctx, |ui| ui.label(black_text));
-  #[cfg(not(feature = "benchmarking"))]
-  ctx.request_repaint_after(Duration::from_millis(100));
-}
 
 fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<Board>) {
   menu_button(gui, ui);
@@ -875,18 +844,6 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
 
 // general helper functions
 
-#[cfg(feature = "clock")]
-fn print_clock(time: Duration) -> String {
-  let secs = time.as_secs();
-  if secs >= 60 {
-    // Minutes and seconds
-    (secs / 60).to_string() + &format!(":{:0>2}", secs % 60)
-  } else {
-    let millis = time.as_millis();
-    secs.to_string() + &format!(".{}", (millis / 100) % 10)
-  }
-}
-
 #[cfg(feature = "music")]
 fn get_dramatic(board: &Board) -> f64 {
   let mut dramatic = 0.0;
@@ -901,7 +858,7 @@ fn get_dramatic(board: &Board) -> f64 {
 
 #[cfg(all(feature = "clock", feature = "music"))]
 fn get_clock_drama(clock: &mut Option<Clock>) -> f64 {
-  if let Some(ref mut clock) = clock {
+  clock.as_mut().map_or(0.0, |clock| {
     let data = clock.get_clocks();
     let data = if clock.to_move() { data.0 } else { data.1 };
     // Running out of time is dramatic
@@ -911,9 +868,7 @@ fn get_clock_drama(clock: &mut Option<Clock>) -> f64 {
     } else {
       u128::saturating_sub(30000, data.as_millis()) as f64 / 40000.0
     }
-  } else {
-    0.0
-  }
+  })
 }
 
 #[cfg(target_arch = "wasm32")]

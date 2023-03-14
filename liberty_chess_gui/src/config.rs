@@ -1,7 +1,7 @@
 use crate::themes::{GetVisuals, PresetTheme, Theme};
 use core::str::FromStr;
 use eframe::{egui, Storage};
-use egui::{Context, TextStyle};
+use egui::{Context, FontId, TextStyle};
 
 pub const BOARD_KEY: &str = "Board";
 #[cfg(feature = "sound")]
@@ -55,17 +55,16 @@ pub struct Configuration {
 
 impl Configuration {
   pub fn new(ctx: &eframe::CreationContext) -> Self {
-    let config = if let Some(storage) = &ctx.storage {
-      Self {
-        theme: load(storage.get_string(THEME_KEY)),
-        text_size: load(storage.get_string(TEXT_SIZE_KEY)),
-      }
-    } else {
+    let config = ctx.storage.as_ref().map_or(
       Self {
         theme: Value::Default,
         text_size: Value::Default,
-      }
-    };
+      },
+      |storage| Self {
+        theme: load(storage.get_string(THEME_KEY)),
+        text_size: load(storage.get_string(TEXT_SIZE_KEY)),
+      },
+    );
     config.set_style(&ctx.egui_ctx);
     config.apply_theme(&ctx.egui_ctx);
 
@@ -112,7 +111,7 @@ impl Configuration {
   fn set_style(&self, ctx: &Context) {
     let mut style = (*ctx.style()).clone();
     let text_size = f32::from(get_value(&self.text_size));
-    let font = egui::FontId::new(text_size, egui::FontFamily::Proportional);
+    let font = FontId::proportional(text_size);
     style.spacing.icon_width = text_size * 0.7;
     style.spacing.icon_width_inner = text_size * 0.5;
     style.spacing.combo_height = 460.0;

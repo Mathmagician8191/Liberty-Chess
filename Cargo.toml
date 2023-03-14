@@ -15,6 +15,7 @@ array2d = "0.2.1"
 eframe = {version = "0.20.1", features = ["persistence"]}
 enum-iterator = "1.2.0"
 kira = {version = "0.7.1", default-features = false, features = ["cpal", "ogg"]}
+parking_lot = "0.12.1"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
 resvg = "0.29.0"

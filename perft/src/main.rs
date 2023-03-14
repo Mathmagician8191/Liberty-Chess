@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-#![warn(missing_docs)]
+#![warn(missing_docs, unused)]
 //! A helpful program to test and benchmark the move generation
 
 use liberty_chess::Board;
