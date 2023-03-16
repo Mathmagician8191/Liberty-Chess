@@ -8,7 +8,7 @@ use liberty_chess::clock::{Clock, Type};
 
 const MAX_TIME: u64 = 360;
 
-pub fn draw_clock(ctx: &Context, clock: &mut Clock, flipped: bool) {
+pub fn draw(ctx: &Context, clock: &mut Clock, flipped: bool) {
   clock.update();
   let (mut white, mut black) = clock.get_clocks();
   if flipped {
@@ -36,7 +36,7 @@ pub fn draw_clock(ctx: &Context, clock: &mut Clock, flipped: bool) {
   ctx.request_repaint_after(Duration::from_millis(100));
 }
 
-pub(crate) fn draw_clock_edit(gui: &mut LibertyChessGUI, ui: &mut Ui, size: f32) {
+pub(crate) fn draw_edit(gui: &mut LibertyChessGUI, ui: &mut Ui, size: f32) {
   ComboBox::from_id_source("Clock")
     .selected_text("Clock: ".to_owned() + &gui.clock_type.to_string())
     .show_ui(ui, |ui| {
@@ -49,11 +49,11 @@ pub(crate) fn draw_clock_edit(gui: &mut LibertyChessGUI, ui: &mut Ui, size: f32)
     Type::Increment => {
       ui.horizontal_top(|ui| {
         ui.label("Time (min):".to_owned());
-        let value = clock_input(ui, size, gui.clock_data[0]);
+        let value = input(ui, size, gui.clock_data[0]);
         gui.clock_data[0] = value;
         gui.clock_data[1] = value;
         ui.label("Increment (s):");
-        let value = clock_input(ui, size, gui.clock_data[2]);
+        let value = input(ui, size, gui.clock_data[2]);
         gui.clock_data[2] = value;
         gui.clock_data[3] = value;
       });
@@ -61,21 +61,21 @@ pub(crate) fn draw_clock_edit(gui: &mut LibertyChessGUI, ui: &mut Ui, size: f32)
     Type::Handicap => {
       ui.horizontal_top(|ui| {
         ui.label("White Time (min):");
-        gui.clock_data[0] = clock_input(ui, size, gui.clock_data[0]);
+        gui.clock_data[0] = input(ui, size, gui.clock_data[0]);
         ui.label("Increment (s):");
-        gui.clock_data[2] = clock_input(ui, size, gui.clock_data[2]);
+        gui.clock_data[2] = input(ui, size, gui.clock_data[2]);
       });
       ui.horizontal_top(|ui| {
         ui.label("Black Time (min):");
-        gui.clock_data[1] = clock_input(ui, size, gui.clock_data[1]);
+        gui.clock_data[1] = input(ui, size, gui.clock_data[1]);
         ui.label("Increment (s):");
-        gui.clock_data[3] = clock_input(ui, size, gui.clock_data[3]);
+        gui.clock_data[3] = input(ui, size, gui.clock_data[3]);
       });
     }
   }
 }
 
-pub fn clock_input(ui: &mut Ui, size: f32, input: u64) -> u64 {
+pub fn input(ui: &mut Ui, size: f32, input: u64) -> u64 {
   let mut input = NumericalInput::<u64>::new(input, 0, MAX_TIME);
   raw_text_edit(ui, size, &mut input);
   input.get_value()

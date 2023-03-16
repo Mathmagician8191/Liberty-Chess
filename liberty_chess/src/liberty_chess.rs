@@ -403,7 +403,9 @@ const fn get_letter(letter: usize) -> char {
   (letter as u8 + b'a') as char
 }
 
-fn to_indices(mut column: usize, row_min: usize, row_max: usize) -> String {
+/// Convert a file to its representation as letters
+#[must_use]
+pub fn to_letters(mut column: usize) -> Vec<char> {
   let mut result = Vec::new();
   while column > 26 - usize::from(result.is_empty()) {
     if !result.is_empty() {
@@ -418,6 +420,11 @@ fn to_indices(mut column: usize, row_min: usize, row_max: usize) -> String {
   }
   result.push(get_letter(column));
   result.reverse();
+  result
+}
+
+fn to_indices(column: usize, row_min: usize, row_max: usize) -> String {
+  let result = to_letters(column);
 
   if row_min == row_max {
     format!("{}{}", result.iter().collect::<String>(), row_min + 1)
@@ -545,49 +552,35 @@ impl Board {
       board.en_passant = get_indices(fields[3]);
     }
 
-    if fields.len() > 4 {
-      if let Ok(value) = fields[4].parse::<u8>() {
-        board.halfmoves = value;
-      }
+    if let Some(value) = fields.get(4).and_then(|x| x.parse::<u8>().ok()) {
+      board.halfmoves = value;
     }
 
-    if fields.len() > 5 {
-      if let Ok(value) = fields[5].parse::<u16>() {
-        board.moves = value;
-      }
+    if let Some(value) = fields.get(5).and_then(|x| x.parse::<u16>().ok()) {
+      board.moves = value;
     }
 
     if fields.len() > 6 {
       let data: Vec<&str> = fields[6].split(',').collect();
-      if !data.is_empty() {
-        if let Ok(pawn_moves) = data[0].parse::<usize>() {
-          board.pawn_moves = pawn_moves;
+      if let Some(pawn_moves) = data.first().and_then(|x| x.parse::<usize>().ok()) {
+        board.pawn_moves = pawn_moves;
+      }
+      if let Some(pawn_row) = data.get(1).and_then(|x| x.parse::<usize>().ok()) {
+        board.pawn_row = pawn_row;
+      }
+      if let Some(castle_row) = data.get(2).and_then(|x| x.parse::<usize>().ok()) {
+        if castle_row > 0 {
+          board.castle_row = castle_row - 1;
         }
       }
-      if data.len() > 1 {
-        if let Ok(pawn_row) = data[1].parse::<usize>() {
-          board.pawn_row = pawn_row;
+      if let Some(queen_column) = data.get(3).and_then(|x| x.parse::<usize>().ok()) {
+        if queen_column > 0 && queen_column <= board.width() {
+          board.queen_column = queen_column - 1;
         }
       }
-      if data.len() > 2 {
-        if let Ok(castle_row) = data[2].parse::<usize>() {
-          if castle_row > 0 {
-            board.castle_row = castle_row - 1;
-          }
-        }
-      }
-      if data.len() > 3 {
-        if let Ok(queen_column) = data[3].parse::<usize>() {
-          if queen_column > 0 && queen_column <= board.width() {
-            board.queen_column = queen_column - 1;
-          }
-        }
-      }
-      if data.len() > 4 {
-        if let Ok(king_column) = data[4].parse::<usize>() {
-          if king_column > 0 && king_column <= board.width() {
-            board.king_column = king_column - 1;
-          }
+      if let Some(king_column) = data.get(4).and_then(|x| x.parse::<usize>().ok()) {
+        if king_column > 0 && king_column <= board.width() {
+          board.king_column = king_column - 1;
         }
       }
     }

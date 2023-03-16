@@ -7,15 +7,15 @@ use crate::credits::Credits;
 use crate::gamemodes::{GameMode, Presets, RandomConfig};
 use crate::help_page::HelpPage;
 use crate::helpers::{
-  char_text_edit, checkbox, colour_edit, get_fen, label_text_edit, menu_button, UV,
+  char_text_edit, checkbox, colour_edit, get_fen, label_text_edit, menu_button,
 };
+use crate::render::draw_board;
 use crate::themes::{Colours, PresetTheme, Theme};
-use eframe::epaint::{Pos2, Shape};
+use eframe::epaint::Pos2;
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
-  pos2, Align2, Area, Button, CentralPanel, Color32, ColorImage, ComboBox, Context, Label,
-  PointerButton, Rect, Response, RichText, Rounding, ScrollArea, Sense, SidePanel, Slider,
-  TextureHandle, TextureId, TextureOptions, TopBottomPanel, Ui, Vec2,
+  Align2, Area, Button, CentralPanel, ColorImage, ComboBox, Context, Label, RichText, ScrollArea,
+  SidePanel, Slider, TextureHandle, TextureId, TextureOptions, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
 use liberty_chess::{to_name, Board, Gamestate, Piece};
@@ -27,7 +27,7 @@ use themes::CustomTheme;
 use std::time::Instant;
 
 #[cfg(feature = "clock")]
-use crate::clock::{draw_clock, draw_clock_edit};
+use crate::clock::{draw, draw_edit};
 #[cfg(feature = "clock")]
 use liberty_chess::clock::{Clock, Type};
 
@@ -49,6 +49,7 @@ mod gamemodes;
 mod help_page;
 mod helpers;
 mod images;
+mod render;
 mod themes;
 
 #[cfg(feature = "clock")]
@@ -213,7 +214,7 @@ impl App for LibertyChessGUI {
           .show(ctx, |ui| draw_game_sidebar(self, ui, board));
         #[cfg(feature = "clock")]
         if let Some(clock) = &mut self.clock {
-          draw_clock(ctx, clock, self.flipped);
+          draw(ctx, clock, self.flipped);
         }
       }
       Screen::Help => {
@@ -334,247 +335,6 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
   gui.screen = screen;
 }
 
-fn render_board(
-  gui: &mut LibertyChessGUI,
-  ctx: &Context,
-  ui: &mut Ui,
-  gamestate: &Board,
-  clickable: bool,
-  flipped: bool,
-) {
-  let available_size = ctx.available_rect().size();
-  let rows = gamestate.height();
-  let cols = gamestate.width();
-  let rows_float = rows as f32;
-  let cols_float = cols as f32;
-  let row_size = (available_size.y / rows_float).floor();
-  let column_size = (available_size.x / cols_float).floor();
-  let size = f32::max(1.0, f32::min(row_size, column_size));
-  let sense = if clickable {
-    Sense::click_and_drag()
-  } else {
-    Sense::hover()
-  };
-  let rect = Vec2 {
-    x: size * cols_float,
-    y: size * rows_float,
-  };
-  let (response, painter) = ui.allocate_painter(rect, sense);
-  let board_rect = response.rect;
-  painter.rect_filled(board_rect, Rounding::none(), Colours::WhiteSquare.value());
-  if let Some(location) = response.interact_pointer_pos() {
-    let hover = get_hovered(board_rect, location, size as usize, flipped, gamestate);
-    register_response(gui, gamestate, &response, hover);
-  }
-  let (dragged, offset) = if let Some((coords, offset)) = gui.drag {
-    (Some(coords), offset)
-  } else {
-    (None, Pos2::default())
-  };
-  let mut dragged_image = None;
-  let mut images = Vec::new();
-  for i in (0..rows).rev() {
-    let (min_y, max_y) = (i as f32, (i + 1) as f32);
-    let (min_y, max_y) = if flipped {
-      (
-        min_y.mul_add(size, board_rect.min.y),
-        max_y.mul_add(size, board_rect.min.y),
-      )
-    } else {
-      (
-        max_y.mul_add(-size, board_rect.max.y),
-        min_y.mul_add(-size, board_rect.max.y),
-      )
-    };
-    for j in 0..cols {
-      let coords = (i, j);
-      let black_square = (i + j) % 2 == 0;
-      let mut colour = if black_square {
-        Colours::BlackSquare
-      } else {
-        Colours::WhiteSquare
-      };
-      if gamestate.attacked_kings().contains(&&coords) {
-        colour = Colours::Check;
-      } else if let Some([from, to]) = gui.moved {
-        if coords == from || coords == to {
-          colour = Colours::Moved;
-        }
-      }
-      let rect = Rect {
-        min: pos2((j as f32).mul_add(size, board_rect.min.x), min_y),
-        max: pos2(((j + 1) as f32).mul_add(size, board_rect.min.x), max_y),
-      };
-      let piece = gamestate.get_piece(coords);
-      let (selected, piece_rect) = if let Some(dragged) = dragged {
-        let mut rect = rect;
-        if dragged == coords {
-          rect = rect.translate(offset.to_vec2());
-          let center = rect.center().clamp(board_rect.min, board_rect.max);
-          rect.set_center(center);
-        }
-        (Some(dragged), rect)
-      } else {
-        (gui.selected, rect)
-      };
-      if let Some(start) = selected {
-        if start == coords {
-          colour = Colours::Selected;
-        } else if gamestate.check_pseudolegal(start, coords)
-          && gamestate.get_legal(start, coords).is_some()
-        {
-          colour = if piece == 0 {
-            if black_square {
-              Colours::ValidBlack
-            } else {
-              Colours::ValidWhite
-            }
-          } else if black_square {
-            Colours::ThreatenedBlack
-          } else {
-            Colours::ThreatenedWhite
-          }
-        }
-      }
-      if colour != Colours::WhiteSquare {
-        painter.rect_filled(rect, Rounding::none(), colour.value());
-      }
-      if piece != 0 {
-        let texture = gui.get_image(ctx, piece, size as u32);
-        let image = Shape::image(texture, piece_rect, UV, Color32::WHITE);
-        if dragged == Some(coords) {
-          dragged_image = Some(image);
-        } else {
-          images.push(image);
-        }
-      };
-    }
-  }
-  painter.extend(images);
-  if let Some(image) = dragged_image {
-    painter.add(image);
-  }
-}
-
-fn get_hovered(board_rect: Rect, location: Pos2, size: usize, flipped: bool, gamestate: &Board) -> Option<((usize, usize), i8)> {
-    if board_rect.contains(location) {
-      let x = (location.x - board_rect.min.x) as usize / size;
-      let y = if flipped {
-        location.y - board_rect.min.y
-      } else {
-        board_rect.max.y - location.y
-      } as usize
-        / size;
-      let coords = (y, x);
-      gamestate.fetch_piece(coords).map(|piece| (coords, *piece))
-    } else {
-      None
-    }
-}
-
-fn register_response(
-  gui: &mut LibertyChessGUI,
-  gamestate: &Board,
-  response: &Response,
-  hover: Option<((usize, usize), Piece)>,
-) {
-  if let Some((coords, piece)) = hover {
-    let capture = piece != 0;
-    let valid_piece = capture && gamestate.to_move() == (piece > 0);
-    if response.clicked() {
-      if let Some(selected) = gui.selected {
-        attempt_move(
-          gui,
-          gamestate,
-          selected,
-          coords,
-          #[cfg(feature = "sound")]
-          capture,
-        );
-      } else if valid_piece {
-        gui.selected = Some(coords);
-      }
-    }
-    if response.drag_started() && response.dragged_by(PointerButton::Primary) && valid_piece {
-      gui.drag = Some((coords, Pos2::default()));
-    }
-  }
-  if let Some((start, ref mut offset)) = gui.drag {
-    *offset += response.drag_delta();
-    if response.drag_released() {
-      #[cfg(feature = "sound")]
-      if let Some((coords, piece)) = hover {
-        if start != coords {
-          let capture = piece != 0;
-          attempt_move(gui, gamestate, start, coords, capture);
-        }
-      }
-      #[cfg(not(feature = "sound"))]
-      if let Some((coords, _)) = hover {
-        if start != coords {
-          attempt_move(gui, gamestate, start, coords);
-        }
-      }
-      gui.drag = None;
-    }
-  }
-}
-
-fn attempt_move(
-  gui: &mut LibertyChessGUI,
-  gamestate: &Board,
-  selected: (usize, usize),
-  coords: (usize, usize),
-  #[cfg(feature = "sound")] capture: bool,
-) {
-  #[cfg(feature = "sound")]
-  let mut effect = Effect::Illegal;
-  if gamestate.check_pseudolegal(selected, coords) {
-    if let Some(mut newstate) = gamestate.get_legal(selected, coords) {
-      if !newstate.promotion_available() {
-        newstate.update();
-        #[cfg(feature = "clock")]
-        if let Some(clock) = &mut gui.clock {
-          clock.switch_clocks();
-        }
-      }
-      gui.undo.push(gamestate.clone());
-      #[cfg(feature = "sound")]
-      {
-        effect = match newstate.state() {
-          Gamestate::Checkmate(_) => Effect::Victory,
-          Gamestate::Stalemate | Gamestate::Repetition | Gamestate::Move50 => Effect::Draw,
-          Gamestate::InProgress => {
-            if newstate.attacked_kings().is_empty() {
-              if capture {
-                Effect::Capture
-              } else {
-                Effect::Move
-              }
-            } else {
-              Effect::Check
-            }
-          }
-        };
-      }
-      #[cfg(feature = "music")]
-      {
-        let dramatic = get_dramatic(&newstate) + if capture { 0.5 } else { 0.0 };
-        if let Some(ref mut player) = gui.audio_engine {
-          player.set_dramatic(dramatic);
-        }
-      }
-      gui.screen = Screen::Game(Box::new(newstate));
-      gui.moved = Some([selected, coords]);
-    }
-  }
-  #[cfg(feature = "sound")]
-  if let Some(player) = &mut gui.audio_engine {
-    player.play(&effect);
-  }
-  gui.selected = None;
-}
-
 // draw main areas for each screen
 fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   ui.horizontal_top(|ui| {
@@ -659,7 +419,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   }
 
   #[cfg(feature = "clock")]
-  draw_clock_edit(gui, ui, size * 2.0);
+  draw_edit(gui, ui, size * 2.0);
 }
 
 fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board) {
@@ -678,7 +438,7 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board) {
   Area::new("Board")
     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
-      render_board(gui, ctx, ui, board, clickable, gui.flipped);
+      draw_board(gui, ctx, ui, board, clickable, gui.flipped);
     });
 }
 
@@ -688,7 +448,7 @@ fn draw_help(gui: &mut LibertyChessGUI, ctx: &Context) {
   Area::new("Board")
     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
-      render_board(gui, ctx, ui, &gui.help_page.board(), false, false);
+      draw_board(gui, ctx, ui, &gui.help_page.board(), false, false);
     });
 }
 
@@ -718,9 +478,20 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
     gui.config.set_theme(ctx, new_theme);
   }
   let mut size = gui.config.get_text_size();
-  ui.add(Slider::new(&mut size, 16..=36).text("Font size"));
-  if size != gui.config.get_text_size() {
+  if ui
+    .add(Slider::new(&mut size, 16..=36).text("Font size"))
+    .changed()
+  {
     gui.config.set_text_size(ctx, size);
+  }
+  if checkbox(
+    ui,
+    &mut gui.config.get_numbers(),
+    "Show rank/file numbers",
+    #[cfg(feature = "sound")]
+    gui.audio_engine.as_mut(),
+  ) {
+    gui.config.toggle_numbers();
   }
   #[cfg(feature = "sound")]
   {
@@ -730,8 +501,10 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
     };
     if let Some(ref mut engine) = gui.audio_engine {
       let mut volume = engine.get_sound_volume();
-      ui.add(Slider::new(&mut volume, 0..=DEFAULT_VOLUME).text("Move Volume"));
-      if volume != engine.get_sound_volume() {
+      if ui
+        .add(Slider::new(&mut volume, 0..=DEFAULT_VOLUME).text("Move Volume"))
+        .changed()
+      {
         engine.set_sound_volume(volume);
       }
       #[cfg(feature = "music")]
@@ -741,13 +514,19 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
           engine.toggle_music();
         }
         if music {
-          let mut dramatic = engine.dramatic_enabled();
-          if checkbox(ui, &mut dramatic, "Dramatic Music", Some(engine)) {
+          if checkbox(
+            ui,
+            &mut engine.dramatic_enabled(),
+            "Dramatic Music",
+            Some(engine),
+          ) {
             engine.toggle_dramatic();
           }
           let mut volume = engine.get_music_volume();
-          ui.add(Slider::new(&mut volume, 0..=DEFAULT_VOLUME).text("Music Volume"));
-          if volume != engine.get_music_volume() {
+          if ui
+            .add(Slider::new(&mut volume, 0..=DEFAULT_VOLUME).text("Music Volume"))
+            .changed()
+          {
             engine.set_music_volume(volume);
           }
         }

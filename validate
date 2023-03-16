@@ -1,0 +1,2 @@
+cargo fmt --check
+cargo +nightly clippy -- -W clippy::$1

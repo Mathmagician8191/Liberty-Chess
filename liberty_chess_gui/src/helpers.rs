@@ -1,7 +1,6 @@
 use crate::{switch_screen, LibertyChessGUI, Screen};
 use core::str::FromStr;
 use eframe::egui;
-use eframe::epaint::{pos2, Rect};
 use egui::color_picker::{color_edit_button_srgba, Alpha};
 use egui::{Color32, Context, Image, TextBuffer, TextEdit, Ui};
 
@@ -12,9 +11,6 @@ use sound::{Effect, Engine};
 pub const ICON_SIZE: u32 = 48;
 #[allow(clippy::cast_precision_loss)]
 const ICON_SIZE_FLOAT: f32 = ICON_SIZE as f32;
-
-//UV that does nothing
-pub const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 
 pub(crate) fn menu_button(gui: &mut LibertyChessGUI, ui: &mut Ui) {
   if ui.button("Menu").clicked() {

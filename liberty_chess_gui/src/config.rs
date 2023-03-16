@@ -45,12 +45,14 @@ fn get_value<T: Parameter<T> + Clone>(raw: &Value<T>) -> T {
   }
 }
 
-const THEME_KEY: &str = "Theme";
+const NUMBER_KEY: &str = "Numbers";
 const TEXT_SIZE_KEY: &str = "Text_Size";
+const THEME_KEY: &str = "Theme";
 
 pub struct Configuration {
   theme: Value<Theme>,
   text_size: Value<TextSize>,
+  numbers: Value<OptionalFeature>,
 }
 
 impl Configuration {
@@ -59,10 +61,12 @@ impl Configuration {
       Self {
         theme: Value::Default,
         text_size: Value::Default,
+        numbers: Value::Default,
       },
       |storage| Self {
         theme: load(storage.get_string(THEME_KEY)),
         text_size: load(storage.get_string(TEXT_SIZE_KEY)),
+        numbers: load(storage.get_string(NUMBER_KEY)),
       },
     );
     config.set_style(&ctx.egui_ctx);
@@ -108,6 +112,14 @@ impl Configuration {
     self.set_style(ctx);
   }
 
+  pub fn get_numbers(&self) -> OptionalFeature {
+    get_value(&self.numbers)
+  }
+
+  pub fn toggle_numbers(&mut self) {
+    self.numbers = Value::Modified(!self.get_numbers());
+  }
+
   fn set_style(&self, ctx: &Context) {
     let mut style = (*ctx.style()).clone();
     let text_size = f32::from(get_value(&self.text_size));
@@ -142,12 +154,11 @@ impl Parameter<Self> for TextSize {
     24
   }
 }
-
 type OptionalFeature = bool;
 
 impl Parameter<Self> for OptionalFeature {
   fn default_value() -> Self {
-    false
+    true
   }
 }
 
