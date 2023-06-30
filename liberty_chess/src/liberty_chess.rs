@@ -791,23 +791,20 @@ impl Board {
       return false;
     }
     let destination = self.pieces[end];
-    if (piece > 0) == (destination > 0) {
-      // El Vaticano
-      if piece.abs() == BISHOP && destination.abs() == BISHOP {
-        let rows = start.0.abs_diff(end.0);
-        let cols = start.1.abs_diff(end.1);
-        if (rows == 2 && cols == 0) || (rows == 0 && cols == 2) {
-          let target = self.pieces[((start.0 + end.0) / 2, (start.1 + end.1) / 2)];
-          return target != 0
-            && DEFENCE[destination.unsigned_abs() as usize] < ATTACK[BISHOP as usize]
-            && ((target > 0) != (piece > 0) || self.friendly_fire);
-        }
-      }
-      if destination != 0 && !self.friendly_fire {
-        return false;
+    // El Vaticano
+    if piece.abs() == BISHOP && piece == destination {
+      let rows = start.0.abs_diff(end.0);
+      let cols = start.1.abs_diff(end.1);
+      if (rows == 2 && cols == 0) || (rows == 0 && cols == 2) {
+        let target = self.pieces[((start.0 + end.0) / 2, (start.1 + end.1) / 2)];
+        return target != 0
+          && DEFENCE[destination.unsigned_abs() as usize] < ATTACK[BISHOP as usize]
+          && ((target > 0) != (piece > 0) || self.friendly_fire);
       }
     }
-    if DEFENCE[destination.unsigned_abs() as usize] >= ATTACK[piece.unsigned_abs() as usize] {
+    if ((piece > 0) == (destination > 0) && destination != 0 && !self.friendly_fire)
+      || DEFENCE[destination.unsigned_abs() as usize] >= ATTACK[piece.unsigned_abs() as usize]
+    {
       return false;
     }
     let istart = (start.0 as isize, start.1 as isize);

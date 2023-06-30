@@ -102,13 +102,13 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       github(ui, "Enigmahack");
       ui.label("They are licensed under AGPLv3+");
       ui.label("Illegal move, menu navigation and checkbox sounds done by:");
-      link(ui, "KofiiCup", "https://steamcommunity.com/id/kofiicup/");
+      link(ui, "KofiiCup", "https://open.spotify.com/artist/382yuBHDcCT6wcsENrEUeK");
       ui.label("They are licensed under CC BY-NC-SA 4.0");
     }
     #[cfg(feature = "music")]
     Credits::Music => {
       ui.label("Music composed by:");
-      link(ui, "KofiiCup", "https://steamcommunity.com/id/kofiicup/");
+      link(ui, "KofiiCup", "https://open.spotify.com/artist/382yuBHDcCT6wcsENrEUeK");
       ui.label("It is licensed under CC BY-NC-SA 4.0");
       ui.label("List of tracks:");
       ui.label("\"Hydrangeas for a Friend\"");
