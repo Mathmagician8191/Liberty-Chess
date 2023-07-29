@@ -30,7 +30,7 @@ use threadpool::ThreadPool;
 // 100 million = 97s
 // 200 million = 380s
 // max = 26 1/2 mins
-const LIMIT: usize = 5_000_000;
+const LIMIT: usize = usize::MAX;
 
 fn format_time(millis: u128) -> String {
   let secs = millis / 1000;
@@ -164,11 +164,11 @@ fn main() {
 
   // capablanca's chess
   perft_test(
-    "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1",
+    "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1 - qcarbn",
     &[1, 28, 784, 25_228, 805_128, 28_741_319, 1_015_802_437],
   );
   perft_test(
-    "rnabqkbcnr/pppppppppp/10/10/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1 3",
+    "rnabqkbcnr/pppppppppp/10/10/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1 3 qcarbn",
     &[1, 38, 1_444, 60_046, 2_486_600, 111_941_832],
   );
 
