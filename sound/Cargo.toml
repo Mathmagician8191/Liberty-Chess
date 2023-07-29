@@ -1,6 +1,6 @@
 [package]
 name = "sound"
-version = "0.4.0"
+version = "0.5.0"
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -9,6 +9,7 @@ edition.workspace = true
 [dependencies]
 kira = {workspace = true}
 parking_lot = {workspace = true}
+rand = {workspace = true}
 
 [features]
 default = []

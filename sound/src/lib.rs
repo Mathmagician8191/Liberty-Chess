@@ -9,7 +9,6 @@ use kira::manager::backend::cpal::{CpalBackend, Error};
 use kira::manager::{AudioManager, AudioManagerSettings};
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings};
 use kira::tween::Tween;
-use kira::LoopBehavior;
 use std::io::Cursor;
 
 #[cfg(feature = "music")]
@@ -39,13 +38,9 @@ fn load_volume(volume: Option<&str>) -> u8 {
   DEFAULT_VOLUME
 }
 
-fn load_raw(data: &'static [u8], loop_behavior: Option<LoopBehavior>) -> StaticSoundData {
-  let settings = StaticSoundSettings::default().loop_behavior(loop_behavior);
-  StaticSoundData::from_cursor(Cursor::new(data), settings).unwrap()
-}
-
 fn load_audio(data: &'static [u8]) -> StaticSoundData {
-  load_raw(data, None)
+  let settings = StaticSoundSettings::default();
+  StaticSoundData::from_cursor(Cursor::new(data), settings).unwrap()
 }
 
 fn get_effects() -> [StaticSoundData; 10] {

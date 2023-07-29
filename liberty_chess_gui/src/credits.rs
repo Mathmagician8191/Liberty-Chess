@@ -104,8 +104,8 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.label("Illegal move, menu navigation and checkbox sounds done by:");
       link(
         ui,
-        "KofiiCup",
-        "https://open.spotify.com/artist/382yuBHDcCT6wcsENrEUeK",
+        "Hekit",
+        "https://open.spotify.com/artist/4NOMEI4iHMnWMuUhxH0VEJ",
       );
       ui.label("They are licensed under CC BY-NC-SA 4.0");
     }
@@ -114,12 +114,16 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.label("Music composed by:");
       link(
         ui,
-        "KofiiCup",
-        "https://open.spotify.com/artist/382yuBHDcCT6wcsENrEUeK",
+        "Hekit",
+        "https://open.spotify.com/artist/4NOMEI4iHMnWMuUhxH0VEJ",
       );
       ui.label("It is licensed under CC BY-NC-SA 4.0");
       ui.label("List of tracks:");
       ui.label("\"Hydrangeas for a Friend\"");
+      ui.label("\"Renard Lullaby\"");
+      ui.label("\"Cognitive Ambience\"");
+      ui.label("\"Perplex Objector\"");
+      ui.label("\"Wasted Opportunity\"");
     }
   }
 }

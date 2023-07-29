@@ -1,6 +1,6 @@
 [package]
 name = "liberty_chess_gui"
-version = "0.15.1"
+version = "0.15.2"
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
