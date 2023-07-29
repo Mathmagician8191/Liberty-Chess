@@ -81,8 +81,8 @@ pub struct Player {
 }
 
 impl Drop for Player {
-  fn drop(self: &mut Player) {
-    self.tx.send(MusicMessage::Stop).unwrap_or(())
+  fn drop(&mut self) {
+    self.tx.send(MusicMessage::Stop).unwrap_or(());
   }
 }
 
@@ -90,7 +90,7 @@ impl Player {
   pub fn new(player: Arc<Mutex<AudioManager>>, volume: u8, dramatic: bool) -> Self {
     let (tx, rx) = channel();
     let new_tx = tx.clone();
-    thread::spawn(move || Self::bg_thread(&player, volume, dramatic, new_tx, &rx));
+    thread::spawn(move || Self::bg_thread(&player, volume, dramatic, &new_tx, &rx));
     Self {
       volume,
       dramatic,
@@ -145,7 +145,7 @@ impl Player {
     player: &Arc<Mutex<AudioManager>>,
     mut volume: u8,
     mut dramatic: bool,
-    tx: Sender<MusicMessage>,
+    tx: &Sender<MusicMessage>,
     rx: &Receiver<MusicMessage>,
   ) -> Option<()> {
     let (mut calm, mut extra) = Self::load_music(player, volume, dramatic, tx.clone())?;

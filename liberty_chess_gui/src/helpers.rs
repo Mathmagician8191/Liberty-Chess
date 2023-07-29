@@ -108,7 +108,7 @@ impl<T: Copy + ToString> NumericalInput<T> {
     }
   }
 
-  pub fn get_value(&self) -> T {
+  pub const fn get_value(&self) -> T {
     self.number
   }
 }
