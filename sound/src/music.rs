@@ -71,7 +71,7 @@ enum MusicMessage {
   Stop,
 }
 
-// takes about 670 ms to load on a 5600x, consider putting on another thread
+// loading occurs on another thread due to the time it takes
 pub struct Player {
   volume: u8,
   dramatic: bool,

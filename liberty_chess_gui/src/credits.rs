@@ -122,6 +122,7 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.label("\"Hydrangeas for a Friend\"");
       ui.label("\"Renard Lullaby\"");
       ui.label("\"Cognitive Ambience\"");
+      ui.label("\"Recursive Thinking\"");
       ui.label("\"Perplex Objector\"");
       ui.label("\"Wasted Opportunity\"");
     }

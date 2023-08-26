@@ -30,7 +30,7 @@ use threadpool::ThreadPool;
 // 100 million = 97s
 // 200 million = 380s
 // max = 26 1/2 mins
-const LIMIT: usize = usize::MAX;
+const LIMIT: usize = 5_000_000;
 
 fn format_time(millis: u128) -> String {
   let secs = millis / 1000;
