@@ -12,6 +12,8 @@ For information on the types of pieces and their moves, see Pieces.md
 
 For information on L-FEN, see Standards.md
 
+For more information or help, join the discord server at https://discord.gg/xBrdRCsMA7
+
 ## Build Instructions:
 
 `cargo build --release -p liberty_chess_gui`
