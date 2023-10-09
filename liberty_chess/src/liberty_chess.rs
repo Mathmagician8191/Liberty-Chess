@@ -61,7 +61,7 @@ pub const WALL: Piece = 18;
 // 1 = None
 // 2 = Basic
 // 3 = Powerful
-const ATTACK: [Piece; 19] = [0, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 1, 1];
+const ATTACK: [Piece; 19] = [0, 3, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 1, 1];
 const DEFENCE: [Piece; 19] = [0, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2];
 
 /// An enum to represent the reasons for an L-FEN to be invalid.

@@ -175,7 +175,7 @@ fn main() {
   //liberty chess - not tested with external sources
   perft_test(
     "ruabhqkhbcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKHBCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
-    &[1, 194, 37_464, 7_294_214],
+    &[1, 194, 37_508, 7_308_138],
   );
 
   //mini chess
@@ -193,7 +193,7 @@ fn main() {
   //african chess - not tested with external sources
   perft_test(
     "lnzekznl/pppppppp/8/8/8/8/PPPPPPPP/LNZEKZNL w - - 0 1 - enzl",
-    &[1, 28, 784, 21_900, 606_601, 16_950_392, 469_862_168],
+    &[1, 28, 784, 21_900, 606_601, 16_950_392, 469_862_204],
   );
 
   //narnia chess - not tested with external sources
@@ -205,7 +205,7 @@ fn main() {
   //trump chess - not tested with external sources
   perft_test(
     "rwwwkwwr/pppppppp/8/8/8/8/PPPPPPPP/RWWWKWWR w KQkq - 0 1 - mrw",
-    &[1, 176, 30_856, 5_410_950],
+    &[1, 176, 30_926, 5_433_266],
   );
 
   //loaded board - results modified by El Vaticano
