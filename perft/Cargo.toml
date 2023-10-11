@@ -13,3 +13,4 @@ threadpool = {workspace = true, optional = true}
 [features]
 default = ["parallel"]
 parallel = ["dep:threadpool"]
+validate = ["liberty_chess/validate"]

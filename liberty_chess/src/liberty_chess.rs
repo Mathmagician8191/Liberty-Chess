@@ -98,6 +98,10 @@ pub enum Gamestate {
   Repetition,
   /// The game is drawn by 3-fold repitition.
   Move50,
+  /// The game is over by elimination of 1 side. True = White win, False = Black win
+  Elimination(bool),
+  /// The game is drawn by insufficient material
+  Material,
 }
 
 /// Represents a Liberty chess position
@@ -123,8 +127,14 @@ pub struct Board {
   previous: Vec<Hash>,
   hash: Hash,
   keys: Rc<Zobrist>,
-  /// Whether friendly fire mode is enabled
+  /// Whether friendly fire mode is enabled.
+  /// Changing this value is only supported before moves are made.
   pub friendly_fire: bool,
+
+  // Additional cached values
+  // Piece counts ignore kings
+  white_pieces: usize,
+  black_pieces: usize,
 }
 
 impl PartialEq for Board {
@@ -447,6 +457,8 @@ fn process_board(board: &str) -> Result<Board, FenError> {
   let mut pieces = Vec::new();
   let mut white_kings = Vec::new();
   let mut black_kings = Vec::new();
+  let mut white_pieces = 0;
+  let mut black_pieces = 0;
 
   for row in (0..height).rev() {
     let string = rows[row];
@@ -469,6 +481,10 @@ fn process_board(board: &str) -> Result<Board, FenError> {
           } else {
             black_kings.push((height - row - 1, vec.len()));
           }
+        } else if piece > 0 {
+          white_pieces += 1;
+        } else {
+          black_pieces += 1;
         }
         vec.push(piece);
       }
@@ -513,6 +529,8 @@ fn process_board(board: &str) -> Result<Board, FenError> {
     hash: 0,
     keys: Rc::new(Zobrist::new(width, height)),
     friendly_fire: false,
+    white_pieces,
+    black_pieces,
   })
 }
 
@@ -944,20 +962,32 @@ impl Board {
     if piece.abs() == BISHOP {
       // Test for El Vaticano
       if start.0 == end.0 {
+        self.halfmoves = 0;
         let lowest = usize::min(start.1, end.1);
         let highest = usize::max(start.1, end.1);
         for i in lowest + 1..highest {
           let position = (start.0, i);
           keys.update_hash(&mut self.hash, self.pieces[position], position);
+          if self.pieces[position] > 0 {
+            self.white_pieces -= 1;
+          } else {
+            self.black_pieces -= 1;
+          }
           self.pieces[position] = SQUARE;
         }
         return;
       } else if start.1 == end.1 {
+        self.halfmoves = 0;
         let lowest = usize::min(start.0, end.0);
         let highest = usize::max(start.0, end.0);
         for i in lowest + 1..highest {
           let position = (i, start.1);
           keys.update_hash(&mut self.hash, self.pieces[position], position);
+          if self.pieces[position] > 0 {
+            self.white_pieces -= 1;
+          } else {
+            self.black_pieces -= 1;
+          }
           self.pieces[position] = SQUARE;
         }
         return;
@@ -993,6 +1023,11 @@ impl Board {
               (coords, self.pieces[coords])
             };
             self.hash ^= keys.pieces[coords][(piece - 1) as usize];
+            if self.pieces[coords] > 0 {
+              self.white_pieces -= 1;
+            } else {
+              self.black_pieces -= 1;
+            }
             self.pieces[coords] = SQUARE;
           }
           keys.update_en_passant(&mut self.hash, [column, row_min, row_max]);
@@ -1081,6 +1116,11 @@ impl Board {
     let capture = self.pieces[end];
     if capture != SQUARE {
       keys.update_hash(&mut self.hash, capture, end);
+      if capture > 0 {
+        self.white_pieces -= 1;
+      } else {
+        self.black_pieces -= 1;
+      }
       self.halfmoves = 0;
       self.previous = Vec::new();
       self.duplicates = Vec::new();
@@ -1099,8 +1139,24 @@ impl Board {
     }
     self.pieces[end] = piece;
     self.pieces[start] = SQUARE;
-    // Debugging option, uncomment to enable hashing checks
-    // assert_eq!(self.hash, self.get_hash());
+    // Debugging options, enable validation checks that are slower
+    #[cfg(feature = "validate")]
+    {
+      assert_eq!(self.hash, self.get_hash());
+      let mut white_pieces = 0;
+      let mut black_pieces = 0;
+      for piece in self.pieces.elements_row_major_iter() {
+        if piece != &0 && piece.abs() != KING {
+          if piece > &0 {
+            white_pieces += 1;
+          } else {
+            black_pieces += 1;
+          }
+        }
+      }
+      assert_eq!(self.white_pieces, white_pieces);
+      assert_eq!(self.black_pieces, black_pieces);
+    }
   }
 
   /// Returns a `Board` if the move is legal, and `None` otherwise.
@@ -1385,6 +1441,22 @@ impl Board {
 
   /// Update kings in check and game state.
   pub fn update(&mut self) {
+    match (self.white_pieces == 0, self.black_pieces == 0) {
+      (true, true) => return self.state = Gamestate::Material,
+      (true, false) => {
+        if self.white_kings.is_empty() {
+          self.state = Gamestate::Elimination(true);
+          return;
+        }
+      }
+      (false, true) => {
+        if self.black_kings.is_empty() {
+          self.state = Gamestate::Elimination(false);
+          return;
+        }
+      }
+      (false, false) => (),
+    }
     if !self.any_moves() {
       self.state = if self.attacked_kings().is_empty() {
         Gamestate::Stalemate

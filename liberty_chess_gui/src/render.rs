@@ -269,8 +269,11 @@ fn attempt_move(
       #[cfg(feature = "sound")]
       {
         effect = match newstate.state() {
-          Gamestate::Checkmate(_) => Effect::Victory,
-          Gamestate::Stalemate | Gamestate::Repetition | Gamestate::Move50 => Effect::Draw,
+          Gamestate::Checkmate(_) | Gamestate::Elimination(_) => Effect::Victory,
+          Gamestate::Stalemate
+          | Gamestate::Repetition
+          | Gamestate::Move50
+          | Gamestate::Material => Effect::Draw,
           Gamestate::InProgress => {
             if newstate.attacked_kings().is_empty() {
               if capture {

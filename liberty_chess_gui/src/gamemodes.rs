@@ -33,6 +33,7 @@ pub enum Presets {
   Trump,
   LoadedBoard,
   Double,
+  Horde,
 }
 
 impl Presets {
@@ -49,6 +50,7 @@ impl Presets {
       Self::Trump => "rwwwkwwr/pppppppp/8/8/8/8/PPPPPPPP/RWWWKWWR w KQkq - 0 1 - mrw",
       Self::LoadedBoard => "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1 1",
       Self::Double => "rnbqkbnrrnbqkbnr/pppppppppppppppp/16/16/16/16/PPPPPPPPPPPPPPPP/RNBQKBNRRNBQKBNR w KQkq - 0 1",
+      Self::Horde => "rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w kq - 0 1", 
     }
     .to_owned()
   }
@@ -68,6 +70,7 @@ impl ToString for Presets {
       Self::Trump => "Trump chess",
       Self::LoadedBoard => "Loaded board",
       Self::Double => "Double chess",
+      Self::Horde => "Horde",
     }
     .to_owned()
   }

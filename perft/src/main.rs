@@ -226,6 +226,12 @@ fn main() {
     &[1, 39, 1_519, 63_034, 2_598_922, 112_776_461],
   );
 
+  //horde - not tested with external sources
+  perft_test(
+    "rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w kq - 0 1",
+    &[1, 8, 128, 1_274, 23_310, 265_223, 5_396_554, 68_441_644],
+  );
+
   // test positions from totally normal chess
   perft_test(
     "ciamkaic/pppppppp/8/8/8/8/PPPPPPPP/CIAMKAIC w - - 0 1 - mcai",

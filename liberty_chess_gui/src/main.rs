@@ -209,7 +209,7 @@ impl App for LibertyChessGUI {
       Screen::Game(board) => {
         let board = board.clone();
         SidePanel::right("Sidebar")
-          .min_width((f32::from(self.config.get_text_size())).mul_add(4.45, 6.8))
+          .min_width((f32::from(self.config.get_text_size())).mul_add(4.8, 6.8))
           .resizable(false)
           .show(ctx, |ui| draw_game_sidebar(self, ui, board));
         #[cfg(feature = "clock")]
@@ -616,6 +616,14 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
       Gamestate::Stalemate => "Draw by stalemate",
       Gamestate::Move50 => "Draw by 50 move rule",
       Gamestate::Repetition => "Draw by 3-fold repetition",
+      Gamestate::Elimination(winner) => {
+        if winner {
+          "White wins by elimination"
+        } else {
+          "Black wins by elimination"
+        }
+      }
+      Gamestate::Material => "Draw by insufficient material",
       Gamestate::InProgress => unreachable!(),
     });
   }

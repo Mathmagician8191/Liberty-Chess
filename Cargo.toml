@@ -1,5 +1,6 @@
 [workspace]
 members = ["liberty_chess_gui", "perft"]
+resolver = "2"
 
 [workspace.package]
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
