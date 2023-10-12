@@ -183,7 +183,7 @@ impl Engine {
   /// Play the specified sound effect
   pub fn play(&mut self, sound: &Effect) {
     #[cfg(feature = "music")]
-    let player = &mut self.player.lock();
+    let mut player = self.player.lock();
     #[cfg(not(feature = "music"))]
     let player = &mut self.player;
     let mut handle = player.play(
@@ -201,6 +201,8 @@ impl Engine {
       }]
       .clone(),
     );
+    #[cfg(feature = "music")]
+    drop(player);
     if let Ok(ref mut handle) = handle {
       set_volume(handle, convert_volume(self.sound_volume));
     }

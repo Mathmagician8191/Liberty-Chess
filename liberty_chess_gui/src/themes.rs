@@ -55,7 +55,7 @@ impl FromStr for Theme {
 
   fn from_str(theme: &str) -> Result<Self, Self::Err> {
     theme.parse::<PresetTheme>().map_or_else(
-      |_| Ok(Self::Custom(theme.parse::<CustomTheme>()?)),
+      |()| Ok(Self::Custom(theme.parse::<CustomTheme>()?)),
       |theme| Ok(Self::Preset(theme)),
     )
   }

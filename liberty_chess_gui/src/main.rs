@@ -163,7 +163,7 @@ impl LibertyChessGUI {
       credits: Credits::Coding,
 
       images: images::get(),
-      renders: [(); 36].map(|_| None),
+      renders: [(); 36].map(|()| None),
 
       #[cfg(feature = "sound")]
       audio_engine,
@@ -583,7 +583,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
     ComboBox::from_id_source("Promote")
       .selected_text(to_name(gui.promotion))
       .show_ui(ui, |ui| {
-        for piece in promotion.iter() {
+        for piece in promotion {
           ui.selectable_value(&mut gui.promotion, *piece, to_name(*piece));
         }
       });
