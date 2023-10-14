@@ -74,7 +74,6 @@ pub(crate) struct LibertyChessGUI {
   // fields for board rendering
   selected: Option<(usize, usize)>,
   drag: Option<((usize, usize), Pos2)>,
-  moved: Option<[(usize, usize); 2]>,
   flipped: bool,
 
   // fields for main menu
@@ -142,7 +141,6 @@ impl LibertyChessGUI {
 
       selected: None,
       drag: None,
-      moved: None,
       flipped: false,
 
       gamemode: GameMode::Preset(Presets::Standard),
@@ -311,17 +309,13 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
     Screen::Menu => gui.message = None,
     Screen::Game(_) => {
       gui.selected = None;
-      gui.moved = None;
       gui.undo = Vec::new();
       #[cfg(feature = "music")]
       if let Some(ref mut player) = gui.audio_engine {
         player.clear_dramatic();
       }
     }
-    Screen::Help => {
-      gui.selected = None;
-      gui.moved = None;
-    }
+    Screen::Help => gui.selected = None,
     Screen::Credits | Screen::Settings => (),
   }
   #[cfg(feature = "sound")]
@@ -444,7 +438,6 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board) {
 
 fn draw_help(gui: &mut LibertyChessGUI, ctx: &Context) {
   gui.selected = Some(gui.help_page.selected());
-  gui.moved = gui.help_page.moved();
   Area::new("Board")
     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
@@ -553,7 +546,6 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
       player.set_dramatic(get_dramatic(&gamestate));
     }
     gui.screen = Screen::Game(Box::new(gamestate));
-    gui.moved = None;
     #[cfg(feature = "clock")]
     if let Some(clock) = &mut gui.clock {
       clock.switch_clocks();

@@ -1,4 +1,5 @@
 use enum_iterator::Sequence;
+use liberty_chess::moves::Move;
 use liberty_chess::Board;
 
 #[derive(Clone, Copy, Eq, PartialEq, Sequence)]
@@ -81,7 +82,11 @@ impl HelpPage {
       Self::Elephant => Board::new("7/7/7/3E3/7/7/7 w").unwrap(),
       Self::Obstacle => Board::new("7/ppppppp/7/3O3/7/7/7 w").unwrap(),
       Self::Wall => Board::new("7/ppppppp/7/3W3/7/7/7 w").unwrap(),
-      Self::EnPassant => Board::new("7/pp1pppp/7/2pP3/7/7/7 w - c5").unwrap(),
+      Self::EnPassant => {
+        let mut board = Board::new("7/pp1pppp/7/2pP3/7/7/7 w - c5").unwrap();
+        board.last_move = Some(Move::new((3, 2), (5, 2)));
+        board
+      }
       Self::ElVaticano => Board::new("7/7/7/2BpB2/7/7/7 w - c5").unwrap(),
       Self::Castling => Board::new("8/8/8/8/8/8/8/R3K2R w KQ").unwrap(),
       Self::Check => Board::new("3r3/7/7/7/7/7/3K3 w").unwrap(),
@@ -126,13 +131,6 @@ impl HelpPage {
       Self::ElVaticano => "2 bishops that are 2 squares apart orthogonally can capture the piece between them. This is represented by one bishop capturing the other one.",
       Self::Castling => "If a King hasn't moved, it can move 2 squares to castle with another piece. The piece that can be castled with is configurable, and the piece moves to the other side of the king.",
       Self::Check => "If a King is in danger of being captured, it is in check. The King must get out of check on the next move. If that is not possible, the game ends in checkmate.",
-    }
-  }
-
-  pub const fn moved(self) -> Option<[(usize, usize); 2]> {
-    match self {
-      Self::EnPassant => Some([(3, 2), (5, 2)]),
-      _ => None,
     }
   }
 }

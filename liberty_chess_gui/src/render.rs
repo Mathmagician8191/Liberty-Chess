@@ -85,8 +85,8 @@ pub(crate) fn draw_board(
       };
       if gamestate.attacked_kings().contains(&&coords) {
         colour = Colours::Check;
-      } else if let Some([from, to]) = gui.moved {
-        if coords == from || coords == to {
+      } else if let Some(last_move) = gamestate.last_move {
+        if coords == last_move.start() || coords == last_move.end() {
           colour = Colours::Moved;
         }
       }
@@ -295,7 +295,6 @@ fn attempt_move(
         }
       }
       gui.screen = Screen::Game(Box::new(newstate));
-      gui.moved = Some([selected, coords]);
     }
   }
   #[cfg(feature = "sound")]

@@ -6,10 +6,13 @@
 use crate::keys::{Hash, Zobrist};
 use array2d::Array2D;
 use core::str::FromStr;
+use moves::Move;
 use std::rc::Rc;
 
 /// A struct to represent a clock
 pub mod clock;
+/// Move representation
+pub mod moves;
 
 mod keys;
 
@@ -135,6 +138,9 @@ pub struct Board {
   // Piece counts ignore kings
   white_pieces: usize,
   black_pieces: usize,
+
+  /// The last move the board has recorded
+  pub last_move: Option<Move>,
 }
 
 impl PartialEq for Board {
@@ -531,6 +537,8 @@ fn process_board(board: &str) -> Result<Board, FenError> {
     friendly_fire: false,
     white_pieces,
     black_pieces,
+
+    last_move: None,
   })
 }
 
@@ -951,6 +959,7 @@ impl Board {
   /// Moves a piece from one square to another.
   /// This function assumes the move is legal.
   fn make_move(&mut self, start: (usize, usize), end: (usize, usize)) {
+    self.last_move = Some(Move::new(start, end));
     let keys = self.keys.as_ref();
     self.halfmoves += 1;
     self.to_move = !self.to_move;
@@ -1193,6 +1202,17 @@ impl Board {
         .push(target);
       }
       self.update();
+      if let Some(mut last_move) = self.last_move {
+        last_move.add_promotion(piece);
+      }
+    }
+  }
+
+  /// Play a move from a move object
+  pub fn play_move(&mut self, played_move: Move) {
+    self.make_move(played_move.start(), played_move.end());
+    if let Some(piece) = played_move.promotion() {
+      self.promote(piece)
     }
   }
 
