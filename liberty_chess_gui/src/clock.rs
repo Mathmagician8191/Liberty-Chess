@@ -21,7 +21,7 @@ pub fn draw(ctx: &Context, clock: &mut Clock, flipped: bool) {
   } else {
     Colours::Selected
   };
-  if clock.to_move() {
+  if clock.to_move() ^ flipped {
     white_text = white_text.color(color.value());
   } else {
     black_text = black_text.color(color.value());

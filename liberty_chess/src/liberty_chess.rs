@@ -1214,6 +1214,7 @@ impl Board {
     if let Some(piece) = played_move.promotion() {
       self.promote(piece)
     }
+    self.update();
   }
 
   /// Get whether a square is attacked by the specified side.

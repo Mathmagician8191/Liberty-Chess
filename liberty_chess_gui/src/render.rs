@@ -7,7 +7,7 @@ use eframe::egui::{
 use liberty_chess::{to_letters, Board, Piece};
 
 #[cfg(feature = "sound")]
-use liberty_chess::Gamestate;
+use crate::helpers::update_sound;
 #[cfg(feature = "sound")]
 use sound::Effect;
 
@@ -67,16 +67,26 @@ pub(crate) fn draw_board(
       text.push((
         pos2(board_rect.max.x, min_y),
         (i + 1).to_string(),
-        cols + i + 1,
+        if flipped { i } else { cols + i + 1 } % 2 == 0,
         Align2::RIGHT_TOP,
       ));
     }
     for j in 0..cols {
       let coords = (i, j);
       let black_square = (i + j) % 2 == 0;
+      let min_x = if flipped {
+        ((j + 1) as f32).mul_add(-size, board_rect.max.x)
+      } else {
+        (j as f32).mul_add(size, board_rect.min.x)
+      };
+      let max_x = if flipped {
+        (j as f32).mul_add(-size, board_rect.max.x)
+      } else {
+        ((j + 1) as f32).mul_add(size, board_rect.min.x)
+      };
       let rect = Rect {
-        min: pos2((j as f32).mul_add(size, board_rect.min.x), min_y),
-        max: pos2(((j + 1) as f32).mul_add(size, board_rect.min.x), max_y),
+        min: pos2(min_x, min_y),
+        max: pos2(max_x, max_y),
       };
       let mut colour = if black_square {
         Colours::BlackSquare
@@ -141,21 +151,30 @@ pub(crate) fn draw_board(
   }
   if numbers {
     for i in 0..cols {
+      let x = if flipped {
+        ((i + 1) as f32).mul_add(-size, board_rect.max.x)
+      } else {
+        (i as f32).mul_add(size, board_rect.min.x)
+      };
       text.push((
-        pos2((i as f32).mul_add(size, board_rect.min.x), board_rect.max.y),
+        pos2(x, board_rect.max.y),
         to_letters(i).iter().collect::<String>(),
-        if flipped { rows + i + 1 } else { rows + i },
+        if flipped {
+          (rows + i + 1) % 2 == 0
+        } else {
+          i % 2 == 0
+        },
         Align2::LEFT_BOTTOM,
       ));
     }
   }
-  for (pos, text, i, align) in &text {
+  for (pos, text, colour, align) in &text {
     painter.text(
       *pos,
       *align,
       text,
       FontId::proportional(size / NUMBER_SCALE),
-      if i % 2 == 0 {
+      if *colour {
         Colours::WhiteSquare
       } else {
         Colours::BlackSquare
@@ -185,7 +204,12 @@ fn get_hovered(
   gamestate: &Board,
 ) -> Option<((usize, usize), i8)> {
   if board_rect.contains(location) {
-    let x = (location.x - board_rect.min.x) as usize / size;
+    let x = if flipped {
+      board_rect.max.x - location.x
+    } else {
+      location.x - board_rect.min.x
+    } as usize
+      / size;
     let y = if flipped {
       location.y - board_rect.min.y
     } else {
@@ -267,26 +291,7 @@ fn attempt_move(
       }
       gui.undo.push(gamestate.clone());
       #[cfg(feature = "sound")]
-      {
-        effect = match newstate.state() {
-          Gamestate::Checkmate(_) | Gamestate::Elimination(_) => Effect::Victory,
-          Gamestate::Stalemate
-          | Gamestate::Repetition
-          | Gamestate::Move50
-          | Gamestate::Material => Effect::Draw,
-          Gamestate::InProgress => {
-            if newstate.attacked_kings().is_empty() {
-              if capture {
-                Effect::Capture
-              } else {
-                Effect::Move
-              }
-            } else {
-              Effect::Check
-            }
-          }
-        };
-      }
+      update_sound(&mut effect, &newstate, capture);
       #[cfg(feature = "music")]
       {
         let dramatic = get_dramatic(&newstate) + if capture { 0.5 } else { 0.0 };

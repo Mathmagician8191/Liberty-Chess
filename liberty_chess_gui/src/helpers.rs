@@ -5,6 +5,8 @@ use egui::color_picker::{color_edit_button_srgba, Alpha};
 use egui::{Color32, Context, Image, TextBuffer, TextEdit, Ui};
 
 #[cfg(feature = "sound")]
+use liberty_chess::{Board, Gamestate};
+#[cfg(feature = "sound")]
 use sound::{Effect, Engine};
 
 //sizes of things
@@ -143,4 +145,25 @@ impl<T: Copy + Ord + ToString + FromStr> TextBuffer for NumericalInput<T> {
     self.number = number;
     self.string = number.to_string();
   }
+}
+
+#[cfg(feature = "sound")]
+pub fn update_sound(effect: &mut Effect, board: &Board, capture: bool) {
+  *effect = match board.state() {
+    Gamestate::Checkmate(_) | Gamestate::Elimination(_) => Effect::Victory,
+    Gamestate::Stalemate | Gamestate::Repetition | Gamestate::Move50 | Gamestate::Material => {
+      Effect::Draw
+    }
+    Gamestate::InProgress => {
+      if board.attacked_kings().is_empty() {
+        if capture {
+          Effect::Capture
+        } else {
+          Effect::Move
+        }
+      } else {
+        Effect::Check
+      }
+    }
+  };
 }

@@ -19,6 +19,8 @@ use egui::{
 };
 use enum_iterator::all;
 use liberty_chess::{to_name, Board, Gamestate, Piece};
+use oxidation::random_move;
+use players::{PlayerColour, PlayerType};
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{FitTo, Tree};
 use themes::CustomTheme;
@@ -37,6 +39,8 @@ use crate::config::{DRAMATIC_ENABLED_KEY, MUSIC_VOLUME_KEY};
 #[cfg(feature = "sound")]
 use crate::config::{EFFECT_VOLUME_KEY, SOUND_KEY};
 #[cfg(feature = "sound")]
+use helpers::update_sound;
+#[cfg(feature = "sound")]
 use sound::{Effect, Engine, DEFAULT_VOLUME};
 
 #[cfg(target_arch = "wasm32")]
@@ -49,6 +53,7 @@ mod gamemodes;
 mod help_page;
 mod helpers;
 mod images;
+mod players;
 mod render;
 mod themes;
 
@@ -85,12 +90,15 @@ pub(crate) struct LibertyChessGUI {
   clock_type: Type,
   #[cfg(feature = "clock")]
   clock_data: [u64; 4],
+  alternate_player: Option<PlayerType>,
+  alternate_player_colour: PlayerColour,
 
   // fields for game screen
   undo: Vec<Board>,
   #[cfg(feature = "clock")]
   clock: Option<Clock>,
   promotion: Piece,
+  player: Option<(PlayerType, bool)>,
 
   // fields for different screens
   help_page: HelpPage,
@@ -151,11 +159,14 @@ impl LibertyChessGUI {
       clock_type: Type::None,
       #[cfg(feature = "clock")]
       clock_data: [10; 4],
+      alternate_player: None,
+      alternate_player_colour: PlayerColour::Random,
 
       undo: Vec::new(),
       #[cfg(feature = "clock")]
       clock: None,
       promotion: liberty_chess::QUEEN,
+      player: None,
 
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
@@ -255,7 +266,7 @@ impl App for LibertyChessGUI {
     CentralPanel::default().show(ctx, |ui| {
       match &self.screen {
         Screen::Menu => draw_menu(self, ctx, ui),
-        Screen::Game(board) => draw_game(self, ctx, &board.clone()),
+        Screen::Game(board) => draw_game(self, ctx, *board.clone()),
         Screen::Help => draw_help(self, ctx),
         Screen::Credits => credits::draw(self, ctx, ui),
         Screen::Settings => {
@@ -310,6 +321,10 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
     Screen::Game(_) => {
       gui.selected = None;
       gui.undo = Vec::new();
+      #[cfg(feature = "clock")]
+      {
+        gui.clock = None;
+      }
       #[cfg(feature = "music")]
       if let Some(ref mut player) = gui.audio_engine {
         player.clear_dramatic();
@@ -401,6 +416,11 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         if let Some(ref mut player) = gui.audio_engine {
           player.set_dramatic(get_dramatic(&board));
         }
+
+        gui.player = gui
+          .alternate_player
+          .map(|player| (player, gui.alternate_player_colour.get_colour()));
+
         switch_screen(gui, Screen::Game(Box::new(board)));
       }
       Err(error) => {
@@ -414,13 +434,36 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
 
   #[cfg(feature = "clock")]
   draw_edit(gui, ui, size * 2.0);
+
+  let player_name = gui
+    .alternate_player
+    .map_or_else(|| "Local Opponent".to_string(), |player| player.to_string());
+
+  ComboBox::from_id_source("Opponent")
+    .selected_text(format!("Opponent: {player_name}"))
+    .show_ui(ui, |ui| {
+      ui.selectable_value(&mut gui.alternate_player, None, "Local Opponent");
+      for player in all::<PlayerType>() {
+        ui.selectable_value(&mut gui.alternate_player, Some(player), player.to_string());
+      }
+    });
+
+  if gui.alternate_player.is_some() {
+    ComboBox::from_id_source("Opponent Colour")
+      .selected_text(format!(
+        "Colour: {}",
+        gui.alternate_player_colour.to_string()
+      ))
+      .show_ui(ui, |ui| {
+        for colour in all::<PlayerColour>() {
+          ui.selectable_value(&mut gui.alternate_player_colour, colour, colour.to_string());
+        }
+      });
+  }
 }
 
-fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board) {
-  #[cfg(feature = "clock")]
+fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Board) {
   let mut clickable;
-  #[cfg(not(feature = "clock"))]
-  let clickable;
   clickable = !board.promotion_available() && board.state() == Gamestate::InProgress;
   #[cfg(feature = "clock")]
   if let Some(clock) = &gui.clock {
@@ -429,10 +472,36 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board) {
       clickable = false;
     }
   }
+  if let Some((player, side)) = gui.player {
+    if side == board.to_move() {
+      clickable = false;
+      match player {
+        PlayerType::RandomEngine => {
+          let random_move = random_move(&board);
+          if let Some(random_move) = random_move {
+            #[cfg(feature = "sound")]
+            let capture = board.get_piece(random_move.end()) != 0;
+            board.play_move(random_move);
+            gui.screen = Screen::Game(Box::new(board.clone()));
+            #[cfg(feature = "sound")]
+            if let Some(engine) = &mut gui.audio_engine {
+              let mut effect = Effect::Illegal;
+              update_sound(&mut effect, &board, capture);
+              engine.play(&effect);
+            }
+            #[cfg(feature = "clock")]
+            if let Some(clock) = &mut gui.clock {
+              clock.switch_clocks();
+            }
+          }
+        }
+      }
+    }
+  }
   Area::new("Board")
     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
-      draw_board(gui, ctx, ui, board, clickable, gui.flipped);
+      draw_board(gui, ctx, ui, &board, clickable, gui.flipped);
     });
 }
 
@@ -548,7 +617,11 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
     gui.screen = Screen::Game(Box::new(gamestate));
     #[cfg(feature = "clock")]
     if let Some(clock) = &mut gui.clock {
-      clock.switch_clocks();
+      if gui.player.is_none() {
+        clock.switch_clocks();
+      } else if clock.is_paused() {
+        clock.toggle_pause();
+      }
     };
   }
 
@@ -582,6 +655,12 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
     if ui.button("Promote").clicked() {
       gamestate.promote(gui.promotion);
       gui.screen = Screen::Game(gamestate.clone());
+      #[cfg(feature = "sound")]
+      if let Some(engine) = &mut gui.audio_engine {
+        let mut effect = Effect::Illegal;
+        update_sound(&mut effect, &gamestate, false);
+        engine.play(&effect);
+      }
       #[cfg(feature = "clock")]
       if let Some(clock) = &mut gui.clock {
         clock.switch_clocks();
@@ -596,29 +675,33 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
 
   // if the game is over, report the reason
   let state = gamestate.state();
-  if state != Gamestate::InProgress {
-    ui.label(match state {
-      Gamestate::Checkmate(winner) => {
-        if winner {
-          "White wins by checkmate"
-        } else {
-          "Black wins by checkmate"
-        }
+  ui.label(match state {
+    Gamestate::Checkmate(winner) => {
+      if winner {
+        "White wins by checkmate"
+      } else {
+        "Black wins by checkmate"
       }
-      Gamestate::Stalemate => "Draw by stalemate",
-      Gamestate::Move50 => "Draw by 50 move rule",
-      Gamestate::Repetition => "Draw by 3-fold repetition",
-      Gamestate::Elimination(winner) => {
-        if winner {
-          "White wins by elimination"
-        } else {
-          "Black wins by elimination"
-        }
+    }
+    Gamestate::Stalemate => "Draw by stalemate",
+    Gamestate::Move50 => "Draw by 50 move rule",
+    Gamestate::Repetition => "Draw by 3-fold repetition",
+    Gamestate::Elimination(winner) => {
+      if winner {
+        "White wins by elimination"
+      } else {
+        "Black wins by elimination"
       }
-      Gamestate::Material => "Draw by insufficient material",
-      Gamestate::InProgress => unreachable!(),
-    });
-  }
+    }
+    Gamestate::Material => "Draw by insufficient material",
+    Gamestate::InProgress => {
+      if gamestate.to_move() {
+        "White to move"
+      } else {
+        "Black to move"
+      }
+    }
+  });
 }
 
 // general helper functions
