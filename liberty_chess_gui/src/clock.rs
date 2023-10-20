@@ -1,9 +1,8 @@
-use crate::helpers::{raw_text_edit, NumericalInput};
+use crate::helpers::{populate_dropdown, raw_text_edit, NumericalInput};
 use crate::themes::Colours;
 use crate::LibertyChessGUI;
 use core::time::Duration;
 use eframe::egui::{ComboBox, Context, RichText, TopBottomPanel, Ui};
-use enum_iterator::all;
 use liberty_chess::clock::{Clock, Type};
 
 const MAX_TIME: u64 = 360;
@@ -40,9 +39,7 @@ pub(crate) fn draw_edit(gui: &mut LibertyChessGUI, ui: &mut Ui, size: f32) {
   ComboBox::from_id_source("Clock")
     .selected_text("Clock: ".to_owned() + &gui.clock_type.to_string())
     .show_ui(ui, |ui| {
-      for clock_type in all::<Type>() {
-        ui.selectable_value(&mut gui.clock_type, clock_type, clock_type.to_string());
-      }
+      populate_dropdown(ui, &mut gui.clock_type);
     });
   match gui.clock_type {
     Type::None => (),

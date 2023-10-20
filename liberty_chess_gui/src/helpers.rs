@@ -4,6 +4,7 @@ use eframe::egui;
 use egui::color_picker::{color_edit_button_srgba, Alpha};
 use egui::{Color32, Context, Image, TextBuffer, TextEdit, Ui};
 
+use enum_iterator::{all, Sequence};
 #[cfg(feature = "sound")]
 use liberty_chess::{Board, Gamestate};
 #[cfg(feature = "sound")]
@@ -48,6 +49,22 @@ pub fn colour_edit(ui: &mut Ui, colour: &mut Color32, text: &'static str) {
     color_edit_button_srgba(ui, colour, Alpha::Opaque);
     ui.label(text);
   });
+}
+
+pub fn populate_dropdown<T: Copy + PartialEq + Sequence + ToString>(ui: &mut Ui, selected: &mut T) {
+  for item in all::<T>() {
+    ui.selectable_value(selected, item, item.to_string());
+  }
+}
+
+pub fn populate_dropdown_transform<T: Copy + Sequence + ToString, S: PartialEq>(
+  ui: &mut Ui,
+  selected: &mut S,
+  transform: impl Fn(T) -> S,
+) {
+  for item in all::<T>() {
+    ui.selectable_value(selected, transform(item), item.to_string());
+  }
 }
 
 // Checkbox wrapper with selection/deselection sounds

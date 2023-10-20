@@ -10,7 +10,7 @@ use crate::helpers::{
   char_text_edit, checkbox, colour_edit, get_fen, label_text_edit, menu_button,
 };
 use crate::render::draw_board;
-use crate::themes::{Colours, PresetTheme, Theme};
+use crate::themes::{Colours, Theme};
 use eframe::epaint::Pos2;
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
@@ -18,6 +18,7 @@ use egui::{
   SidePanel, Slider, TextureHandle, TextureId, TextureOptions, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
+use helpers::{populate_dropdown, populate_dropdown_transform};
 use liberty_chess::{to_name, Board, Gamestate, Piece};
 use oxidation::random_move;
 use players::{PlayerColour, PlayerType};
@@ -360,13 +361,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   ComboBox::from_id_source("Gamemode")
     .selected_text("Gamemode: ".to_owned() + &gui.gamemode.to_string())
     .show_ui(ui, |ui| {
-      for gamemode in all::<Presets>() {
-        ui.selectable_value(
-          &mut gui.gamemode,
-          GameMode::Preset(gamemode),
-          gamemode.to_string(),
-        );
-      }
+      populate_dropdown_transform(ui, &mut gui.gamemode, GameMode::Preset);
       ui.selectable_value(&mut gui.gamemode, GameMode::Custom, "Custom");
       ui.selectable_value(
         &mut gui.gamemode,
@@ -417,9 +412,17 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
           player.set_dramatic(get_dramatic(&board));
         }
 
-        gui.player = gui
-          .alternate_player
-          .map(|player| (player, gui.alternate_player_colour.get_colour()));
+        if gui.config.get_autoflip() {
+          gui.flipped = !board.to_move()
+        }
+
+        gui.player = gui.alternate_player.map(|player| {
+          let colour = gui.alternate_player_colour.get_colour();
+          if gui.config.get_opponentflip() {
+            gui.flipped = colour;
+          }
+          (player, colour)
+        });
 
         switch_screen(gui, Screen::Game(Box::new(board)));
       }
@@ -443,9 +446,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
     .selected_text(format!("Opponent: {player_name}"))
     .show_ui(ui, |ui| {
       ui.selectable_value(&mut gui.alternate_player, None, "Local Opponent");
-      for player in all::<PlayerType>() {
-        ui.selectable_value(&mut gui.alternate_player, Some(player), player.to_string());
-      }
+      populate_dropdown_transform(ui, &mut gui.alternate_player, Option::Some);
     });
 
   if gui.alternate_player.is_some() {
@@ -455,9 +456,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         gui.alternate_player_colour.to_string()
       ))
       .show_ui(ui, |ui| {
-        for colour in all::<PlayerColour>() {
-          ui.selectable_value(&mut gui.alternate_player_colour, colour, colour.to_string());
-        }
+        populate_dropdown(ui, &mut gui.alternate_player_colour);
       });
   }
 }
@@ -520,9 +519,7 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
   ComboBox::from_id_source("Theme")
     .selected_text("Theme: ".to_owned() + &new_theme.show())
     .show_ui(ui, |ui| {
-      for theme in all::<PresetTheme>() {
-        ui.selectable_value(&mut new_theme, Theme::Preset(theme), theme.to_string());
-      }
+      populate_dropdown_transform(ui, &mut new_theme, Theme::Preset);
       ui.selectable_value(
         &mut new_theme,
         Theme::Custom(CustomTheme::new(gui.config.get_theme())),
@@ -554,6 +551,24 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
     gui.audio_engine.as_mut(),
   ) {
     gui.config.toggle_numbers();
+  }
+  if checkbox(
+    ui,
+    &mut gui.config.get_autoflip(),
+    "Flip board to side to move",
+    #[cfg(feature = "sound")]
+    gui.audio_engine.as_mut(),
+  ) {
+    gui.config.toggle_autoflip();
+  }
+  if checkbox(
+    ui,
+    &mut gui.config.get_opponentflip(),
+    "Flip board to local player side",
+    #[cfg(feature = "sound")]
+    gui.audio_engine.as_mut(),
+  ) {
+    gui.config.toggle_opponentflip();
   }
   #[cfg(feature = "sound")]
   {

@@ -48,11 +48,15 @@ fn get_value<T: Parameter<T> + Clone>(raw: &Value<T>) -> T {
 const NUMBER_KEY: &str = "Numbers";
 const TEXT_SIZE_KEY: &str = "Text_Size";
 const THEME_KEY: &str = "Theme";
+const AUTOFLIP_KEY: &str = "Autoflip";
+const OPPONENTFLIP_KEY: &str = "Opponentflip";
 
 pub struct Configuration {
   theme: Value<Theme>,
   text_size: Value<TextSize>,
-  numbers: Value<OptionalFeature>,
+  numbers: Value<bool>,
+  auto_flip: Value<bool>,
+  opponent_flip: Value<bool>,
 }
 
 impl Configuration {
@@ -62,11 +66,15 @@ impl Configuration {
         theme: Value::Default,
         text_size: Value::Default,
         numbers: Value::Default,
+        auto_flip: Value::Default,
+        opponent_flip: Value::Default,
       },
       |storage| Self {
         theme: load(storage.get_string(THEME_KEY)),
         text_size: load(storage.get_string(TEXT_SIZE_KEY)),
         numbers: load(storage.get_string(NUMBER_KEY)),
+        auto_flip: load(storage.get_string(AUTOFLIP_KEY)),
+        opponent_flip: load(storage.get_string(OPPONENTFLIP_KEY)),
       },
     );
     config.set_style(&ctx.egui_ctx);
@@ -78,6 +86,9 @@ impl Configuration {
   pub fn save(&self, storage: &mut dyn Storage) {
     save(storage, THEME_KEY, &self.theme);
     save(storage, TEXT_SIZE_KEY, &self.text_size);
+    save(storage, NUMBER_KEY, &self.numbers);
+    save(storage, AUTOFLIP_KEY, &self.auto_flip);
+    save(storage, OPPONENTFLIP_KEY, &self.opponent_flip);
   }
 
   // Reset every parameter to their default value
@@ -112,12 +123,28 @@ impl Configuration {
     self.set_style(ctx);
   }
 
-  pub fn get_numbers(&self) -> OptionalFeature {
+  pub fn get_numbers(&self) -> bool {
     get_value(&self.numbers)
   }
 
   pub fn toggle_numbers(&mut self) {
     self.numbers = Value::Modified(!self.get_numbers());
+  }
+
+  pub fn get_autoflip(&self) -> bool {
+    !get_value(&self.auto_flip)
+  }
+
+  pub fn toggle_autoflip(&mut self) {
+    self.auto_flip = Value::Modified(self.get_autoflip())
+  }
+
+  pub fn get_opponentflip(&self) -> bool {
+    get_value(&self.opponent_flip)
+  }
+
+  pub fn toggle_opponentflip(&mut self) {
+    self.opponent_flip = Value::Modified(!self.get_opponentflip())
   }
 
   fn set_style(&self, ctx: &Context) {
@@ -154,9 +181,8 @@ impl Parameter<Self> for TextSize {
     24
   }
 }
-type OptionalFeature = bool;
 
-impl Parameter<Self> for OptionalFeature {
+impl Parameter<Self> for bool {
   fn default_value() -> Self {
     true
   }
