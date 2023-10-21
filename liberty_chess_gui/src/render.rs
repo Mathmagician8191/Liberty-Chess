@@ -286,7 +286,7 @@ fn attempt_move(
         newstate.update();
         #[cfg(feature = "clock")]
         if let Some(clock) = &mut gui.clock {
-          clock.switch_clocks();
+          clock.update_status(&newstate);
         }
       }
       gui.undo.push(gamestate.clone());

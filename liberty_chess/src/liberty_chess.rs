@@ -657,7 +657,7 @@ impl Board {
 
   /// The side currently to move. `true` indicates white, `false` indicates black.
   #[must_use]
-  pub fn to_move(&self) -> bool {
+  pub const fn to_move(&self) -> bool {
     self.to_move
   }
 
@@ -669,7 +669,7 @@ impl Board {
 
   /// Whether the board is waiting for a promotion
   #[must_use]
-  pub fn promotion_available(&self) -> bool {
+  pub const fn promotion_available(&self) -> bool {
     self.promotion_target.is_some()
   }
 
@@ -688,7 +688,7 @@ impl Board {
 
   /// Get the current state of the game
   #[must_use]
-  pub fn state(&self) -> Gamestate {
+  pub const fn state(&self) -> Gamestate {
     self.state
   }
 
@@ -1452,7 +1452,7 @@ impl Board {
     }
   }
 
-  fn kings(&self, side: bool) -> &Vec<(usize, usize)> {
+  const fn kings(&self, side: bool) -> &Vec<(usize, usize)> {
     if side {
       &self.white_kings
     } else {

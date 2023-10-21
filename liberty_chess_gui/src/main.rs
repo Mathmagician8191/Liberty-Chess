@@ -446,7 +446,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
     .selected_text(format!("Opponent: {player_name}"))
     .show_ui(ui, |ui| {
       ui.selectable_value(&mut gui.alternate_player, None, "Local Opponent");
-      populate_dropdown_transform(ui, &mut gui.alternate_player, Option::Some);
+      populate_dropdown_transform(ui, &mut gui.alternate_player, Some);
     });
 
   if gui.alternate_player.is_some() {
@@ -490,7 +490,7 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Board) {
             }
             #[cfg(feature = "clock")]
             if let Some(clock) = &mut gui.clock {
-              clock.switch_clocks();
+              clock.update_status(&board);
             }
           }
         }
@@ -642,7 +642,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
 
   #[cfg(feature = "clock")]
   if let Some(clock) = &mut gui.clock {
-    if !clock.is_flagged() {
+    if gamestate.state() == Gamestate::InProgress && !clock.is_flagged() {
       let text = if clock.is_paused() {
         "Unpause"
       } else {
@@ -678,7 +678,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
       }
       #[cfg(feature = "clock")]
       if let Some(clock) = &mut gui.clock {
-        clock.switch_clocks();
+        clock.update_status(&gamestate);
       }
     }
   }

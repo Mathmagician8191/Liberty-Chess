@@ -171,7 +171,7 @@ impl Engine {
 
   /// Get the current volume for sound effects
   #[must_use]
-  pub fn get_sound_volume(&self) -> u8 {
+  pub const fn get_sound_volume(&self) -> u8 {
     self.sound_volume
   }
 

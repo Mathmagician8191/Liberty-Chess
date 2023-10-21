@@ -10,7 +10,7 @@ pub struct Move {
 
 impl Move {
   /// Initialise a new move based on the start and end points
-  pub fn new(start: (usize, usize), end: (usize, usize)) -> Self {
+  pub const fn new(start: (usize, usize), end: (usize, usize)) -> Self {
     Self {
       start,
       end,
@@ -24,17 +24,17 @@ impl Move {
   }
 
   /// Get the start position of the move
-  pub fn start(&self) -> (usize, usize) {
+  pub const fn start(&self) -> (usize, usize) {
     self.start
   }
 
   /// Get the end position of the move
-  pub fn end(&self) -> (usize, usize) {
+  pub const fn end(&self) -> (usize, usize) {
     self.end
   }
 
   /// Get the promotion involved in the move if there is one
-  pub fn promotion(&self) -> Option<Piece> {
+  pub const fn promotion(&self) -> Option<Piece> {
     self.promotion
   }
 }

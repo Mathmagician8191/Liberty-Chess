@@ -238,7 +238,7 @@ impl Engine {
 
   /// Returns whether music is enabled
   #[must_use]
-  pub fn music_enabled(&self) -> bool {
+  pub const fn music_enabled(&self) -> bool {
     self.music_player.is_some()
   }
 

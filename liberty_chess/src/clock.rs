@@ -1,3 +1,4 @@
+use crate::{Board, Gamestate};
 use enum_iterator::Sequence;
 use std::time::{Duration, Instant};
 
@@ -63,19 +64,19 @@ impl Clock {
   /// Returns whether the clock has flagged.
   /// For accurate results, ensure the clock is updated first.
   #[must_use]
-  pub fn is_flagged(&self) -> bool {
+  pub const fn is_flagged(&self) -> bool {
     self.flagged
   }
 
   /// Returns whether the clock is paused.
   #[must_use]
-  pub fn is_paused(&self) -> bool {
+  pub const fn is_paused(&self) -> bool {
     self.paused
   }
 
   /// Return the side to move according to the clock.
   #[must_use]
-  pub fn to_move(&self) -> bool {
+  pub const fn to_move(&self) -> bool {
     self.to_move
   }
 
@@ -98,6 +99,14 @@ impl Clock {
         self.black_clock += self.black_inc;
         self.to_move = true;
       }
+    }
+  }
+
+  /// Update the clock status when a move occurs
+  pub fn update_status(&mut self, board: &Board) {
+    self.switch_clocks();
+    if board.state() != Gamestate::InProgress && !self.is_paused() {
+      self.toggle_pause();
     }
   }
 }
