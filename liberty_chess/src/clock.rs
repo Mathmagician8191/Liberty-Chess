@@ -19,19 +19,27 @@ pub struct Clock {
 
 impl Clock {
   /// Initialise a `Clock`.
-  /// Time Values are in seconds.
   #[must_use]
-  pub fn new([white_clock, black_clock, white_inc, black_inc]: [u64; 4], to_move: bool) -> Self {
+  pub fn new(
+    [white_clock, black_clock, white_inc, black_inc]: [Duration; 4],
+    to_move: bool,
+  ) -> Self {
     Self {
-      white_clock: Duration::from_secs(60 * white_clock),
-      black_clock: Duration::from_secs(60 * black_clock),
-      white_inc: Duration::from_secs(white_inc),
-      black_inc: Duration::from_secs(black_inc),
+      white_clock,
+      black_clock,
+      white_inc,
+      black_inc,
       to_move,
       flagged: false,
       paused: true,
       last_update: Instant::now(),
     }
+  }
+
+  /// Initialise a `Clock` where the white and black time is the same
+  #[must_use]
+  pub fn new_symmetric(clock: Duration, increment: Duration, to_move: bool) -> Self {
+    Self::new([clock, clock, increment, increment], to_move)
   }
 
   /// Updates the internal state of the clock.

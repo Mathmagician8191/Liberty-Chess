@@ -5,7 +5,12 @@ use core::time::Duration;
 use eframe::egui::{ComboBox, Context, RichText, TopBottomPanel, Ui};
 use liberty_chess::clock::{Clock, Type};
 
+const DEFAULT_TIME: u64 = 10;
 const MAX_TIME: u64 = 360;
+
+pub fn init_input() -> NumericalInput<u64> {
+  NumericalInput::new(DEFAULT_TIME, 0, MAX_TIME)
+}
 
 pub fn draw(ctx: &Context, clock: &mut Clock, flipped: bool) {
   clock.update();
@@ -46,36 +51,28 @@ pub(crate) fn draw_edit(gui: &mut LibertyChessGUI, ui: &mut Ui, size: f32) {
     Type::Increment => {
       ui.horizontal_top(|ui| {
         ui.label("Time (min):".to_owned());
-        let value = input(ui, size, gui.clock_data[0]);
-        gui.clock_data[0] = value;
-        gui.clock_data[1] = value;
+        raw_text_edit(ui, size, &mut gui.clock_data[0]);
+        gui.clock_data[1] = gui.clock_data[0].clone();
         ui.label("Increment (s):");
-        let value = input(ui, size, gui.clock_data[2]);
-        gui.clock_data[2] = value;
-        gui.clock_data[3] = value;
+        raw_text_edit(ui, size, &mut gui.clock_data[2]);
+        gui.clock_data[3] = gui.clock_data[2].clone();
       });
     }
     Type::Handicap => {
       ui.horizontal_top(|ui| {
         ui.label("White Time (min):");
-        gui.clock_data[0] = input(ui, size, gui.clock_data[0]);
+        raw_text_edit(ui, size, &mut gui.clock_data[0]);
         ui.label("Increment (s):");
-        gui.clock_data[2] = input(ui, size, gui.clock_data[2]);
+        raw_text_edit(ui, size, &mut gui.clock_data[2]);
       });
       ui.horizontal_top(|ui| {
         ui.label("Black Time (min):");
-        gui.clock_data[1] = input(ui, size, gui.clock_data[1]);
+        raw_text_edit(ui, size, &mut gui.clock_data[1]);
         ui.label("Increment (s):");
-        gui.clock_data[3] = input(ui, size, gui.clock_data[3]);
+        raw_text_edit(ui, size, &mut gui.clock_data[3]);
       });
     }
   }
-}
-
-pub fn input(ui: &mut Ui, size: f32, input: u64) -> u64 {
-  let mut input = NumericalInput::<u64>::new(input, 0, MAX_TIME);
-  raw_text_edit(ui, size, &mut input);
-  input.get_value()
 }
 
 fn print_clock(time: Duration) -> String {
@@ -87,4 +84,22 @@ fn print_clock(time: Duration) -> String {
     let millis = time.as_millis();
     secs.to_string() + &format!(".{}", (millis / 100) % 10)
   }
+}
+
+pub fn convert_clock(clock_data: &[NumericalInput<u64>; 4]) -> [Duration; 4] {
+  let [white_clock, black_clock, white_increment, black_increment] =
+    clock_data.clone().map(|data| data.get_value());
+  let white_clock = Duration::from_secs(if white_clock == 0 {
+    10
+  } else {
+    white_clock * 60
+  });
+  let black_clock = Duration::from_secs(if black_clock == 0 {
+    10
+  } else {
+    black_clock * 60
+  });
+  let white_increment = Duration::from_secs(white_increment);
+  let black_increment = Duration::from_secs(black_increment);
+  [white_clock, black_clock, white_increment, black_increment]
 }

@@ -30,7 +30,9 @@ use themes::CustomTheme;
 use std::time::Instant;
 
 #[cfg(feature = "clock")]
-use crate::clock::{draw, draw_edit};
+use crate::clock::{convert_clock, draw, draw_edit, init_input};
+#[cfg(feature = "clock")]
+use crate::helpers::NumericalInput;
 #[cfg(feature = "clock")]
 use liberty_chess::clock::{Clock, Type};
 
@@ -90,7 +92,7 @@ pub(crate) struct LibertyChessGUI {
   #[cfg(feature = "clock")]
   clock_type: Type,
   #[cfg(feature = "clock")]
-  clock_data: [u64; 4],
+  clock_data: [NumericalInput<u64>; 4],
   alternate_player: Option<PlayerType>,
   alternate_player_colour: PlayerColour,
 
@@ -159,7 +161,7 @@ impl LibertyChessGUI {
       #[cfg(feature = "clock")]
       clock_type: Type::None,
       #[cfg(feature = "clock")]
-      clock_data: [10; 4],
+      clock_data: [(); 4].map(|()| init_input()),
       alternate_player: None,
       alternate_player_colour: PlayerColour::Random,
 
@@ -401,7 +403,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         match gui.clock_type {
           Type::None => gui.clock = None,
           Type::Increment | Type::Handicap => {
-            gui.clock = Some(Clock::new(gui.clock_data, board.to_move()));
+            gui.clock = Some(Clock::new(convert_clock(&gui.clock_data), board.to_move()));
           }
         }
         if gui.friendly {

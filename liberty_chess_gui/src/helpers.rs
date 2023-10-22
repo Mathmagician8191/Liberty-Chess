@@ -109,15 +109,15 @@ pub fn label_text_edit(ui: &mut Ui, size: f32, input: &mut impl TextBuffer, labe
   });
 }
 
-#[derive(Eq, PartialEq)]
-pub struct NumericalInput<T: Copy + ToString> {
+#[derive(Clone, Eq, PartialEq)]
+pub struct NumericalInput<T: Copy + Ord + ToString> {
   number: T,
   min: T,
   max: T,
   string: String,
 }
 
-impl<T: Copy + ToString> NumericalInput<T> {
+impl<T: Copy + Ord + ToString> NumericalInput<T> {
   pub fn new(number: T, min: T, max: T) -> Self {
     Self {
       number,
@@ -127,12 +127,12 @@ impl<T: Copy + ToString> NumericalInput<T> {
     }
   }
 
-  pub const fn get_value(&self) -> T {
-    self.number
+  pub fn get_value(&self) -> T {
+    self.number.max(self.min)
   }
 }
 
-impl<T: Copy + Ord + ToString + FromStr> TextBuffer for NumericalInput<T> {
+impl<T: Copy + Default + Ord + ToString + FromStr> TextBuffer for NumericalInput<T> {
   fn is_mutable(&self) -> bool {
     true
   }
@@ -158,9 +158,17 @@ impl<T: Copy + Ord + ToString + FromStr> TextBuffer for NumericalInput<T> {
   fn delete_char_range(&mut self, char_range: std::ops::Range<usize>) {
     let mut string = self.string.clone();
     string.delete_char_range(char_range);
-    let number = T::max(string.parse::<T>().unwrap_or(self.min), self.min);
-    self.number = number;
-    self.string = number.to_string();
+    let number = string.parse::<T>();
+    match number {
+      Ok(number) => {
+        self.number = number;
+        self.string = number.to_string();
+      }
+      Err(_) => {
+        self.number = T::default();
+        self.string = String::new();
+      }
+    }
   }
 }
 
