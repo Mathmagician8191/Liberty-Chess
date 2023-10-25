@@ -1,12 +1,10 @@
-# L-FEN
+Version 1.0
 
-A standard text format for describing positions in Liberty Chess.
+L-FEN is the standard text format for describing positions in Liberty Chess.
 
 An L-FEN is broken up into several fields that are space separated.
 Some fields are optional, but if a field is present all previous ones must also be present.
 Optional fields also present in the standard FEN (those up to Fullmove number) must always be present in output to maintain backwards compatibility unless the user indicates otherwise.
-
-This format is not final and subject to change.
 
 ## Piece definitions
 

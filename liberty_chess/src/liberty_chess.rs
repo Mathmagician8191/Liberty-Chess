@@ -163,14 +163,14 @@ impl ToString for Board {
           squares += 1;
         } else {
           if squares > 0 {
-            output.push_str(&squares.to_string());
+            output += &squares.to_string();
             squares = 0;
           }
           output.push(to_char(*piece));
         }
       }
       if squares > 0 {
-        output.push_str(&squares.to_string());
+        output += &squares.to_string();
       }
       rows.push(output);
     }
@@ -180,7 +180,7 @@ impl ToString for Board {
     let mut result = rows.join("/");
 
     // save side to move
-    result.push_str(if self.to_move { " w " } else { " b " });
+    result += if self.to_move { " w " } else { " b " };
 
     // save castling rights
     let mut needs_castling = true;
@@ -205,15 +205,15 @@ impl ToString for Board {
 
     // save en passant
     match self.en_passant {
-      Some([column, row_min, row_max]) => result.push_str(&to_indices(column, row_min, row_max)),
+      Some([column, row_min, row_max]) => result += &to_indices(column, row_min, row_max),
       None => result.push('-'),
     }
 
     // save halfmove clock and full move count
     result.push(' ');
-    result.push_str(&self.halfmoves.to_string());
+    result += &self.halfmoves.to_string();
     result.push(' ');
-    result.push_str(&self.moves.to_string());
+    result += &self.moves.to_string();
 
     // save optional fields in reverse order
     // because previous ones are required
@@ -275,7 +275,7 @@ impl ToString for Board {
     if !optional.is_empty() {
       optional.reverse();
       result.push(' ');
-      result.push_str(&optional.join(" "));
+      result += &optional.join(" ");
     }
 
     result
@@ -378,6 +378,16 @@ pub fn to_name(piece: Piece) -> &'static str {
   }
 }
 
+fn update_column(column: &mut usize, c: char) {
+  *column *= 26;
+  *column += c as usize + 1 - 'a' as usize;
+}
+
+fn update_row(row: &mut usize, c: char) {
+  *row *= 10;
+  *row += c as usize - '0' as usize;
+}
+
 fn get_indices(algebraic: &str) -> Option<[usize; 3]> {
   if algebraic == "-" {
     return None;
@@ -389,17 +399,12 @@ fn get_indices(algebraic: &str) -> Option<[usize; 3]> {
   let iterator = algebraic.chars();
   for c in iterator {
     match c {
-      _ if c.is_ascii_lowercase() => {
-        column *= 26;
-        column += c as usize + 1 - 'a' as usize;
-      }
+      _ if c.is_ascii_lowercase() => update_column(&mut column, c),
       _ if c.is_ascii_digit() => {
         if found_dash {
-          row_start *= 10;
-          row_start += c as usize - '0' as usize;
+          update_row(&mut row_start, c);
         } else {
-          row *= 10;
-          row += c as usize - '0' as usize;
+          update_row(&mut row, c);
         }
       }
       '-' => found_dash = true,
@@ -1202,7 +1207,7 @@ impl Board {
         .push(target);
       }
       self.update();
-      if let Some(mut last_move) = self.last_move {
+      if let Some(ref mut last_move) = self.last_move {
         last_move.add_promotion(piece);
       }
     }

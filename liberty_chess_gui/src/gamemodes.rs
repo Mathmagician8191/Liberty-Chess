@@ -108,13 +108,13 @@ impl ToString for RandomConfig {
     // Build and return the final L-FEN
     let mut result = pieces.clone();
     result.push('/');
-    result.push_str(&"p".repeat(width));
+    result += &"p".repeat(width);
     result.push('/');
-    result.push_str(&(width.to_string() + "/").repeat(gap));
-    result.push_str(&"P".repeat(width));
+    result += &(width.to_string() + "/").repeat(gap);
+    result += &"P".repeat(width);
     result.push('/');
-    result.push_str(&pieces.to_uppercase());
-    result.push_str(" w KQkq - 0 1");
+    result += &pieces.to_uppercase();
+    result += " w KQkq - 0 1";
     result
   }
 }

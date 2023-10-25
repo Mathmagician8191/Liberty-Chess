@@ -1,7 +1,9 @@
 use crate::{switch_screen, LibertyChessGUI, Screen};
 use core::str::FromStr;
 use eframe::egui;
+use eframe::epaint::Vec2;
 use egui::color_picker::{color_edit_button_srgba, Alpha};
+use egui::load::SizedTexture;
 use egui::{Color32, Context, Image, TextBuffer, TextEdit, Ui};
 
 use enum_iterator::{all, Sequence};
@@ -21,11 +23,14 @@ pub(crate) fn menu_button(gui: &mut LibertyChessGUI, ui: &mut Ui) {
   }
 }
 
-pub(crate) fn get_icon(gui: &mut LibertyChessGUI, ctx: &Context, piece: char) -> Image {
-  Image::new(
-    gui.get_image(ctx, liberty_chess::to_piece(piece).unwrap(), ICON_SIZE),
-    [ICON_SIZE_FLOAT, ICON_SIZE_FLOAT],
-  )
+pub(crate) fn get_icon<'a>(gui: &mut LibertyChessGUI, ctx: &Context, piece: char) -> Image<'a> {
+  Image::new(SizedTexture {
+    id: gui.get_image(ctx, liberty_chess::to_piece(piece).unwrap(), ICON_SIZE),
+    size: Vec2 {
+      x: ICON_SIZE_FLOAT,
+      y: ICON_SIZE_FLOAT,
+    },
+  })
 }
 
 pub(crate) fn get_fen(gui: &LibertyChessGUI) -> String {

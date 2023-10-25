@@ -14,7 +14,7 @@ If moving n spaces where n > 2, can be en passant captured as if it had moved an
 
 Otherwise, moves the same as standard chess.
 
-Attack: Basic \
+Attack: Powerful \
 Defence: None
 
 ## Knight

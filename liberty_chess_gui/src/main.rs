@@ -11,11 +11,11 @@ use crate::helpers::{
 };
 use crate::render::draw_board;
 use crate::themes::{Colours, Theme};
-use eframe::epaint::Pos2;
+use eframe::epaint::{Pos2, TextureId};
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
   Align2, Area, Button, CentralPanel, ColorImage, ComboBox, Context, Label, RichText, ScrollArea,
-  SidePanel, Slider, TextureHandle, TextureId, TextureOptions, TopBottomPanel, Ui, Vec2,
+  SidePanel, Slider, TextureHandle, TextureOptions, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
 use helpers::{populate_dropdown, populate_dropdown_transform};
@@ -687,7 +687,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
 
   // let the user copy the FEN to clipboard
   if ui.button("Copy FEN").clicked() {
-    ui.output().copied_text = get_fen(gui);
+    ui.output_mut(|o| o.copied_text = get_fen(gui));
   }
 
   // if the game is over, report the reason
@@ -789,5 +789,6 @@ fn main() {
     "Liberty Chess",
     options,
     Box::new(|cc| Box::new(LibertyChessGUI::new(cc))),
-  );
+  )
+  .expect("Failed to load Liberty Chess");
 }

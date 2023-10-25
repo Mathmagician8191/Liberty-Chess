@@ -36,7 +36,7 @@ pub(crate) fn draw_board(
   };
   let (response, painter) = ui.allocate_painter(board_size, sense);
   let board_rect = response.rect;
-  painter.rect_filled(board_rect, Rounding::none(), Colours::WhiteSquare.value());
+  painter.rect_filled(board_rect, Rounding::ZERO, Colours::WhiteSquare.value());
   if let Some(location) = response.interact_pointer_pos() {
     let hover = get_hovered(board_rect, location, size as usize, flipped, gamestate);
     register_response(gui, gamestate, &response, hover);
@@ -132,7 +132,7 @@ pub(crate) fn draw_board(
         }
       }
       if colour != Colours::WhiteSquare {
-        painter.rect_filled(rect, Rounding::none(), colour.value());
+        painter.rect_filled(rect, Rounding::ZERO, colour.value());
       }
       if piece != 0 {
         let texture = gui.get_image(painter.ctx(), piece, size as u32);
