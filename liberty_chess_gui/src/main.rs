@@ -47,7 +47,7 @@ use helpers::update_sound;
 use sound::{Effect, Engine, DEFAULT_VOLUME};
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen_futures::spawn_local;
+use eframe::{WebOptions, WebRunner};
 
 // submodules
 mod config;
@@ -281,9 +281,12 @@ impl App for LibertyChessGUI {
       };
     });
 
-    #[cfg(all(feature = "music", feature = "clock"))]
+    #[cfg(all(feature = "music", any(feature = "clock", target_arch = "wasm32")))]
     if let Some(player) = &mut self.audio_engine {
+      #[cfg(feature = "clock")]
       player.set_clock_bonus(get_clock_drama(&mut self.clock));
+      #[cfg(target_arch = "wasm32")]
+      player.poll();
     }
 
     // Add no delay between rendering frames and log FPS when benchmarking
@@ -686,6 +689,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
   }
 
   // let the user copy the FEN to clipboard
+  #[cfg(not(target_arch = "wasm32"))]
   if ui.button("Copy FEN").clicked() {
     ui.output_mut(|o| o.copied_text = get_fen(gui));
   }
@@ -750,16 +754,20 @@ fn get_clock_drama(clock: &mut Option<Clock>) -> f64 {
   })
 }
 
+// When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]
 fn main() {
-  spawn_local(async {
-    eframe::start_web(
-      "Liberty Chess",
-      eframe::WebOptions::default(),
-      Box::new(|cc| Box::new(LibertyChessGUI::new(cc))),
-    )
-    .await
-    .expect("Wasm failed to load");
+  let web_options = WebOptions::default();
+
+  wasm_bindgen_futures::spawn_local(async {
+    WebRunner::new()
+      .start(
+        "Liberty Chess", // hardcode it
+        web_options,
+        Box::new(|cc| Box::new(LibertyChessGUI::new(cc))),
+      )
+      .await
+      .expect("failed to start eframe");
   });
 }
 

@@ -11,12 +11,18 @@ use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundS
 use kira::tween::Tween;
 use std::io::Cursor;
 
+#[cfg(feature = "multithreading")]
+use alloc::sync::Arc;
+#[cfg(feature = "multithreading")]
+use parking_lot::Mutex;
+
 #[cfg(feature = "music")]
 use crate::music::Player;
-#[cfg(feature = "music")]
-use alloc::sync::Arc;
-#[cfg(feature = "music")]
-use parking_lot::Mutex;
+
+#[cfg(all(feature = "music", not(feature = "multithreading")))]
+use std::cell::RefCell;
+#[cfg(all(feature = "music", not(feature = "multithreading")))]
+use std::rc::Rc;
 
 #[cfg(feature = "music")]
 mod music;
@@ -93,8 +99,10 @@ pub enum Effect {
 
 /// The sound engine
 pub struct Engine {
-  #[cfg(feature = "music")]
+  #[cfg(feature = "multithreading")]
   player: Arc<Mutex<AudioManager>>,
+  #[cfg(all(feature = "music", not(feature = "multithreading")))]
+  player: Rc<RefCell<AudioManager>>,
   #[cfg(not(feature = "music"))]
   player: AudioManager,
   sound_volume: u8,
@@ -104,13 +112,31 @@ pub struct Engine {
 }
 
 impl Engine {
-  #[cfg(feature = "music")]
+  #[cfg(feature = "multithreading")]
   #[must_use]
   fn setup(sound_volume: Option<&str>, music_volume: Option<&str>, dramatic: bool) -> Option<Self> {
     let music_volume = load_volume(music_volume);
     let player = Arc::new(Mutex::new(get_manager().ok()?));
+    let music_player = if music_volume != 0 {
+      Player::new(player.clone(), music_volume, dramatic)
+    } else {
+      None
+    };
+    Some(Self {
+      player,
+      sound_volume: load_volume(sound_volume),
+      sounds: get_effects(),
+      music_player,
+    })
+  }
+
+  #[cfg(all(feature = "music", not(feature = "multithreading")))]
+  #[must_use]
+  fn setup(sound_volume: Option<&str>, music_volume: Option<&str>, dramatic: bool) -> Option<Self> {
+    let music_volume = load_volume(music_volume);
+    let player = Rc::new(RefCell::new(get_manager().ok()?));
     let music_player =
-      (music_volume != 0).then(|| Player::new(player.clone(), music_volume, dramatic));
+      (music_volume != 0).then(|| Player::new(player.clone(), music_volume, dramatic))?;
     Some(Self {
       player,
       sound_volume: load_volume(sound_volume),
@@ -182,8 +208,10 @@ impl Engine {
 
   /// Play the specified sound effect
   pub fn play(&mut self, sound: &Effect) {
-    #[cfg(feature = "music")]
+    #[cfg(feature = "multithreading")]
     let mut player = self.player.lock();
+    #[cfg(all(feature = "music", not(feature = "multithreading")))]
+    let mut player = self.player.borrow_mut();
     #[cfg(not(feature = "music"))]
     let player = &mut self.player;
     let mut handle = player.play(

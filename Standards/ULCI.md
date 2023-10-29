@@ -39,7 +39,7 @@ The move format is in long algebraic notation.
 A nullmove from the client to the server should be sent as 0000.
 Examples: e2e4, e7e5, e1g1 (white short castling), e7e8q (for promotion), g10g7 (a move with more than 4 characters)
 
-server to client:
+Server to client:
 --------------
 
 These are all the command the client gets from the interface.
@@ -53,11 +53,11 @@ These are all the command the client gets from the interface.
 
 * debug [ on | off ]
   Switch the debug mode of the client on and off.
-  In debug mode the client should send additional infos to the GUI, e.g. with the "info string" command, to help debugging, e.g. the commands that the client has received etc.
+  In debug mode the client should send additional infos to the server, e.g. with the "info string" command, to help debugging, e.g. the commands that the client has received etc.
   This mode should be switched off by default and this command can be sent any time, also when the client is thinking.
 
 * isready
-  This is used to synchronize the client with the GUI. When the GUI has sent a command or multiple commands that can take some time to complete,
+  This is used to synchronize the client with the server. When the server has sent a command or multiple commands that can take some time to complete,
   This command can be used to wait for the client to be ready again or to ping the client to find out if it is still alive.
   E.g. this should be sent after setting the path to the tablebases as this can take some time.
   This command is also required once before the client is asked to do any search to wait for the client to finish initializing.
@@ -76,14 +76,14 @@ These are all the command the client gets from the interface.
 
 * ucinewgame
   This is sent to the client when the next search (started with "position" and "go") will be from a different game. This can be a new game the client should play or a new game it should analyse but also the next position from a testsuite with positions only.
-  If the GUI hasn't sent a "ucinewgame" before the first "position" command, the client shouldn't expect any further ucinewgame commands as the GUI is probably not supporting the ucinewgame command.
-  So the client should not rely on this command even though all new GUIs should support it.
-  As the client's reaction to "ucinewgame" can take some time the GUI should always send "isready" after "ucinewgame" to wait for the client to finish its operation.
+  If the server hasn't sent a "ucinewgame" before the first "position" command, the client shouldn't expect any further ucinewgame commands as the server is probably not supporting the ucinewgame command.
+  So the client should not rely on this command even though all new servers should support it.
+  As the client's reaction to "ucinewgame" can take some time the server should always send "isready" after "ucinewgame" to wait for the client to finish its operation.
 
 * position [fen <fenstring> | startpos ] moves <move1> .... <movei>
   Set up the position described as an L-FEN on the internal board and play the moves on the internal chess board.
   If the game was played from the start position the string "startpos" will be sent
-  Note: no "new" command is needed. However, if this position is from a different game than the last position sent to the client, the GUI should have sent a "ucinewgame" inbetween.
+  Note: no "new" command is needed. However, if this position is from a different game than the last position sent to the client, the server should have sent a "ucinewgame" inbetween.
 
 * go
   start calculating on the current position set up with the "position" command.
@@ -117,3 +117,30 @@ These are all the command the client gets from the interface.
 
 * quit
   quit the program as soon as possible
+
+Client to server:
+--------------
+
+* id
+  * version <x>
+    This must be sent to indicate to the server the version of ULCI supported.
+    If the server does not receive this, it should assume the client is a regular UCI client.
+    e.g. "id version 1.0"
+  * name <x>
+    This must be sent after receiving the "uci" command to identify the client,
+    e.g. "id name Shredder X.Y\n"
+  * human
+    Indicates that the client represents a human player. Human players should only be given instructions to search infinitely or for a certain time, and should only be expected to return a best move, with no score.
+  * username <x>
+    This must be sent for a human player to identify them
+    e.g. "id username Mathmagician\n"
+  * author <x>
+    This must be sent after receiving the "uci" command to identify the client,
+    e.g. "id author Stefan MK\n"
+
+* uciok
+  Must be sent after the id and optional options to tell the server that the client has sent all info and is ready in uci mode.
+
+* readyok
+  This must be sent when the client has received an "isready" command and has processed all input and is ready to accept new commands now.
+  It is usually sent after a command that can take some time to be able to wait for the client, but it can be used anytime, even when the client is searching,and must always be answered with "isready".
