@@ -37,7 +37,7 @@ fn convert_volume(volume: u8) -> f64 {
 
 fn load_volume(volume: Option<&str>) -> u8 {
   if let Some(volume) = volume {
-    if let Ok(volume) = volume.parse::<u8>() {
+    if let Ok(volume) = volume.parse() {
       return volume;
     }
   }

@@ -1,5 +1,5 @@
 [workspace]
-members = ["liberty_chess_gui", "perft"]
+members = ["liberty_chess_gui", "perft", "oxidation"]
 resolver = "2"
 
 [workspace.package]
@@ -13,6 +13,7 @@ edition = "2021"
 liberty_chess = {path = "liberty_chess"}
 oxidation = {path = "oxidation"}
 sound = {path = "sound"}
+ulci = {path = "ulci"}
 array2d = "0.2.1"
 eframe = {version = "0.23.0", features = ["persistence"]}
 enum-iterator = "1.2.0"

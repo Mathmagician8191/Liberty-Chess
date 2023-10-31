@@ -1,4 +1,5 @@
 use crate::{to_char, to_indices, to_piece, update_column, update_row, Piece};
+use std::str::FromStr;
 
 enum Stage {
   StartCol,
@@ -8,7 +9,7 @@ enum Stage {
 }
 
 /// A struct to represent a move
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Move {
   start: (usize, usize),
   end: (usize, usize),
@@ -30,18 +31,10 @@ impl ToString for Move {
   }
 }
 
-impl Move {
-  /// Initialise a new move based on the start and end points
-  pub const fn new(start: (usize, usize), end: (usize, usize)) -> Self {
-    Self {
-      start,
-      end,
-      promotion: None,
-    }
-  }
+impl FromStr for Move {
+  type Err = ();
 
-  /// Initialise a move from a string representation
-  pub fn load(string: &str) -> Option<Self> {
+  fn from_str(string: &str) -> Result<Self, Self::Err> {
     if !string.is_empty() && string.parse::<u32>() != Ok(0) {
       let mut start_col = 0;
       let mut start_row = 0;
@@ -54,16 +47,20 @@ impl Move {
             Stage::StartCol => update_column(&mut start_col, c),
             Stage::StartRow => {
               stage = Stage::EndCol;
-              update_row(&mut end_col, c);
+              update_column(&mut end_col, c);
             }
-            Stage::EndCol => update_row(&mut end_col, c),
+            Stage::EndCol => update_column(&mut end_col, c),
             Stage::EndRow => {
-              let promotion = to_piece(c).ok();
-              return Some(Self {
-                start: (start_col, start_row),
-                end: (end_col, end_row),
-                promotion,
-              });
+              let promotion = to_piece(c).ok().map(|p| p.abs());
+              return if start_row == 0 || start_col == 0 || end_row == 0 || end_col == 0 {
+                Err(())
+              } else {
+                Ok(Self {
+                  start: (start_row - 1, start_col - 1),
+                  end: (end_row - 1, end_col - 1),
+                  promotion,
+                })
+              };
             }
           }
         } else if c.is_ascii_digit() {
@@ -82,15 +79,32 @@ impl Move {
         }
       }
       match stage {
-        Stage::StartCol | Stage::StartRow | Stage::EndCol => None,
-        Stage::EndRow => Some(Self {
-          start: (start_col, start_row),
-          end: (end_col, end_row),
-          promotion: None,
-        }),
+        Stage::StartCol | Stage::StartRow | Stage::EndCol => Err(()),
+        Stage::EndRow => {
+          if start_row == 0 || start_col == 0 || end_row == 0 || end_col == 0 {
+            Err(())
+          } else {
+            Ok(Self {
+              start: (start_row - 1, start_col - 1),
+              end: (end_row - 1, end_col - 1),
+              promotion: None,
+            })
+          }
+        }
       }
     } else {
-      None
+      Err(())
+    }
+  }
+}
+
+impl Move {
+  /// Initialise a new move based on the start and end points
+  pub const fn new(start: (usize, usize), end: (usize, usize)) -> Self {
+    Self {
+      start,
+      end,
+      promotion: None,
     }
   }
 

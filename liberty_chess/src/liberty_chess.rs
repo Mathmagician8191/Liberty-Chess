@@ -634,6 +634,67 @@ impl Board {
     Ok(board)
   }
 
+  /// Using an `Arc`` has performance impacts but an `Rc`` doesn't allow the `Board` to be shared between threads.
+  /// This is a workaround to create the `Rc` data on the new thread
+  pub fn send_to_thread(&self) -> CompressedBoard {
+    CompressedBoard {
+      pieces: self.pieces.clone(),
+      to_move: self.to_move,
+      castling: self.castling,
+      en_passant: self.en_passant,
+      halfmoves: self.halfmoves,
+      moves: self.moves,
+      pawn_moves: self.pawn_moves,
+      pawn_row: self.pawn_row,
+      castle_row: self.castle_row,
+      queen_column: self.queen_column,
+      king_column: self.king_column,
+      promotion_target: self.promotion_target,
+      promotion_options: self.promotion_options.to_vec(),
+      white_kings: self.white_kings.clone(),
+      black_kings: self.black_kings.clone(),
+      state: self.state,
+      duplicates: self.duplicates.clone(),
+      previous: self.previous.clone(),
+      hash: self.hash,
+      friendly_fire: self.friendly_fire,
+      white_pieces: self.white_pieces,
+      black_pieces: self.black_pieces,
+    }
+  }
+
+  /// Load a board sent to another thread
+  pub fn load_from_thread(board: CompressedBoard) -> Self {
+    let width = board.pieces.num_columns();
+    let height = board.pieces.num_rows();
+    Self {
+      pieces: board.pieces,
+      to_move: board.to_move,
+      castling: board.castling,
+      en_passant: board.en_passant,
+      halfmoves: board.halfmoves,
+      moves: board.moves,
+      pawn_moves: board.pawn_moves,
+      pawn_row: board.pawn_row,
+      castle_row: board.castle_row,
+      queen_column: board.queen_column,
+      king_column: board.king_column,
+      promotion_target: board.promotion_target,
+      promotion_options: Rc::new(board.promotion_options),
+      white_kings: board.white_kings,
+      black_kings: board.black_kings,
+      state: board.state,
+      duplicates: board.duplicates,
+      previous: board.previous,
+      hash: board.hash,
+      keys: Rc::new(Zobrist::new(width, height)),
+      friendly_fire: board.friendly_fire,
+      white_pieces: board.white_pieces,
+      black_pieces: board.black_pieces,
+      last_move: None,
+    }
+  }
+
   /// Returns the piece at the given coordinates.
   #[must_use]
   pub fn get_piece(&self, coords: (usize, usize)) -> Piece {
@@ -1222,6 +1283,33 @@ impl Board {
     self.update();
   }
 
+  /// Return a new board if the move is legal
+  pub fn move_if_legal(&self, test_move: Move) -> Option<Self> {
+    let start = test_move.start();
+    let end = test_move.end();
+    if start.0 < self.height()
+      && start.1 < self.width()
+      && end.0 < self.height()
+      && end.1 < self.width()
+      && self.check_pseudolegal(start, end)
+    {
+      if let Some(mut board) = self.get_legal(start, end) {
+        match (board.promotion_available(), test_move.promotion()) {
+          (true, Some(piece)) => {
+            board.promote(piece);
+            Some(board)
+          }
+          (false, None) => Some(board),
+          (true, None) | (false, Some(_)) => None,
+        }
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+  }
+
   /// Get whether a square is attacked by the specified side.
   #[must_use]
   // automatic flatten is 5% slower
@@ -1586,4 +1674,35 @@ impl Board {
   fn test_legal(&self, start: (usize, usize), end: (usize, usize)) -> bool {
     self.check_pseudolegal(start, end) && self.get_legal(start, end).is_some()
   }
+}
+
+/// A `Board`, compressed to be sent to another thread
+pub struct CompressedBoard {
+  pieces: Array2D<Piece>,
+  to_move: bool,
+  castling: [bool; 4],
+  en_passant: Option<[usize; 3]>,
+  halfmoves: u8,
+  moves: u16,
+  pawn_moves: usize,
+  pawn_row: usize,
+  castle_row: usize,
+  queen_column: usize,
+  king_column: usize,
+  promotion_target: Option<(usize, usize)>,
+  promotion_options: Vec<Piece>,
+  white_kings: Vec<(usize, usize)>,
+  black_kings: Vec<(usize, usize)>,
+  state: Gamestate,
+  duplicates: Vec<Hash>,
+  previous: Vec<Hash>,
+  hash: Hash,
+  /// Whether friendly fire mode is enabled.
+  /// Changing this value is only supported before moves are made.
+  pub friendly_fire: bool,
+
+  // Additional cached values
+  // Piece counts ignore kings
+  white_pieces: usize,
+  black_pieces: usize,
 }

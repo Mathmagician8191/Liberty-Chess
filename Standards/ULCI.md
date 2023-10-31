@@ -1,5 +1,5 @@
-Still being worked on, subject to change
-This is a modified version of the regular chess UCI interface, but some things have been removed for ease of implementation purposes. The goal is for common UCI operations to be implemented, so ULCI clients can be used with regular GUIs
+Version 1 beta
+This is a modified version of the UCI interface for standard chess, but some things have been removed for ease of implementation purposes. The goal is for common UCI operations to be implemented, so ULCI clients can be used with regular UCI GUIs
 
 ULCI (Universal Liberty Chess Interface) is the standard method for server-client communication, such as with a server communicating with an client, or a multiplayer server and client.
 
@@ -113,7 +113,16 @@ These are all the command the client gets from the interface.
     search until the "stop" command. Do not exit the search without being told so in this mode! The server should still handle exiting the search, e.g. in case of a human player.
 
 * stop
-  Stop calculating as soon as possible, don't forget the "bestmove" token when finishing the search
+  Stop calculating as soon as possible, don't forget the "bestmove" token when finishing the search. Human players may take some time to respond to this.
+
+* info
+  The server has additional information for the client
+  * string <str>
+    The server has a generic message for the client
+  * clienterror <str>
+    The client's communication has an error
+  * servererror <str>
+    The server has an error message for the client
 
 * quit
   quit the program as soon as possible
@@ -125,14 +134,12 @@ Client to server:
   * version <x>
     This must be sent to indicate to the server the version of ULCI supported.
     If the server does not receive this, it should assume the client is a regular UCI client.
-    e.g. "id version 1.0"
+    e.g. "id version 1"
   * name <x>
     This must be sent after receiving the "uci" command to identify the client,
     e.g. "id name Shredder X.Y\n"
-  * human
-    Indicates that the client represents a human player. Human players should only be given instructions to search infinitely or for a certain time, and should only be expected to return a best move, with no score.
   * username <x>
-    This must be sent for a human player to identify them
+    Identifies that the client is a human player with a username. Human players will have differences in behaviour compared to engines.
     e.g. "id username Mathmagician\n"
   * author <x>
     This must be sent after receiving the "uci" command to identify the client,
@@ -144,3 +151,137 @@ Client to server:
 * readyok
   This must be sent when the client has received an "isready" command and has processed all input and is ready to accept new commands now.
   It is usually sent after a command that can take some time to be able to wait for the client, but it can be used anytime, even when the client is searching,and must always be answered with "isready".
+
+* bestmove <move>
+  The client has stopped searching and found the move <move> best in this position. This command must always be sent if the client stops searching, also if there is a "stop" command, so for every "go" command a "bestmove" command is needed!
+  Directly before that the client should (unless they are a human player) send a final "info" command with the final search information, so that the server has the complete statistics about the last search.
+
+* info
+  The client wants to send information to the server. This should be done whenever one of the info has changed.
+  The client can send one or multiple info messages with one info command,
+  e.g. "info currmove e2e4 currmovenumber 1" or
+        "info depth 12 nodes 123456 nps 100000".
+  All info belonging to the pv should be sent together
+  e.g. "info depth 2 score cp 214 time 1242 nodes 2124 nps 34928 pv e2e4 e7e5 g1f3"
+  I suggest to start sending "currmove", "currmovenumber", "currline" and "refutation" only after one second
+  to avoid too much traffic.
+  Additional info:
+  * depth <x>
+    search depth in plies
+  * seldepth <x>
+    selective search depth in plies, if the client sends seldepth there must also be a "depth" present in the same string.
+  * time <x>
+    the time searched in ms, this should be sent together with the pv.
+  * nodes <x>
+    x nodes searched, the client should send this info regularly
+  * pv <move1> ... <movei>
+    the best line found
+  * multipv <num>
+    For multi pv mode. For the best move/pv add "multipv 1" in the string when you send the pv.
+    In k-best mode always send all k variants in k strings together.
+  * score
+    * cp <x>
+      The score from the client's point of view in centipawns.
+    * wdl <w> <d> <l>
+      The predicted change of a win, draw or loss permill.
+    * mate <y>
+      mate in y moves, not plies.
+      If the client is getting mated use negative values for y.
+    * lowerbound
+      the score is just a lower bound.
+      e.g. "info score lowerbound cp 107"
+    * upperbound
+      the score is just an upper bound.
+  * currmove <move>
+    currently searching this move
+  * currmovenumber <x>
+    currently searching move number x, for the first move x should be 1 not 0.
+  * hashfull <x>
+    the hash is x permill full, the client should send this info regularly
+  * nps <x>
+    x nodes per second searched, the client should send this info regularly
+  * tbhits <x>
+    x positions where found in the endgame table bases
+  * cpuload <x>
+    the cpu usage of the client is x permill.
+  * string <str>
+    Any string str which will be displayed by the client, if there is a string command the rest of the line will be interpreted as <str>.
+  * currline <cpunr> <move1> ... <movei>
+    this is the current line the client is calculating. <cpunr> is the number of the cpu if the client is running on more than one cpu. <cpunr> = 1,2,3....
+    if the client is just using one cpu, <cpunr> can be omitted.
+    If <cpunr> is greater than 1, always send all k lines in k strings together.
+    The client should only send this if the option "UCI_ShowCurrLine" is set to true.
+  * clienterror <str>
+    The client has an error message to send to the server
+  * servererror <str>
+    The client has detected a problem with the server's commands
+
+* option
+  This command tells the server which parameters can be changed in the client.
+  This should be sent once at client startup after the "uci" and the "id" commands if any parameter can be changed in the client.
+  The server should parse this and build a dialog for the user to change the settings.
+  Note that not every option needs to appear in this dialog as some options like "Hash" are better handled elsewhere or are set automatically.
+  If the user wants to change some settings, the server will send a "setoption" command to the client.
+  Note that the server need not send the setoption command when starting the client for every option if it doesn't want to change the default value.
+  For all allowed combinations see the examples below, as some combinations of this tokens don't make sense.
+  One string will be sent for each parameter.
+  * name <id>
+    The option has the name id.
+    Certain options have a fixed value for <id>, which means that the semantics of this option is fixed.
+    Usually those options should not be displayed in the normal client options window of the server but get a special treatment. All those certain options have the prefix "UCI_" except for the
+    first 6 options below. If the server gets an unknown Option with the prefix "UCI_", it should just
+    ignore it and not display it in the client's options dialog.
+    * <id> = Hash, type is spin
+      the value in MB for memory for hash tables can be changed,
+      this should be answered with the first "setoptions" command at program boot
+      if the client has sent the appropriate "option name Hash" command,
+      which should be supported by all clients!
+      So the client should use a very small hash first as default.
+    * <id> = MultiPV, type spin
+      the client supports multi best line or k-best mode. the default value is 1
+    * <id> = UCI_ShowCurrLine, type check, should be false by default,
+      the client can show the current line it is calculating. see "info currline" above.
+    * <id> = UCI_Opponent, type string
+      With this command the server can send the name, title, elo and if the client is playing a human
+      or computer to the client.
+      The format of the string has to be [GM|IM|FM|WGM|WIM|none] [<elo>|none] [computer|human] <name>
+      Examples:
+      "setoption name UCI_Opponent value GM 2800 human Gary Kasparov"
+      "setoption name UCI_Opponent value none none computer Shredder"
+    * <id> = UCI_EngineAbout, type string
+      With this command, the client tells the server information about itself, for example a license text,
+      usually it doesn't make sense that the server changes this text with the setoption command.
+      Example:
+      "option name UCI_EngineAbout type string default Shredder by Stefan Meyer-Kahlen, see www.shredderchess.com"
+    * <id> = UCI_SetPositionValue, type string
+      the server can send this to the client to tell the client to use a certain value in centipawns from white's
+      point of view if evaluating this specifix position.
+      The string can have the formats:
+      <value> + <fen> | clear + <fen> | clearall
+  * type <t>
+    The option has type t. There are 5 different types of options the client can send.
+    * check
+      a checkbox that can either be true or false
+    * spin
+      a spin wheel that can be an integer in a certain range
+    * combo
+      a combo box that can have different predefined strings as a value
+    * button
+      a button that can be pressed to send a command to the client
+    * string
+      a text field that has a string as a value, an empty string has the value "<empty>"
+  * default <x>
+    the default value of this parameter is x
+  * min <x>
+    the minimum value of this parameter is x
+  * max <x>
+    the maximum value of this parameter is x
+  * var <x>
+    a predefined value of this parameter is x
+  Examples:
+  Here are 5 strings for each of the 5 possible types of options
+    "option name Nullmove type check default true\n"
+    "option name Selectivity type spin default 2 min 0 max 4\n"
+    "option name Style type combo default Normal var Solid var Normal var Risky\n"
+    "option name UCI_EngineAbout type string default Shredder by Stefan Meyer-Kahlen, see www.shredderchess.com\n"
+    "option name Clear Hash type button\n"

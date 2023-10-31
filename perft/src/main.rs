@@ -64,15 +64,18 @@ fn perft(board: &Board, depth: usize) -> usize {
 
 #[cfg(feature = "parallel")]
 fn perft_process_final(pool: &ThreadPool, tx: Sender<usize>, board: &Board, depth: usize) {
-  let fen = board.to_string();
-  let closure = move || tx.send(perft(&Board::new(&fen).unwrap(), depth)).unwrap();
+  let board = board.send_to_thread();
+  let closure = move || {
+    tx.send(perft(&Board::load_from_thread(board), depth))
+      .unwrap()
+  };
   pool.execute(closure);
 }
 
 #[cfg(feature = "parallel")]
 fn perft_process_other(pool: &ThreadPool, board: &Board, depth: usize, result: usize) {
-  let fen = board.to_string();
-  let closure = move || assert_eq!(perft(&Board::new(&fen).unwrap(), depth), result);
+  let board = board.send_to_thread();
+  let closure = move || assert_eq!(perft(&Board::load_from_thread(board), depth), result);
   pool.execute(closure);
 }
 
