@@ -158,6 +158,10 @@ fn print_uci(out: &mut impl Write, info: &ClientInfo) {
   write(out, "uciok");
 }
 
+fn get_board() -> Board {
+  Board::new(STARTPOS).unwrap()
+}
+
 /// Set up a new client that handles some requirements locally and passes the rest on to the engine
 /// Blocks the thread it runs on, should be spawned in a new thread
 pub fn startup_client(
@@ -168,6 +172,7 @@ pub fn startup_client(
 ) -> Option<()> {
   let mut debug = false;
   let mut buffer = String::new();
+  let mut board = get_board();
   while let Ok(chars) = input.read_line(&mut buffer) {
     if chars == 0 {
       return None;
@@ -300,8 +305,8 @@ pub fn startup_client(
         }
       }
       Some("position") => {
-        let mut board = match words.next() {
-          Some("startpos") => Board::new(STARTPOS).unwrap(),
+        board = match words.next() {
+          Some("startpos") => get_board(),
           Some("fen") => {
             let mut fen = String::new();
             for word in words.by_ref() {
@@ -369,71 +374,109 @@ pub fn startup_client(
           )))
           .ok()?;
       }
-      // TODO: fix functionality
-      // Currently no support for time + increment
-      // searchmoves also has to be specified after setting the search time
+      // TODO: fix searchmoves
+      // it currently has to be specified after setting the search time
       Some("go") => {
-        let time = match words.next() {
-          Some("infinite") => SearchTime::Infinite,
-          Some("depth") => {
-            if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-              SearchTime::Depth(value)
-            } else {
-              if debug {
+        let mut time = SearchTime::Infinite;
+        while let Some(word) = words.next() {
+          match word {
+            "infinite" => time = SearchTime::Infinite,
+            "depth" => {
+              if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+                time = SearchTime::Depth(value)
+              } else if debug {
                 write(&mut out, "info servererror no depth specified");
               }
-              SearchTime::Infinite
             }
-          }
-          Some("mate") => {
-            if let Some(value) = words.next().and_then(|w| w.parse::<u16>().ok()) {
-              SearchTime::Depth(value * 2)
-            } else {
-              if debug {
+            "mate" => {
+              if let Some(value) = words.next().and_then(|w| w.parse::<u16>().ok()) {
+                time = SearchTime::Depth(value * 2)
+              } else if debug {
                 write(&mut out, "info servererror no move count specified");
               }
-              SearchTime::Infinite
             }
-          }
-          Some("nodes") => {
-            if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-              SearchTime::Nodes(value)
-            } else {
-              if debug {
+            "nodes" => {
+              if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+                time = SearchTime::Nodes(value)
+              } else if debug {
                 write(&mut out, "info servererror no node count specified");
               }
-              SearchTime::Infinite
             }
-          }
-          Some("movetime") => {
-            if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-              SearchTime::FixedTime(Duration::from_millis(value))
-            } else {
-              if debug {
+            "movetime" => {
+              if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+                time = SearchTime::FixedTime(Duration::from_millis(value))
+              } else if debug {
                 write(&mut out, "info servererror no time specified");
               }
-              SearchTime::Infinite
+            }
+            "wtime" => {
+              if board.to_move() {
+                if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+                  let new_time = Duration::from_millis(value);
+                  if let SearchTime::Increment(ref mut time, _) = time {
+                    *time = new_time;
+                  } else {
+                    time = SearchTime::Increment(new_time, Duration::ZERO);
+                  }
+                } else if debug {
+                  write(&mut out, "info servererror no time specified");
+                }
+              }
+            }
+            "btime" => {
+              if !board.to_move() {
+                if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+                  let new_time = Duration::from_millis(value);
+                  if let SearchTime::Increment(ref mut time, _) = time {
+                    *time = new_time;
+                  } else {
+                    time = SearchTime::Increment(new_time, Duration::ZERO);
+                  }
+                } else if debug {
+                  write(&mut out, "info servererror no time specified");
+                }
+              }
+            }
+            "winc" => {
+              if board.to_move() {
+                if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+                  let new_inc = Duration::from_millis(value);
+                  if let SearchTime::Increment(_, ref mut inc) = time {
+                    *inc = new_inc;
+                  } else {
+                    time = SearchTime::Increment(Duration::from_secs(1), new_inc)
+                  }
+                } else if debug {
+                  write(&mut out, "info servererror no time specified");
+                }
+              }
+            }
+            "binc" => {
+              if !board.to_move() {
+                if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+                  let new_inc = Duration::from_millis(value);
+                  if let SearchTime::Increment(_, ref mut inc) = time {
+                    *inc = new_inc;
+                  } else {
+                    time = SearchTime::Increment(Duration::from_secs(1), new_inc)
+                  }
+                } else if debug {
+                  write(&mut out, "info servererror no time specified");
+                }
+              }
+            }
+            "searchmoves" => break,
+            _ => {
+              if debug {
+                write(&mut out, "info servererror unknown go parameter");
+              }
             }
           }
-          Some(_) => {
-            if debug {
-              write(&mut out, "info servererror unknown go parameter");
-            }
-            SearchTime::Infinite
-          }
-          None => {
-            if debug {
-              write(&mut out, "info servererror missing go parameter");
-            }
-            SearchTime::Infinite
-          }
-        };
+        }
         let mut moves = Vec::new();
-        if Some("searchmoves") == words.next() {
-          for word in words {
-            if let Ok(r#move) = word.parse() {
-              moves.push(r#move);
-            }
+        for word in words {
+          if let Ok(r#move) = word.parse() {
+            moves.push(r#move);
           }
         }
         client
