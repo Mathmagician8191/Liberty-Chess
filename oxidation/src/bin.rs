@@ -5,7 +5,8 @@ use rand::thread_rng;
 use std::io::{stdin, stdout, BufReader};
 use std::thread;
 use std::{collections::HashMap, sync::mpsc::channel};
-use ulci::{startup_client, ClientInfo, ClientMessage, SearchTime, STARTPOS};
+use ulci::client::{get_board, startup, ClientInfo, ClientMessage};
+use ulci::SearchTime;
 
 fn main() {
   let (tx, rx) = channel();
@@ -17,10 +18,10 @@ fn main() {
   };
   let input = BufReader::new(stdin());
   let output = stdout();
-  let mut position = Board::new(STARTPOS).unwrap();
+  let mut position = get_board();
   let mut debug = false;
   let mut selected_move = None;
-  thread::spawn(move || startup_client(tx, info, input, output));
+  thread::spawn(move || startup(tx, info, input, output));
   while let Ok(message) = rx.recv() {
     match message {
       ClientMessage::SetDebug(new_debug) => debug = new_debug,
