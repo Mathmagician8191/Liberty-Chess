@@ -30,7 +30,7 @@ use themes::CustomTheme;
 use std::time::Instant;
 
 #[cfg(feature = "clock")]
-use crate::clock::{convert_clock, draw, draw_edit, init_input};
+use crate::clock::{convert, draw, draw_edit, init_input};
 #[cfg(feature = "clock")]
 use crate::helpers::NumericalInput;
 #[cfg(feature = "clock")]
@@ -406,7 +406,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         match gui.clock_type {
           Type::None => gui.clock = None,
           Type::Increment | Type::Handicap => {
-            gui.clock = Some(Clock::new(convert_clock(&gui.clock_data), board.to_move()));
+            gui.clock = Some(Clock::new(convert(&gui.clock_data), board.to_move()));
           }
         }
         if gui.friendly {
@@ -418,7 +418,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         }
 
         if gui.config.get_autoflip() {
-          gui.flipped = !board.to_move()
+          gui.flipped = !board.to_move();
         }
 
         gui.player = gui.alternate_player.map(|player| {

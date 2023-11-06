@@ -6,6 +6,7 @@ use rand::Rng;
 use rand_chacha::rand_core::SeedableRng;
 use rand_chacha::ChaChaRng;
 
+/// A hash of a position
 pub type Hash = u64;
 
 pub struct Zobrist {

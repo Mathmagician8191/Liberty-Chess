@@ -2,6 +2,10 @@
 #![warn(missing_docs, unused)]
 //! A helpful program to test and benchmark the move generation
 
+use liberty_chess::positions::{
+  AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, HORDE, LIBERTY_CHESS, LOADED_BOARD,
+  MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
+};
 use liberty_chess::Board;
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
@@ -67,7 +71,7 @@ fn perft_process_final(pool: &ThreadPool, tx: Sender<usize>, board: &Board, dept
   let board = board.send_to_thread();
   let closure = move || {
     tx.send(perft(&Board::load_from_thread(board), depth))
-      .unwrap()
+      .unwrap();
   };
   pool.execute(closure);
 }
@@ -138,7 +142,7 @@ fn main() {
 
   // standard chess
   perft_test(
-    "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    STARTPOS,
     &[1, 20, 400, 8_902, 197_281, 4_865_609, 119_060_324],
   );
 
@@ -167,59 +171,47 @@ fn main() {
 
   // capablanca's chess
   perft_test(
-    "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1 - qcarbn",
+    CAPABLANCA_RECTANGLE,
     &[1, 28, 784, 25_228, 805_128, 28_741_319, 1_015_802_437],
   );
-  perft_test(
-    "rnabqkbcnr/pppppppppp/10/10/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1 3 qcarbn",
-    &[1, 38, 1_444, 60_046, 2_486_600, 111_941_832],
-  );
+  perft_test(CAPABLANCA, &[1, 38, 1_444, 60_046, 2_486_600, 111_941_832]);
 
   //liberty chess - not tested with external sources
-  perft_test(
-    "ruabhqkhbcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKHBCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
-    &[1, 194, 37_508, 7_308_138],
-  );
+  perft_test(LIBERTY_CHESS, &[1, 194, 37_508, 7_308_138]);
 
   //mini chess
-  perft_test(
-    "qkbnr/ppppp/5/5/PPPPP/QKBNR w Kk - 0 1 1",
-    &[1, 7, 49, 457, 4_065, 44_137, 476_690, 5_914_307],
-  );
+  perft_test(MINI, &[1, 7, 49, 457, 4_065, 44_137, 476_690, 5_914_307]);
 
   // mongol chess
   perft_test(
-    "nnnnknnn/pppppppp/8/8/8/8/PPPPPPPP/NNNNKNNN w - - 0 1 - iznl",
+    MONGOL,
     &[1, 28, 784, 21_958, 614_381, 17_398_402, 491_118_153],
   );
 
   //african chess - not tested with external sources
   perft_test(
-    "lnzekznl/pppppppp/8/8/8/8/PPPPPPPP/LNZEKZNL w - - 0 1 - enzl",
+    AFRICAN,
     &[1, 28, 784, 21_900, 606_601, 16_950_392, 469_862_204],
   );
 
   //narnia chess - not tested with external sources
   perft_test(
-    "uuqkkquu/pppppppp/8/8/8/8/PPPPPPPP/UUQKKQUU w - - 0 1 - u",
+    NARNIA,
     &[1, 22, 484, 12_630, 328_732, 9_831_732, 291_534_968],
   );
 
   //trump chess - not tested with external sources
-  perft_test(
-    "rwwwkwwr/pppppppp/8/8/8/8/PPPPPPPP/RWWWKWWR w KQkq - 0 1 - mrw",
-    &[1, 176, 30_926, 5_433_266],
-  );
+  perft_test(TRUMP, &[1, 176, 30_926, 5_433_266]);
 
   //loaded board - results modified by El Vaticano
   perft_test(
-    "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1 1",
+    LOADED_BOARD,
     &[1, 28, 778, 21_974, 618_165, 18_025_422, 531_219_743],
   );
 
   //double chess - not tested with external sources
   perft_test(
-    "rnbqkbnrrnbqkbnr/pppppppppppppppp/16/16/16/16/PPPPPPPPPPPPPPPP/RNBQKBNRRNBQKBNR w KQkq - 0 1",
+    DOUBLE_CHESS,
     &[1, 40, 1_592, 68_142, 2_898_457, 132_653_171],
   );
 
@@ -231,7 +223,7 @@ fn main() {
 
   //horde - not tested with external sources
   perft_test(
-    "rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w kq - 0 1",
+    HORDE,
     &[1, 8, 128, 1_274, 23_310, 265_223, 5_396_554, 68_441_644],
   );
 

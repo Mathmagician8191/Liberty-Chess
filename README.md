@@ -5,6 +5,7 @@ The sequel to Totally Normal Chess, now written in Rust
 TODO for version 1.0:
 - Promotion for help screen
 - Support for chess engines
+- Multiplayer
 
 For information on the copyright of the images and sounds can be found in the in-game credits.
 

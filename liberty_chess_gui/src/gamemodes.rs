@@ -1,5 +1,9 @@
 use crate::helpers::NumericalInput;
 use enum_iterator::Sequence;
+use liberty_chess::positions::{
+  AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, HORDE, LIBERTY_CHESS, LOADED_BOARD,
+  MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
+};
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
 
@@ -39,18 +43,18 @@ pub enum Presets {
 impl Presets {
   pub fn value(self) -> String {
     match self {
-      Self::Standard => "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-      Self::Liberty => "ruabhqkhbcur/wlzenxxnezlw/pppppppppppp/12/12/12/12/12/12/PPPPPPPPPPPP/WLZENXXNEZLW/RUABHQKHBCUR w KQkq - 0 1 3,3 qcaehurwbznxl",
-      Self::Mini => "qkbnr/ppppp/5/5/PPPPP/QKBNR w Kk - 0 1 1",
-      Self::CapablancaRectangle => "rnabqkbcnr/pppppppppp/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1 - qcarbn",
-      Self::CapablancaSquare => "rnabqkbcnr/pppppppppp/10/10/10/10/10/10/PPPPPPPPPP/RNABQKBCNR w KQkq - 0 1 3 qcarbn",
-      Self::Mongol => "nnnnknnn/pppppppp/8/8/8/8/PPPPPPPP/NNNNKNNN w - - 0 1 - inzl",
-      Self::African => "lnzekznl/pppppppp/8/8/8/8/PPPPPPPP/LNZEKZNL w - - 0 1 - enzl",
-      Self::Narnia => "uuqkkquu/pppppppp/8/8/8/8/PPPPPPPP/UUQKKQUU w - - 0 1 - u",
-      Self::Trump => "rwwwkwwr/pppppppp/8/8/8/8/PPPPPPPP/RWWWKWWR w KQkq - 0 1 - mrw",
-      Self::LoadedBoard => "rrrqkrrr/bbbbbbbb/nnnnnnnn/pppppppp/PPPPPPPP/NNNNNNNN/BBBBBBBB/RRRQKRRR w KQkq - 0 1 1",
-      Self::Double => "rnbqkbnrrnbqkbnr/pppppppppppppppp/16/16/16/16/PPPPPPPPPPPPPPPP/RNBQKBNRRNBQKBNR w KQkq - 0 1",
-      Self::Horde => "rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w kq - 0 1", 
+      Self::Standard => STARTPOS,
+      Self::Liberty => LIBERTY_CHESS,
+      Self::Mini => MINI,
+      Self::CapablancaRectangle => CAPABLANCA_RECTANGLE,
+      Self::CapablancaSquare => CAPABLANCA,
+      Self::Mongol => MONGOL,
+      Self::African => AFRICAN,
+      Self::Narnia => NARNIA,
+      Self::Trump => TRUMP,
+      Self::LoadedBoard => LOADED_BOARD,
+      Self::Double => DOUBLE_CHESS,
+      Self::Horde => HORDE,
     }
     .to_owned()
   }

@@ -17,7 +17,7 @@ use parking_lot::Mutex;
 #[cfg(feature = "multithreading")]
 use std::sync::mpsc::{channel, Receiver, Sender};
 #[cfg(feature = "multithreading")]
-use std::thread;
+use std::thread::{sleep, spawn};
 
 // The paths for music
 const MUSIC: [(&[u8], Option<&[u8]>); 6] = [
@@ -133,7 +133,7 @@ impl Player {
   pub fn new(player: Arc<Mutex<AudioManager>>, volume: u8, dramatic: bool) -> Option<Self> {
     let (tx, rx) = channel();
     let new_tx = tx.clone();
-    thread::spawn(move || Self::bg_thread(&player, volume, dramatic, &new_tx, &rx));
+    spawn(move || Self::bg_thread(&player, volume, dramatic, &new_tx, &rx));
     Some(Self {
       volume,
       dramatic,
@@ -167,8 +167,8 @@ impl Player {
     let duration = music.duration();
     *counter += 1;
     let counter_copy = *counter;
-    thread::spawn(move || {
-      thread::sleep(duration);
+    spawn(move || {
+      sleep(duration);
       tx.send(MusicMessage::Loop(counter_copy)).unwrap_or(());
     });
     let mut calm = MusicTrack::new(&mut player.lock(), music)?;

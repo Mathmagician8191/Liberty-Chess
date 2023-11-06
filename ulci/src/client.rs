@@ -1,32 +1,15 @@
-use crate::{SearchSettings, SearchTime, VERSION};
+use crate::ClientInfo;
+use crate::{write, OptionValue, SearchSettings, SearchTime, UlciOption, VERSION};
+use liberty_chess::positions::get_startpos;
 use liberty_chess::{Board, CompressedBoard};
-use std::collections::{HashMap, HashSet};
-use std::fmt::Display;
 use std::io::BufRead;
 use std::io::Write;
+use std::str::SplitWhitespace;
 use std::sync::mpsc::Sender;
 use std::time::Duration;
 
-/// The starting position
-pub const STARTPOS: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-
-/// The value of some option to update
-pub enum OptionValue {
-  // First string name in option is the option name, second parameter is the value
-  /// The value of a string option
-  UpdateString(String, String),
-  /// The value of an integer option
-  UpdateInt(String, usize),
-  /// The value of a true/false option
-  UpdateBool(String, bool),
-  /// The value of an option from a range of possibilities
-  UpdateRange(String, String),
-  /// A trigger signal for the engine
-  SendTrigger(String),
-}
-
 /// The functions tha need to be implemented for the ULCI interface
-pub enum ClientMessage {
+pub enum Message {
   /// The server wants to update the value of an option
   UpdateOption(OptionValue),
   /// The server is setting whether verbose output is enabled
@@ -37,84 +20,6 @@ pub enum ClientMessage {
   Go(SearchSettings),
   /// The server wants to stop the search
   Stop,
-}
-
-/// An option supported by the client
-pub enum UlciOption {
-  /// A string option
-  String(String),
-  /// An integer option
-  Int(IntOption),
-  /// A true/false option
-  Bool(bool),
-  /// One of a range of possibilities
-  Range(RangeOption),
-  /// A trigger button to do something
-  Trigger,
-}
-
-impl ToString for UlciOption {
-  fn to_string(&self) -> String {
-    match self {
-      Self::String(option) => format!("type string default {option}"),
-      Self::Int(option) => option.to_string(),
-      Self::Bool(option) => format!("type check default {option}"),
-      Self::Range(option) => option.to_string(),
-      Self::Trigger => "type button".to_owned(),
-    }
-  }
-}
-
-/// An option with an integer value and optional min/max
-pub struct IntOption {
-  default: usize,
-  min: Option<usize>,
-  max: Option<usize>,
-}
-
-impl ToString for IntOption {
-  fn to_string(&self) -> String {
-    let mut result = format!("type spin default {}", self.default);
-    if let Some(min) = self.min {
-      result += &format!(" min {min}");
-    }
-    if let Some(max) = self.max {
-      result += &format!(" max {max}");
-    }
-    result
-  }
-}
-
-/// One of a range of possibilities
-pub struct RangeOption {
-  default: String,
-  options: HashSet<String>,
-}
-
-impl ToString for RangeOption {
-  fn to_string(&self) -> String {
-    let mut result = format!("type combo default {}", self.default);
-    for option in &self.options {
-      result += &format!(" var {option}");
-    }
-    result
-  }
-}
-
-/// The information required for the client
-pub struct ClientInfo {
-  /// The name of the client
-  pub name: String,
-  /// The username of a human player, `None` if computer
-  pub username: Option<String>,
-  /// The author of the client
-  pub author: String,
-  /// Options for the client
-  pub options: HashMap<&'static str, UlciOption>,
-}
-
-fn write(writer: &mut impl Write, output: impl Display) {
-  writer.write(format!("{output}\n").as_bytes()).ok();
 }
 
 fn print_uci(out: &mut impl Write, info: &ClientInfo) {
@@ -130,52 +35,57 @@ fn print_uci(out: &mut impl Write, info: &ClientInfo) {
   write(out, "uciok");
 }
 
-/// The starting position
-pub fn get_board() -> Board {
-  Board::new(STARTPOS).unwrap()
+fn process_debug(
+  client: &Sender<Message>,
+  mut words: SplitWhitespace,
+  debug: &mut bool,
+  out: &mut impl Write,
+) {
+  match words.next() {
+    Some("on") => {
+      *debug = true;
+      client.send(Message::SetDebug(true)).ok();
+    }
+    Some("off") => {
+      *debug = false;
+      client.send(Message::SetDebug(false)).ok();
+    }
+    Some(value) => {
+      if *debug {
+        write(
+          out,
+          &format!("info servererror Unrecognised debug setting {value}"),
+        );
+      }
+    }
+    None => {
+      if *debug {
+        write(out, "info servererror Missing debug setting");
+      }
+    }
+  }
 }
 
 /// Set up a new client that handles some requirements locally and passes the rest on to the engine
+///
 /// Blocks the thread it runs on, should be spawned in a new thread
 pub fn startup(
-  client: Sender<ClientMessage>,
-  info: ClientInfo,
+  client: &Sender<Message>,
+  info: &ClientInfo,
   mut input: impl BufRead,
   mut out: impl Write,
 ) -> Option<()> {
   let mut debug = false;
   let mut buffer = String::new();
-  let mut board = get_board();
+  let mut board = get_startpos();
   while let Ok(chars) = input.read_line(&mut buffer) {
     if chars == 0 {
       return None;
     }
     let mut words = buffer.split_whitespace();
     match words.next() {
-      Some("uci") => print_uci(&mut out, &info),
-      Some("debug") => match words.next() {
-        Some("on") => {
-          debug = true;
-          client.send(ClientMessage::SetDebug(true)).ok()?;
-        }
-        Some("off") => {
-          debug = false;
-          client.send(ClientMessage::SetDebug(false)).ok()?;
-        }
-        Some(value) => {
-          if debug {
-            write(
-              &mut out,
-              &format!("info servererror Unrecognised debug setting {value}"),
-            );
-          }
-        }
-        None => {
-          if debug {
-            write(&mut out, "info servererror Missing debug setting");
-          }
-        }
-      },
+      Some("uci") => print_uci(&mut out, info),
+      Some("debug") => process_debug(client, words, &mut debug, &mut out),
       Some("isready") => write(&mut out, "readyok"),
       Some("setoption") => {
         let mut malformed = true;
@@ -199,7 +109,7 @@ pub fn startup(
             match option {
               UlciOption::String(_) => {
                 client
-                  .send(ClientMessage::UpdateOption(OptionValue::UpdateString(
+                  .send(Message::UpdateOption(OptionValue::UpdateString(
                     name, value,
                   )))
                   .ok()?;
@@ -207,15 +117,13 @@ pub fn startup(
               UlciOption::Int(option) => match value.parse::<usize>() {
                 Ok(mut value) => {
                   if let Some(min) = option.min {
-                    value = value.max(min)
+                    value = value.max(min);
                   }
                   if let Some(max) = option.max {
-                    value = value.min(max)
+                    value = value.min(max);
                   }
                   client
-                    .send(ClientMessage::UpdateOption(OptionValue::UpdateInt(
-                      name, value,
-                    )))
+                    .send(Message::UpdateOption(OptionValue::UpdateInt(name, value)))
                     .ok()?;
                 }
                 Err(_) => {
@@ -230,9 +138,7 @@ pub fn startup(
               UlciOption::Bool(_) => match value.parse() {
                 Ok(value) => {
                   client
-                    .send(ClientMessage::UpdateOption(OptionValue::UpdateBool(
-                      name, value,
-                    )))
+                    .send(Message::UpdateOption(OptionValue::UpdateBool(name, value)))
                     .ok()?;
                 }
                 Err(_) => {
@@ -247,9 +153,7 @@ pub fn startup(
               UlciOption::Range(option) => {
                 if option.options.contains(&value) {
                   client
-                    .send(ClientMessage::UpdateOption(OptionValue::UpdateRange(
-                      name, value,
-                    )))
+                    .send(Message::UpdateOption(OptionValue::UpdateRange(name, value)))
                     .ok()?;
                 } else if debug {
                   write(
@@ -260,7 +164,7 @@ pub fn startup(
               }
               UlciOption::Trigger => {
                 client
-                  .send(ClientMessage::UpdateOption(OptionValue::SendTrigger(name)))
+                  .send(Message::UpdateOption(OptionValue::SendTrigger(name)))
                   .ok()?;
               }
             }
@@ -279,7 +183,7 @@ pub fn startup(
       }
       Some("position") => {
         board = match words.next() {
-          Some("startpos") => get_board(),
+          Some("startpos") => get_startpos(),
           Some("fen") => {
             let mut fen = String::new();
             for word in words.by_ref() {
@@ -328,10 +232,7 @@ pub fn startup(
                 );
               }
             } else if debug {
-              write(
-                &mut out,
-                &format!("info servererror invalid move {}", word,),
-              );
+              write(&mut out, &format!("info servererror invalid move {word}"));
             }
           }
         }
@@ -342,9 +243,7 @@ pub fn startup(
           );
         }
         client
-          .send(ClientMessage::UpdatePosition(Box::new(
-            board.send_to_thread(),
-          )))
+          .send(Message::UpdatePosition(Box::new(board.send_to_thread())))
           .ok()?;
       }
       // TODO: fix searchmoves
@@ -356,28 +255,28 @@ pub fn startup(
             "infinite" => time = SearchTime::Infinite,
             "depth" => {
               if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-                time = SearchTime::Depth(value)
+                time = SearchTime::Depth(value);
               } else if debug {
                 write(&mut out, "info servererror no depth specified");
               }
             }
             "mate" => {
               if let Some(value) = words.next().and_then(|w| w.parse::<u16>().ok()) {
-                time = SearchTime::Depth(value * 2)
+                time = SearchTime::Depth(value * 2);
               } else if debug {
                 write(&mut out, "info servererror no move count specified");
               }
             }
             "nodes" => {
               if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-                time = SearchTime::Nodes(value)
+                time = SearchTime::Nodes(value);
               } else if debug {
                 write(&mut out, "info servererror no node count specified");
               }
             }
             "movetime" => {
               if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-                time = SearchTime::FixedTime(Duration::from_millis(value))
+                time = SearchTime::FixedTime(Duration::from_millis(value));
               } else if debug {
                 write(&mut out, "info servererror no time specified");
               }
@@ -417,7 +316,7 @@ pub fn startup(
                   if let SearchTime::Increment(_, ref mut inc) = time {
                     *inc = new_inc;
                   } else {
-                    time = SearchTime::Increment(Duration::from_secs(1), new_inc)
+                    time = SearchTime::Increment(Duration::from_secs(1), new_inc);
                   }
                 } else if debug {
                   write(&mut out, "info servererror no time specified");
@@ -431,7 +330,7 @@ pub fn startup(
                   if let SearchTime::Increment(_, ref mut inc) = time {
                     *inc = new_inc;
                   } else {
-                    time = SearchTime::Increment(Duration::from_secs(1), new_inc)
+                    time = SearchTime::Increment(Duration::from_secs(1), new_inc);
                   }
                 } else if debug {
                   write(&mut out, "info servererror no time specified");
@@ -453,14 +352,14 @@ pub fn startup(
           }
         }
         client
-          .send(ClientMessage::Go(SearchSettings { moves, time }))
+          .send(Message::Go(SearchSettings { moves, time }))
           .ok();
       }
-      Some("stop") => client.send(ClientMessage::Stop).ok()?,
-      // Commands that can be ignored
-      Some("ucinewgame") | Some("info") => (),
+      Some("stop") => client.send(Message::Stop).ok()?,
       // End the program, the channel being dropped will stop the other thread
       Some("quit") => break,
+      // Commands that can be ignored or blank line
+      Some("ucinewgame" | "info") | None => (),
       // Unrecognised command, log when in debug mode
       Some(command) => {
         if debug {
@@ -470,8 +369,6 @@ pub fn startup(
           );
         }
       }
-      // Blank line
-      None => (),
     }
     buffer.clear();
   }

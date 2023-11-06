@@ -3,7 +3,9 @@
 #![allow(clippy::inline_always)]
 //! The backend for Liberty Chess
 
-use crate::keys::{Hash, Zobrist};
+pub use crate::keys::Hash;
+
+use crate::keys::Zobrist;
 use array2d::Array2D;
 use core::str::FromStr;
 use moves::Move;
@@ -13,6 +15,8 @@ use std::rc::Rc;
 pub mod clock;
 /// Move representation
 pub mod moves;
+/// A collection of preset positions
+pub mod positions;
 
 mod keys;
 
@@ -634,8 +638,9 @@ impl Board {
     Ok(board)
   }
 
-  /// Using an `Arc`` has performance impacts but an `Rc`` doesn't allow the `Board` to be shared between threads.
+  /// Using an `Arc` has performance impacts but an `Rc` doesn't allow the `Board` to be shared between threads.
   /// This is a workaround to create the `Rc` data on the new thread
+  #[must_use]
   pub fn send_to_thread(&self) -> CompressedBoard {
     CompressedBoard {
       pieces: self.pieces.clone(),
@@ -664,6 +669,7 @@ impl Board {
   }
 
   /// Load a board sent to another thread
+  #[must_use]
   pub fn load_from_thread(board: CompressedBoard) -> Self {
     let width = board.pieces.num_columns();
     let height = board.pieces.num_rows();
@@ -737,6 +743,12 @@ impl Board {
   #[must_use]
   pub const fn promotion_available(&self) -> bool {
     self.promotion_target.is_some()
+  }
+
+  /// Get the number of halfmoves since last pawn move/capture
+  #[must_use]
+  pub const fn halfmoves(&self) -> u8 {
+    self.halfmoves
   }
 
   /// The coordinates of the kings under attack.
@@ -890,7 +902,7 @@ impl Board {
       if (rows == 2 && cols == 0) || (rows == 0 && cols == 2) {
         let target = self.pieces[((start.0 + end.0) / 2, (start.1 + end.1) / 2)];
         return target != 0
-          && DEFENCE[destination.unsigned_abs() as usize] < ATTACK[BISHOP as usize]
+          && DEFENCE[target.unsigned_abs() as usize] < ATTACK[BISHOP as usize]
           && ((target > 0) != (piece > 0) || self.friendly_fire);
       }
     }
@@ -1278,12 +1290,12 @@ impl Board {
   pub fn play_move(&mut self, played_move: Move) {
     self.make_move(played_move.start(), played_move.end());
     if let Some(piece) = played_move.promotion() {
-      self.promote(piece)
+      self.promote(piece);
     }
-    self.update();
   }
 
   /// Return a new board if the move is legal
+  #[must_use]
   pub fn move_if_legal(&self, test_move: Move) -> Option<Self> {
     let start = test_move.start();
     let end = test_move.end();
@@ -1299,7 +1311,10 @@ impl Board {
             board.promote(piece);
             Some(board)
           }
-          (false, None) => Some(board),
+          (false, None) => {
+            board.update();
+            Some(board)
+          }
           (true, None) | (false, Some(_)) => None,
         }
       } else {
@@ -1623,7 +1638,6 @@ impl Board {
       for j in 0..self.width() {
         let piece = self.pieces[(i, j)];
         if piece != 0 && self.to_move == (piece > 0) {
-          // TODO: movegen based on piece type
           match piece.abs() {
             PAWN => {
               let left_column = usize::saturating_sub(j, 1);

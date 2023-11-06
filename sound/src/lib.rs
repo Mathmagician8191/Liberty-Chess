@@ -117,10 +117,10 @@ impl Engine {
   fn setup(sound_volume: Option<&str>, music_volume: Option<&str>, dramatic: bool) -> Option<Self> {
     let music_volume = load_volume(music_volume);
     let player = Arc::new(Mutex::new(get_manager().ok()?));
-    let music_player = if music_volume != 0 {
-      Player::new(player.clone(), music_volume, dramatic)
-    } else {
+    let music_player = if music_volume == 0 {
       None
+    } else {
+      Player::new(player.clone(), music_volume, dramatic)
     };
     Some(Self {
       player,

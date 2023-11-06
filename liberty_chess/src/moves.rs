@@ -51,7 +51,7 @@ impl FromStr for Move {
             }
             Stage::EndCol => update_column(&mut end_col, c),
             Stage::EndRow => {
-              let promotion = to_piece(c).ok().map(|p| p.abs());
+              let promotion = to_piece(c).ok().map(i8::abs);
               return if start_row == 0 || start_col == 0 || end_row == 0 || end_col == 0 {
                 Err(())
               } else {
@@ -100,6 +100,7 @@ impl FromStr for Move {
 
 impl Move {
   /// Initialise a new move based on the start and end points
+  #[must_use]
   pub const fn new(start: (usize, usize), end: (usize, usize)) -> Self {
     Self {
       start,
@@ -114,16 +115,19 @@ impl Move {
   }
 
   /// Get the start position of the move
+  #[must_use]
   pub const fn start(&self) -> (usize, usize) {
     self.start
   }
 
   /// Get the end position of the move
+  #[must_use]
   pub const fn end(&self) -> (usize, usize) {
     self.end
   }
 
   /// Get the promotion involved in the move if there is one
+  #[must_use]
   pub const fn promotion(&self) -> Option<Piece> {
     self.promotion
   }

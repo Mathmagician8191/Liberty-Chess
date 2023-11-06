@@ -86,7 +86,7 @@ fn print_clock(time: Duration) -> String {
   }
 }
 
-pub fn convert_clock(clock_data: &[NumericalInput<u64>; 4]) -> [Duration; 4] {
+pub fn convert(clock_data: &[NumericalInput<u64>; 4]) -> [Duration; 4] {
   let [white_clock, black_clock, white_increment, black_increment] =
     clock_data.clone().map(|data| data.get_value());
   let white_clock = Duration::from_secs(if white_clock == 0 {

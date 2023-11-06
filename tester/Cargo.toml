@@ -1,5 +1,5 @@
 [package]
-name = "ulci"
+name = "tester"
 version = "0.1.0"
 authors.workspace = true
 repository.workspace = true
@@ -8,4 +8,5 @@ edition.workspace = true
 
 [dependencies]
 liberty_chess = {workspace = true}
-parking_lot = {workspace = true}
+rand = {workspace = true}
+ulci = {workspace = true}

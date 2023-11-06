@@ -164,15 +164,12 @@ impl<T: Copy + Default + Ord + ToString + FromStr> TextBuffer for NumericalInput
     let mut string = self.string.clone();
     string.delete_char_range(char_range);
     let number = string.parse::<T>();
-    match number {
-      Ok(number) => {
-        self.number = number;
-        self.string = number.to_string();
-      }
-      Err(_) => {
-        self.number = T::default();
-        self.string = String::new();
-      }
+    if let Ok(number) = number {
+      self.number = number;
+      self.string = number.to_string();
+    } else {
+      self.number = T::default();
+      self.string = String::new();
     }
   }
 }

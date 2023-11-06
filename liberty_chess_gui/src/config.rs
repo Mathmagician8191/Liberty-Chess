@@ -136,7 +136,7 @@ impl Configuration {
   }
 
   pub fn toggle_autoflip(&mut self) {
-    self.auto_flip = Value::Modified(self.get_autoflip())
+    self.auto_flip = Value::Modified(self.get_autoflip());
   }
 
   pub fn get_opponentflip(&self) -> bool {
@@ -144,7 +144,7 @@ impl Configuration {
   }
 
   pub fn toggle_opponentflip(&mut self) {
-    self.opponent_flip = Value::Modified(!self.get_opponentflip())
+    self.opponent_flip = Value::Modified(!self.get_opponentflip());
   }
 
   fn set_style(&self, ctx: &Context) {
@@ -185,13 +185,5 @@ impl Parameter<Self> for TextSize {
 impl Parameter<Self> for bool {
   fn default_value() -> Self {
     true
-  }
-}
-
-type Frametime = u64;
-
-impl Parameter<Self> for Frametime {
-  fn default_value() -> Self {
-    200
   }
 }

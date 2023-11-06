@@ -34,7 +34,7 @@ impl ToString for PlayerColour {
 }
 
 impl PlayerColour {
-  pub fn get_colour(&self) -> bool {
+  pub fn get_colour(self) -> bool {
     match self {
       Self::White => true,
       Self::Black => false,

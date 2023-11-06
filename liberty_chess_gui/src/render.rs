@@ -291,7 +291,7 @@ fn attempt_move(
       }
       gui.undo.push(gamestate.clone());
       if gui.player.is_none() && gui.config.get_autoflip() {
-        gui.flipped = gamestate.to_move()
+        gui.flipped = gamestate.to_move();
       }
       #[cfg(feature = "sound")]
       update_sound(&mut effect, &newstate, capture);

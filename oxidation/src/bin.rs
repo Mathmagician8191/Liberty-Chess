@@ -1,12 +1,14 @@
 use liberty_chess::moves::Move;
+use liberty_chess::positions::get_startpos;
 use liberty_chess::Board;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use std::collections::HashMap;
 use std::io::{stdin, stdout, BufReader};
-use std::thread;
-use std::{collections::HashMap, sync::mpsc::channel};
-use ulci::client::{get_board, startup, ClientInfo, ClientMessage};
-use ulci::SearchTime;
+use std::sync::mpsc::channel;
+use std::thread::spawn;
+use ulci::client::{startup, Message};
+use ulci::{ClientInfo, SearchTime};
 
 fn main() {
   let (tx, rx) = channel();
@@ -18,21 +20,21 @@ fn main() {
   };
   let input = BufReader::new(stdin());
   let output = stdout();
-  let mut position = get_board();
+  let mut position = get_startpos();
   let mut debug = false;
   let mut selected_move = None;
-  thread::spawn(move || startup(tx, info, input, output));
+  spawn(move || startup(&tx, &info, input, output));
   while let Ok(message) = rx.recv() {
     match message {
-      ClientMessage::SetDebug(new_debug) => debug = new_debug,
-      ClientMessage::UpdatePosition(board) => position = Board::load_from_thread(*board),
-      ClientMessage::Go(settings) => {
+      Message::SetDebug(new_debug) => debug = new_debug,
+      Message::UpdatePosition(board) => position = Board::load_from_thread(*board),
+      Message::Go(settings) => {
         let moves = position.generate_legal();
         let moves = moves.iter().filter_map(|board| board.last_move);
-        let moves: Vec<Move> = if !settings.moves.is_empty() {
-          moves.filter(|m| settings.moves.contains(m)).collect()
-        } else {
+        let moves: Vec<Move> = if settings.moves.is_empty() {
           moves.collect()
+        } else {
+          moves.filter(|m| settings.moves.contains(m)).collect()
         };
         selected_move = moves.choose(&mut thread_rng()).copied();
         if let Some(chosen_move) = selected_move {
@@ -78,9 +80,10 @@ fn main() {
               position.to_string()
             );
           }
+          println!("bestmove 0000");
         }
       }
-      ClientMessage::Stop => {
+      Message::Stop => {
         if let Some(chosen_move) = selected_move {
           println!("bestmove {}", chosen_move.to_string());
           selected_move = None;
@@ -88,7 +91,7 @@ fn main() {
           println!("info servererror not currently searching");
         }
       }
-      ClientMessage::UpdateOption(_) => (),
+      Message::UpdateOption(_) => (),
     }
   }
 }
