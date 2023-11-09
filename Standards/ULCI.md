@@ -183,8 +183,6 @@ Client to server:
   * score
     * cp <x>
       The score from the client's point of view in centipawns.
-    * wdl <w> <d> <l>
-      The predicted change of a win, draw or loss for the client permill.
     * mate <y>
       mate in y moves, not plies.
       If the client is getting mated use negative values for y.
@@ -193,6 +191,8 @@ Client to server:
       e.g. "info score lowerbound cp 107"
     * upperbound
       the score is just an upper bound.
+  * wdl <w> <d> <l>
+    The predicted change of a win, draw or loss from the client's perspective permill.
   * currmove <move>
     currently searching this move
   * currmovenumber <x>
