@@ -93,6 +93,7 @@ These are all the command the client gets from the interface.
     restrict search to this moves only
     Example: After "position startpos" and "go infinite searchmoves e2e4 d2d4"
     the client should only search the two moves e2e4 and d2d4 in the initial position.
+    Must be the last flag in the string.
   * wtime <x>
     white has x msec left on the clock
   * btime <x>
@@ -183,7 +184,7 @@ Client to server:
     * cp <x>
       The score from the client's point of view in centipawns.
     * wdl <w> <d> <l>
-      The predicted change of a win, draw or loss permill.
+      The predicted change of a win, draw or loss for the client permill.
     * mate <y>
       mate in y moves, not plies.
       If the client is getting mated use negative values for y.
@@ -205,16 +206,17 @@ Client to server:
   * cpuload <x>
     the cpu usage of the client is x permill.
   * string <str>
-    Any string str which will be displayed by the client, if there is a string command the rest of the line will be interpreted as <str>.
+    Any string str which will be displayed by the client, if there is a string command the rest of the line will be interpreted as <str>, unless an error argument is supplied.
+    Errors:
+    * clienterror <str>
+      The client has an error message to send to the server, the client may terminate if the error is fatal.
+    * servererror <str>
+      The client has detected a problem with the server's commands and may terminate if the error is fatal.
   * currline <cpunr> <move1> ... <movei>
     this is the current line the client is calculating. <cpunr> is the number of the cpu if the client is running on more than one cpu. <cpunr> = 1,2,3....
     if the client is just using one cpu, <cpunr> can be omitted.
     If <cpunr> is greater than 1, always send all k lines in k strings together.
     The client should only send this if the option "UCI_ShowCurrLine" is set to true.
-  * clienterror <str>
-    The client has an error message to send to the server
-  * servererror <str>
-    The client has detected a problem with the server's commands
 
 * option
   This command tells the server which parameters can be changed in the client.

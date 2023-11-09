@@ -751,6 +751,24 @@ impl Board {
     self.halfmoves
   }
 
+  /// Get the number of moves since the start of the game
+  #[must_use]
+  pub const fn moves(&self) -> u16 {
+    self.moves
+  }
+
+  /// Get the hash of the current position
+  #[must_use]
+  pub const fn hash(&self) -> Hash {
+    self.hash
+  }
+
+  /// Returns the number of non-king pieces on the board
+  #[must_use]
+  pub const fn pieces(&self) -> (usize, usize) {
+    (self.white_pieces, self.black_pieces)
+  }
+
   /// The coordinates of the kings under attack.
   /// Only considers the side to move.
   #[must_use]
@@ -1047,6 +1065,10 @@ impl Board {
     }
     let piece = self.pieces[start];
     if piece.abs() == BISHOP {
+      if let Some(en_passant) = self.en_passant {
+        keys.update_en_passant(&mut self.hash, en_passant);
+        self.en_passant = None;
+      }
       // Test for El Vaticano
       if start.0 == end.0 {
         self.halfmoves = 0;
@@ -1574,13 +1596,13 @@ impl Board {
       (true, true) => return self.state = Gamestate::Material,
       (true, false) => {
         if self.white_kings.is_empty() {
-          self.state = Gamestate::Elimination(true);
+          self.state = Gamestate::Elimination(false);
           return;
         }
       }
       (false, true) => {
         if self.black_kings.is_empty() {
-          self.state = Gamestate::Elimination(false);
+          self.state = Gamestate::Elimination(true);
           return;
         }
       }

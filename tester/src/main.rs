@@ -1,10 +1,11 @@
 use liberty_chess::moves::Move;
 use liberty_chess::positions::{
-  AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, LIBERTY_CHESS, LOADED_BOARD, MINI, MONGOL, NARNIA,
-  STARTPOS, TRUMP,
+  AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, HORDE, LIBERTY_CHESS, LOADED_BOARD,
+  MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
 };
 use liberty_chess::{Board, Gamestate};
 use rand::{thread_rng, Rng};
+use std::collections::HashSet;
 use std::io::BufReader;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -13,27 +14,30 @@ use std::time::{Duration, Instant};
 use ulci::server::{startup, AnalysisRequest, Request, UlciResult};
 use ulci::SearchTime;
 
-const CHAMPION: &str = "./target/release/oxidation";
+const CHAMPION: &str = "./target/release/alphabeta";
 
 const CHALLENGER: &str = "./target/release/oxidation";
 
-const POSITIONS: &[&str] = &[
-  STARTPOS,
-  CAPABLANCA_RECTANGLE,
-  CAPABLANCA,
-  LIBERTY_CHESS,
-  MINI,
-  MONGOL,
-  AFRICAN,
-  NARNIA,
-  TRUMP,
-  LOADED_BOARD,
-  "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1",
+const POSITIONS: &[(&str, &str)] = &[
+  ("startpos", STARTPOS),
+  ("rectangle", CAPABLANCA_RECTANGLE),
+  ("capablanca", CAPABLANCA),
+  ("liberty", LIBERTY_CHESS),
+  ("mini", MINI),
+  ("mongol", MONGOL),
+  ("african", AFRICAN),
+  ("narnia", NARNIA),
+  ("trump", TRUMP),
+  ("loaded", LOADED_BOARD),
+  ("double", DOUBLE_CHESS),
+  ("horde", HORDE),
+  ("endgame", "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1"),
 ];
 
 const MATCH_SIZE: usize = 500;
 
-const TIME: SearchTime = SearchTime::Depth(3);
+const CHAMP_TIME: SearchTime = SearchTime::Depth(2);
+const CHALLENGE_TIME: SearchTime = SearchTime::Depth(2);
 
 fn spawn_engine(path: &'static str, requests: Receiver<Request>, results: &Sender<UlciResult>) {
   let engine = Command::new(path)
@@ -41,8 +45,8 @@ fn spawn_engine(path: &'static str, requests: Receiver<Request>, results: &Sende
     .stdout(Stdio::piped())
     .spawn()
     .expect("Loading engine failed");
-  let stdin = engine.stdin.expect("Loading stdin failed");
-  let stdout = engine.stdout.expect("Loading stdin failed");
+  let stdin = engine.stdin.expect("Loading engine stdin failed");
+  let stdout = engine.stdout.expect("Loading engine stdout failed");
   startup(requests, results, BufReader::new(stdout), stdin, false);
 }
 
@@ -107,7 +111,7 @@ fn process_move(
           }
         } else {
           println!(
-            "challenger made illegal move {} in position {}",
+            "{name} made illegal move {} in position {}",
             bestmove.to_string(),
             current_board.to_string()
           );
@@ -122,18 +126,20 @@ fn process_move(
 }
 
 fn test_position(
+  name: &str,
   board: &Board,
   champ_requests: &Sender<Request>,
   champ_results: &Receiver<UlciResult>,
   challenge_requests: &Sender<Request>,
   challenge_results: &Receiver<UlciResult>,
 ) {
-  println!("Testing position {}", board.to_string());
+  println!("Testing {name}");
   let (mut win, mut draw, mut loss) = (0, 0, 0);
   let mut champ_time = Duration::ZERO;
   let mut challenge_time = Duration::ZERO;
   let (mut champ_moves, mut challenge_moves) = (0, 0);
   let mut champion_side: bool = thread_rng().gen();
+  let mut positions = HashSet::new();
   for _ in 0..MATCH_SIZE {
     champion_side = !champion_side;
     let mut board = board.clone();
@@ -145,7 +151,7 @@ fn test_position(
           .send(Request::Analysis(AnalysisRequest {
             fen: board.to_string(),
             moves: moves.clone(),
-            time: TIME,
+            time: CHALLENGE_TIME,
             searchmoves: Vec::new(),
           }))
           .ok();
@@ -163,7 +169,7 @@ fn test_position(
           .send(Request::Analysis(AnalysisRequest {
             fen: board.to_string(),
             moves: moves.clone(),
-            time: TIME,
+            time: CHAMP_TIME,
             searchmoves: Vec::new(),
           }))
           .ok();
@@ -176,6 +182,9 @@ fn test_position(
           &mut champ_time,
           &mut champ_moves,
         );
+      }
+      if current_board.moves() <= 4 {
+        positions.insert(current_board.hash());
       }
     }
     match current_board.state() {
@@ -192,19 +201,23 @@ fn test_position(
       }
     }
   }
-  println!("+{win} ={draw} -{loss}");
+  println!(
+    "+{win} ={draw} -{loss}, {} moves",
+    champ_moves + challenge_moves
+  );
   let champ_time = format_time((champ_time / champ_moves).as_micros());
   let challenge_time = format_time((challenge_time / challenge_moves).as_micros());
-  println!("Champion averaged {champ_time} per move over {champ_moves} moves");
-  println!("Challenger averaged {challenge_time} per move over {challenge_moves} moves");
+  println!("Champion: {champ_time} per move, Challenger: {challenge_time} per move");
+  println!("{} unique positions", positions.len());
 }
 
 fn main() {
   let (champ_requests, champ_results) = load_engine(CHAMPION);
   let (challenge_requests, challenge_results) = load_engine(CHALLENGER);
-  for position in POSITIONS {
+  for (name, position) in POSITIONS {
     let mut board = Board::new(position).expect("Loading board failed");
     test_position(
+      name,
       &board,
       &champ_requests,
       &champ_results,
@@ -213,6 +226,7 @@ fn main() {
     );
     board.friendly_fire = true;
     test_position(
+      &format!("friendly {name}"),
       &board,
       &champ_requests,
       &champ_results,

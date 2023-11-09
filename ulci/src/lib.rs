@@ -9,6 +9,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::io::Write;
+use std::ops::Not;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -134,6 +135,7 @@ impl ToString for RangeOption {
 }
 
 /// An evaluation of a position
+#[derive(Copy, Clone)]
 pub enum Score {
   /// Side to move wins in this many moves
   Win(u16),
@@ -188,6 +190,32 @@ impl Neg for Score {
       Self::Loss(moves) => Self::Win(moves + 1),
       Self::Centipawn(score) => Self::Centipawn(-score),
       Self::WDL(w, d, l) => Self::WDL(l, d, w),
+    }
+  }
+}
+
+// Design for decaying alpha/beta
+// Reverses the effect of Neg
+impl Not for Score {
+  type Output = Self;
+
+  fn not(self) -> Self::Output {
+    match self {
+      Self::Win(moves) => Self::Loss(moves.saturating_sub(1)),
+      Self::Loss(moves) => Self::Win(moves),
+      Self::Centipawn(score) => Self::Centipawn(-score),
+      Self::WDL(w, d, l) => Self::WDL(l, d, w),
+    }
+  }
+}
+
+impl ToString for Score {
+  fn to_string(&self) -> String {
+    match self {
+      Self::Win(moves) => format!("mate {moves}"),
+      Self::Loss(moves) => format!("mate -{moves}"),
+      Self::Centipawn(cp) => format!("cp {}", cp.round() as i64),
+      Self::WDL(w, d, l) => format!("wdl {w} {d} {l}"),
     }
   }
 }

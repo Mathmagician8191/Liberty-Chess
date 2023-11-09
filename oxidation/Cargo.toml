@@ -14,6 +14,10 @@ path = "src/lib.rs"
 name = "oxidation"
 path = "src/bin.rs"
 
+[[bin]]
+name = "random"
+path = "src/random.rs"
+
 [dependencies]
 liberty_chess = {workspace = true}
 rand = {workspace = true}
