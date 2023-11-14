@@ -1,4 +1,5 @@
-use crate::{to_char, to_indices, to_piece, update_column, update_row, Piece};
+use crate::parsing::{to_char, to_indices, to_piece, update_column, update_row};
+use crate::{Board, Piece};
 use std::str::FromStr;
 
 enum Stage {
@@ -130,5 +131,46 @@ impl Move {
   #[must_use]
   pub const fn promotion(&self) -> Option<Piece> {
     self.promotion
+  }
+}
+
+impl Board {
+  /// Play a move from a move object
+  pub fn play_move(&mut self, played_move: Move) {
+    self.make_move(played_move.start(), played_move.end());
+    if let Some(piece) = played_move.promotion() {
+      self.promote(piece);
+    }
+  }
+
+  /// Return a new board if the move is legal
+  #[must_use]
+  pub fn move_if_legal(&self, test_move: Move) -> Option<Self> {
+    let start = test_move.start();
+    let end = test_move.end();
+    if start.0 < self.height()
+      && start.1 < self.width()
+      && end.0 < self.height()
+      && end.1 < self.width()
+      && self.check_pseudolegal(start, end)
+    {
+      if let Some(mut board) = self.get_legal(start, end) {
+        match (board.promotion_available(), test_move.promotion()) {
+          (true, Some(piece)) => {
+            board.promote(piece);
+            Some(board)
+          }
+          (false, None) => {
+            board.update();
+            Some(board)
+          }
+          (true, None) | (false, Some(_)) => None,
+        }
+      } else {
+        None
+      }
+    } else {
+      None
+    }
   }
 }

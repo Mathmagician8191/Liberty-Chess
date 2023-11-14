@@ -1,7 +1,9 @@
 use crate::ClientInfo;
 use crate::{write, OptionValue, SearchSettings, SearchTime, UlciOption, VERSION};
+use liberty_chess::parsing::to_char;
 use liberty_chess::positions::get_startpos;
-use liberty_chess::{Board, CompressedBoard};
+use liberty_chess::threading::CompressedBoard;
+use liberty_chess::Board;
 use std::io::BufRead;
 use std::io::Write;
 use std::str::SplitWhitespace;
@@ -11,7 +13,7 @@ use std::time::Duration;
 /// The functions tha need to be implemented for the ULCI interface
 pub enum Message {
   /// The server wants to update the value of an option
-  UpdateOption(OptionValue),
+  UpdateOption(String, OptionValue),
   /// The server is setting whether verbose output is enabled
   SetDebug(bool),
   /// The server has changed the current position
@@ -24,6 +26,13 @@ pub enum Message {
 
 fn print_uci(out: &mut impl Write, info: &ClientInfo) {
   write(out, &format!("id version {VERSION}"));
+  write(
+    out,
+    &format!(
+      "id pieces {}",
+      info.pieces.iter().map(|p| to_char(-*p)).collect::<String>()
+    ),
+  );
   write(out, &format!("id name {}", info.name));
   if let Some(ref name) = info.username {
     write(out, &format!("id username {name}"));
@@ -96,21 +105,18 @@ fn setoption(
       match option {
         UlciOption::String(_) => {
           client
-            .send(Message::UpdateOption(OptionValue::UpdateString(
-              name, value,
-            )))
+            .send(Message::UpdateOption(
+              name,
+              OptionValue::UpdateString(value),
+            ))
             .ok()?;
         }
         UlciOption::Int(option) => match value.parse::<usize>() {
           Ok(mut value) => {
-            if let Some(min) = option.min {
-              value = value.max(min);
-            }
-            if let Some(max) = option.max {
-              value = value.min(max);
-            }
+            value = value.max(option.min);
+            value = value.min(option.max);
             client
-              .send(Message::UpdateOption(OptionValue::UpdateInt(name, value)))
+              .send(Message::UpdateOption(name, OptionValue::UpdateInt(value)))
               .ok()?;
           }
           Err(_) => {
@@ -125,7 +131,7 @@ fn setoption(
         UlciOption::Bool(_) => match value.parse() {
           Ok(value) => {
             client
-              .send(Message::UpdateOption(OptionValue::UpdateBool(name, value)))
+              .send(Message::UpdateOption(name, OptionValue::UpdateBool(value)))
               .ok()?;
           }
           Err(_) => {
@@ -140,7 +146,7 @@ fn setoption(
         UlciOption::Range(option) => {
           if option.options.contains(&value) {
             client
-              .send(Message::UpdateOption(OptionValue::UpdateRange(name, value)))
+              .send(Message::UpdateOption(name, OptionValue::UpdateRange(value)))
               .ok()?;
           } else if debug {
             write(
@@ -151,7 +157,7 @@ fn setoption(
         }
         UlciOption::Trigger => {
           client
-            .send(Message::UpdateOption(OptionValue::SendTrigger(name)))
+            .send(Message::UpdateOption(name, OptionValue::SendTrigger))
             .ok()?;
         }
       }
@@ -256,14 +262,16 @@ fn go(
       "infinite" => time = SearchTime::Infinite,
       "depth" => {
         if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-          time = SearchTime::Depth(value);
+          let depth = usize::from(u8::MAX).min(value);
+          time = SearchTime::Depth(depth as u8);
         } else if debug {
           write(out, "info string servererror no depth specified");
         }
       }
       "mate" => {
-        if let Some(value) = words.next().and_then(|w| w.parse::<u16>().ok()) {
-          time = SearchTime::Depth(value * 2);
+        if let Some(value) = words.next().and_then(|w| w.parse::<usize>().ok()) {
+          let depth = usize::from(u8::MAX).min(value * 2);
+          time = SearchTime::Depth(depth as u8);
         } else if debug {
           write(out, "info string servererror no move count specified");
         }

@@ -6,8 +6,8 @@
 pub use crate::keys::Hash;
 
 use crate::keys::Zobrist;
+use crate::parsing::{from_chars, get_indices, process_board, FenError};
 use array2d::Array2D;
-use core::str::FromStr;
 use moves::Move;
 use std::rc::Rc;
 
@@ -15,10 +15,15 @@ use std::rc::Rc;
 pub mod clock;
 /// Move representation
 pub mod moves;
+/// Functions to handle converting information to and from strings
+pub mod parsing;
 /// A collection of preset positions
 pub mod positions;
+/// Functions to handle sending boards between threads
+pub mod threading;
 
 mod keys;
+mod movegen;
 
 /// A type used for pieces.
 /// Positive values indicate a white piece, negative values indicate a black piece and 0 indicates an empty square.
@@ -63,6 +68,9 @@ pub const OBSTACLE: Piece = 17;
 /// Like an obstacle, but immune to attack from most pieces
 pub const WALL: Piece = 18;
 
+/// All the pieces available
+pub const ALL_PIECES: &str = "kmqcaehuriwbznxlop";
+
 // attack and defence values of pieces
 // 0 = empty square
 // 1 = None
@@ -70,27 +78,6 @@ pub const WALL: Piece = 18;
 // 3 = Powerful
 const ATTACK: [Piece; 19] = [0, 3, 2, 2, 2, 2, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 1, 1];
 const DEFENCE: [Piece; 19] = [0, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2];
-
-/// An enum to represent the reasons for an L-FEN to be invalid.
-#[derive(Debug)]
-pub enum FenError {
-  /// An unrecognised piece was encountered
-  InvalidPiece(char),
-  /// The board has a non-uniform width
-  NonRectangular,
-  /// The board has a width or height less than 2
-  Size,
-}
-
-impl ToString for FenError {
-  fn to_string(&self) -> String {
-    match self {
-      Self::InvalidPiece(c) => format!("Invalid piece found: {c}"),
-      Self::NonRectangular => "Non-rectangular board found".to_owned(),
-      Self::Size => "Board must be at least 2x2".to_owned(),
-    }
-  }
-}
 
 /// represents the status of the game
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -154,402 +141,6 @@ impl PartialEq for Board {
 }
 
 impl Eq for Board {}
-
-impl ToString for Board {
-  fn to_string(&self) -> String {
-    // save board layout
-    let mut rows = Vec::new();
-    for row in self.pieces.rows_iter() {
-      let mut squares = 0;
-      let mut output = String::new();
-      for piece in row {
-        if piece == &SQUARE {
-          squares += 1;
-        } else {
-          if squares > 0 {
-            output += &squares.to_string();
-            squares = 0;
-          }
-          output.push(to_char(*piece));
-        }
-      }
-      if squares > 0 {
-        output += &squares.to_string();
-      }
-      rows.push(output);
-    }
-
-    rows.reverse();
-
-    let mut result = rows.join("/");
-
-    // save side to move
-    result += if self.to_move { " w " } else { " b " };
-
-    // save castling rights
-    let mut needs_castling = true;
-    for i in 0..4 {
-      if self.castling[i] {
-        needs_castling = false;
-        result.push(match i {
-          0 => 'K',
-          1 => 'Q',
-          2 => 'k',
-          3 => 'q',
-          _ => unreachable!(),
-        });
-      }
-    }
-
-    if needs_castling {
-      result.push('-');
-    }
-
-    result.push(' ');
-
-    // save en passant
-    match self.en_passant {
-      Some([column, row_min, row_max]) => result += &to_indices(column, row_min, row_max),
-      None => result.push('-'),
-    }
-
-    // save halfmove clock and full move count
-    result.push(' ');
-    result += &self.halfmoves.to_string();
-    result.push(' ');
-    result += &self.moves.to_string();
-
-    // save optional fields in reverse order
-    // because previous ones are required
-    let mut optional = Vec::new();
-
-    if self.friendly_fire {
-      optional.push("ff".to_owned());
-    }
-
-    let custom_promotion =
-      self.friendly_fire || self.promotion_options.as_ref() != &[QUEEN, ROOK, BISHOP, KNIGHT];
-
-    // save promotion options
-    if custom_promotion {
-      let mut promotion = String::new();
-      for piece in self.promotion_options.as_ref() {
-        promotion.push(to_char(-1 * piece));
-      }
-      optional.push(promotion);
-    }
-
-    // assemble misc options (also reversed)
-    let mut misc = Vec::new();
-    let mut misc_fields = if self.king_column == self.width() - 1 {
-      false
-    } else {
-      misc.push(self.king_column.to_string());
-      true
-    };
-
-    if misc_fields || self.queen_column != 0 {
-      misc.push(self.queen_column.to_string());
-      misc_fields = true;
-    }
-
-    if misc_fields || self.castle_row != 0 {
-      misc.push((self.castle_row + 1).to_string());
-      misc_fields = true;
-    }
-
-    if misc_fields || self.pawn_row != 2 {
-      misc.push(self.pawn_row.to_string());
-      misc_fields = true;
-    }
-
-    if misc_fields || self.pawn_moves != 2 {
-      misc.push(self.pawn_moves.to_string());
-    }
-
-    if misc.is_empty() && custom_promotion {
-      misc.push("-".to_owned());
-    }
-
-    if !misc.is_empty() {
-      misc.reverse();
-      optional.push(misc.join(","));
-    }
-
-    if !optional.is_empty() {
-      optional.reverse();
-      result.push(' ');
-      result += &optional.join(" ");
-    }
-
-    result
-  }
-}
-
-impl FromStr for Board {
-  type Err = FenError;
-
-  fn from_str(fen: &str) -> Result<Self, Self::Err> {
-    Self::new(fen)
-  }
-}
-
-/// Converts a character to a `Piece`
-///
-/// # Errors
-///
-/// Will return `Err` if `c` is not a recognised piece
-pub const fn to_piece(c: char) -> Result<Piece, FenError> {
-  let multiplier: Piece = if c.is_ascii_uppercase() { 1 } else { -1 };
-
-  let piece_type = match c.to_ascii_lowercase() {
-    'p' => PAWN,
-    'n' => KNIGHT,
-    'b' => BISHOP,
-    'r' => ROOK,
-    'q' => QUEEN,
-    'k' => KING,
-    'a' => ARCHBISHOP,
-    'c' => CHANCELLOR,
-    'l' => CAMEL,
-    'z' => ZEBRA,
-    'x' => MANN,
-    'i' => NIGHTRIDER,
-    'h' => CHAMPION,
-    'u' => CENTAUR,
-    'm' => AMAZON,
-    'e' => ELEPHANT,
-    'o' => OBSTACLE,
-    'w' => WALL,
-    _ => return Err(FenError::InvalidPiece(c.to_ascii_lowercase())),
-  };
-  Ok(multiplier * piece_type)
-}
-
-#[must_use]
-const fn to_char(piece: Piece) -> char {
-  let c = match piece.abs() {
-    PAWN => 'p',
-    KNIGHT => 'n',
-    BISHOP => 'b',
-    ROOK => 'r',
-    QUEEN => 'q',
-    KING => 'k',
-    ARCHBISHOP => 'a',
-    CHANCELLOR => 'c',
-    CAMEL => 'l',
-    ZEBRA => 'z',
-    MANN => 'x',
-    NIGHTRIDER => 'i',
-    CHAMPION => 'h',
-    CENTAUR => 'u',
-    AMAZON => 'm',
-    ELEPHANT => 'e',
-    OBSTACLE => 'o',
-    WALL => 'w',
-    _ => unreachable!(),
-  };
-  if piece > 0 {
-    c.to_ascii_uppercase()
-  } else {
-    c
-  }
-}
-
-/// Convert a `Piece` into a string representing the type of piece it is.
-#[must_use]
-pub fn to_name(piece: Piece) -> &'static str {
-  match piece.abs() {
-    PAWN => "Pawn",
-    KNIGHT => "Knight",
-    BISHOP => "Bishop",
-    ROOK => "Rook",
-    QUEEN => "Queen",
-    KING => "King",
-    ARCHBISHOP => "Archbishop",
-    CHANCELLOR => "Chancellor",
-    CAMEL => "Camel",
-    ZEBRA => "Zebra",
-    MANN => "Mann",
-    NIGHTRIDER => "Nightrider",
-    CHAMPION => "Champion",
-    CENTAUR => "Centaur",
-    AMAZON => "Amazon",
-    ELEPHANT => "Elephant",
-    OBSTACLE => "Obstacle",
-    WALL => "Wall",
-    _ => unreachable!(),
-  }
-}
-
-fn update_column(column: &mut usize, c: char) {
-  *column *= 26;
-  *column += c as usize + 1 - 'a' as usize;
-}
-
-fn update_row(row: &mut usize, c: char) {
-  *row *= 10;
-  *row += c as usize - '0' as usize;
-}
-
-fn get_indices(algebraic: &str) -> Option<[usize; 3]> {
-  if algebraic == "-" {
-    return None;
-  }
-  let mut column = 0;
-  let mut row = 0;
-  let mut row_start = 0;
-  let mut found_dash = false;
-  let iterator = algebraic.chars();
-  for c in iterator {
-    match c {
-      _ if c.is_ascii_lowercase() => update_column(&mut column, c),
-      _ if c.is_ascii_digit() => {
-        if found_dash {
-          update_row(&mut row_start, c);
-        } else {
-          update_row(&mut row, c);
-        }
-      }
-      '-' => found_dash = true,
-      _ => (),
-    }
-  }
-  if column == 0 || row == 0 {
-    None
-  } else if row_start == 0 {
-    Some([column - 1, row - 1, row - 1])
-  } else {
-    Some([column - 1, row - 1, row_start - 1])
-  }
-}
-
-const fn get_letter(letter: usize) -> char {
-  (letter as u8 + b'a') as char
-}
-
-/// Convert a file to its representation as letters
-#[must_use]
-pub fn to_letters(mut column: usize) -> Vec<char> {
-  let mut result = Vec::new();
-  while column > 26 - usize::from(result.is_empty()) {
-    if !result.is_empty() {
-      column -= 1;
-    }
-    let c = get_letter(column % 26);
-    result.push(c);
-    column /= 26;
-  }
-  if !result.is_empty() {
-    column -= 1;
-  }
-  result.push(get_letter(column));
-  result.reverse();
-  result
-}
-
-fn to_indices(column: usize, row_min: usize, row_max: usize) -> String {
-  let result = to_letters(column);
-
-  if row_min == row_max {
-    format!("{}{}", result.iter().collect::<String>(), row_min + 1)
-  } else {
-    format!(
-      "{}{}-{}",
-      result.iter().collect::<String>(),
-      row_min + 1,
-      row_max + 1
-    )
-  }
-}
-
-// returns a board with default values for parameters
-fn process_board(board: &str) -> Result<Board, FenError> {
-  let rows: Vec<&str> = board.split('/').collect();
-
-  let height = rows.len();
-  let mut width: Option<usize> = None;
-  let mut pieces = Vec::new();
-  let mut white_kings = Vec::new();
-  let mut black_kings = Vec::new();
-  let mut white_pieces = 0;
-  let mut black_pieces = 0;
-
-  for row in (0..height).rev() {
-    let string = rows[row];
-    let mut squares = 0;
-    let mut vec = Vec::new();
-
-    for c in string.chars() {
-      if c.is_ascii_digit() {
-        squares *= 10;
-        squares += c as usize - '0' as usize;
-      } else {
-        if squares > 0 {
-          vec.append(&mut vec![0; squares]);
-          squares = 0;
-        }
-        let piece = to_piece(c)?;
-        if piece.abs() == KING {
-          if piece > 0 {
-            white_kings.push((height - row - 1, vec.len()));
-          } else {
-            black_kings.push((height - row - 1, vec.len()));
-          }
-        } else if piece > 0 {
-          white_pieces += 1;
-        } else {
-          black_pieces += 1;
-        }
-        vec.push(piece);
-      }
-    }
-    if squares > 0 {
-      vec.append(&mut vec![0; squares]);
-    }
-    if let Some(i) = width {
-      if vec.len() != i {
-        Err(FenError::NonRectangular)?;
-      }
-    } else {
-      width = Some(vec.len());
-    }
-    pieces.push(vec);
-  }
-
-  let width = width.unwrap_or(0);
-  if width < 2 || height < 2 {
-    Err(FenError::Size)?;
-  }
-
-  Ok(Board {
-    pieces: Array2D::from_rows(&pieces),
-    to_move: true,
-    castling: [false; 4],
-    en_passant: None,
-    halfmoves: 0,
-    moves: 1,
-    pawn_moves: 2,
-    pawn_row: 2,
-    castle_row: 0,
-    queen_column: 0,
-    king_column: width - 1,
-    promotion_target: None,
-    promotion_options: Rc::new(vec![QUEEN, ROOK, BISHOP, KNIGHT]),
-    white_kings,
-    black_kings,
-    state: Gamestate::InProgress,
-    duplicates: Vec::new(),
-    previous: Vec::new(),
-    hash: 0,
-    keys: Rc::new(Zobrist::new(width, height)),
-    friendly_fire: false,
-    white_pieces,
-    black_pieces,
-
-    last_move: None,
-  })
-}
 
 impl Board {
   /// Initialise a new `Board` from an L-FEN
@@ -621,10 +212,7 @@ impl Board {
     }
 
     if fields.len() > 7 && !fields[7].is_empty() {
-      let mut promotion = Vec::with_capacity(fields[7].len());
-      for c in fields[7].chars() {
-        promotion.push(to_piece(c)?.abs());
-      }
+      let promotion = from_chars(fields[7]);
       board.promotion_options = Rc::new(promotion);
     }
 
@@ -636,69 +224,6 @@ impl Board {
     board.update();
 
     Ok(board)
-  }
-
-  /// Using an `Arc` has performance impacts but an `Rc` doesn't allow the `Board` to be shared between threads.
-  /// This is a workaround to create the `Rc` data on the new thread
-  #[must_use]
-  pub fn send_to_thread(&self) -> CompressedBoard {
-    CompressedBoard {
-      pieces: self.pieces.clone(),
-      to_move: self.to_move,
-      castling: self.castling,
-      en_passant: self.en_passant,
-      halfmoves: self.halfmoves,
-      moves: self.moves,
-      pawn_moves: self.pawn_moves,
-      pawn_row: self.pawn_row,
-      castle_row: self.castle_row,
-      queen_column: self.queen_column,
-      king_column: self.king_column,
-      promotion_target: self.promotion_target,
-      promotion_options: self.promotion_options.to_vec(),
-      white_kings: self.white_kings.clone(),
-      black_kings: self.black_kings.clone(),
-      state: self.state,
-      duplicates: self.duplicates.clone(),
-      previous: self.previous.clone(),
-      hash: self.hash,
-      friendly_fire: self.friendly_fire,
-      white_pieces: self.white_pieces,
-      black_pieces: self.black_pieces,
-    }
-  }
-
-  /// Load a board sent to another thread
-  #[must_use]
-  pub fn load_from_thread(board: CompressedBoard) -> Self {
-    let width = board.pieces.num_columns();
-    let height = board.pieces.num_rows();
-    Self {
-      pieces: board.pieces,
-      to_move: board.to_move,
-      castling: board.castling,
-      en_passant: board.en_passant,
-      halfmoves: board.halfmoves,
-      moves: board.moves,
-      pawn_moves: board.pawn_moves,
-      pawn_row: board.pawn_row,
-      castle_row: board.castle_row,
-      queen_column: board.queen_column,
-      king_column: board.king_column,
-      promotion_target: board.promotion_target,
-      promotion_options: Rc::new(board.promotion_options),
-      white_kings: board.white_kings,
-      black_kings: board.black_kings,
-      state: board.state,
-      duplicates: board.duplicates,
-      previous: board.previous,
-      hash: board.hash,
-      keys: Rc::new(Zobrist::new(width, height)),
-      friendly_fire: board.friendly_fire,
-      white_pieces: board.white_pieces,
-      black_pieces: board.black_pieces,
-      last_move: None,
-    }
   }
 
   /// Returns the piece at the given coordinates.
@@ -769,6 +294,12 @@ impl Board {
     (self.white_pieces, self.black_pieces)
   }
 
+  /// Get the pieces on the board
+  #[must_use]
+  pub const fn board(&self) -> &Array2D<Piece> {
+    &self.pieces
+  }
+
   /// The coordinates of the kings under attack.
   /// Only considers the side to move.
   #[must_use]
@@ -786,118 +317,6 @@ impl Board {
   #[must_use]
   pub const fn state(&self) -> Gamestate {
     self.state
-  }
-
-  /// Generates all legal moves from a position.
-  #[must_use]
-  pub fn generate_legal(&self) -> Vec<Self> {
-    let mut boards = Vec::new();
-    let king_safe = self.attacked_kings().is_empty();
-    for i in 0..self.height() {
-      for j in 0..self.width() {
-        let piece = self.pieces[(i, j)];
-        if piece != 0 && self.to_move == (piece > 0) {
-          let mut skip_legality = match piece.abs() {
-            KING | BISHOP | PAWN => Some(false),
-            _ => {
-              if king_safe {
-                None
-              } else {
-                Some(false)
-              }
-            }
-          };
-          match piece.abs() {
-            PAWN => {
-              let left_column = usize::saturating_sub(j, 1);
-              let right_column = usize::min(j + 1, self.width() - 1);
-              for k in 0..self.height() {
-                for l in left_column..=right_column {
-                  if self.check_pseudolegal((i, j), (k, l)) {
-                    if let Some(mut board) = self.get_legal((i, j), (k, l)) {
-                      if board.promotion_available() {
-                        for piece in self.promotion_options.as_ref() {
-                          let mut promotion = board.clone();
-                          promotion.promote(*piece);
-                          boards.push(promotion);
-                        }
-                      } else {
-                        board.update();
-                        boards.push(board);
-                      }
-                    }
-                  }
-                }
-              }
-            }
-            ROOK => {
-              for k in 0..self.height() {
-                self.add_if_legal(&mut boards, (i, j), (k, j), &mut skip_legality);
-              }
-              for l in 0..self.width() {
-                self.add_if_legal(&mut boards, (i, j), (i, l), &mut skip_legality);
-              }
-            }
-            KNIGHT => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 2, 1) {
-                if k < self.height() && l < self.width() {
-                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
-                }
-              }
-            }
-            CAMEL => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 1) {
-                if k < self.height() && l < self.width() {
-                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
-                }
-              }
-            }
-            ZEBRA => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 2) {
-                if k < self.height() && l < self.width() {
-                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
-                }
-              }
-            }
-            _ => {
-              for k in 0..self.height() {
-                for l in 0..self.width() {
-                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-    boards
-  }
-
-  // inlining gives approx 3-4% speed improvement
-  #[inline(always)]
-  fn add_if_legal(
-    &self,
-    boards: &mut Vec<Self>,
-    start: (usize, usize),
-    end: (usize, usize),
-    skip_legality: &mut Option<bool>,
-  ) {
-    if self.check_pseudolegal(start, end) {
-      let skip_legality = skip_legality.unwrap_or_else(|| {
-        let bool = !self.is_attacked(start, !self.to_move);
-        *skip_legality = Some(bool);
-        bool
-      });
-      if skip_legality {
-        let mut board = self.clone();
-        board.make_move(start, end);
-        board.update();
-        boards.push(board);
-      } else if let Some(mut board) = self.get_legal(start, end) {
-        board.update();
-        boards.push(board);
-      }
-    }
   }
 
   /// Checks if a move is psuedo-legal.
@@ -1308,45 +727,6 @@ impl Board {
     }
   }
 
-  /// Play a move from a move object
-  pub fn play_move(&mut self, played_move: Move) {
-    self.make_move(played_move.start(), played_move.end());
-    if let Some(piece) = played_move.promotion() {
-      self.promote(piece);
-    }
-  }
-
-  /// Return a new board if the move is legal
-  #[must_use]
-  pub fn move_if_legal(&self, test_move: Move) -> Option<Self> {
-    let start = test_move.start();
-    let end = test_move.end();
-    if start.0 < self.height()
-      && start.1 < self.width()
-      && end.0 < self.height()
-      && end.1 < self.width()
-      && self.check_pseudolegal(start, end)
-    {
-      if let Some(mut board) = self.get_legal(start, end) {
-        match (board.promotion_available(), test_move.promotion()) {
-          (true, Some(piece)) => {
-            board.promote(piece);
-            Some(board)
-          }
-          (false, None) => {
-            board.update();
-            Some(board)
-          }
-          (true, None) | (false, Some(_)) => None,
-        }
-      } else {
-        None
-      }
-    } else {
-      None
-    }
-  }
-
   /// Get whether a square is attacked by the specified side.
   #[must_use]
   // automatic flatten is 5% slower
@@ -1710,35 +1090,4 @@ impl Board {
   fn test_legal(&self, start: (usize, usize), end: (usize, usize)) -> bool {
     self.check_pseudolegal(start, end) && self.get_legal(start, end).is_some()
   }
-}
-
-/// A `Board`, compressed to be sent to another thread
-pub struct CompressedBoard {
-  pieces: Array2D<Piece>,
-  to_move: bool,
-  castling: [bool; 4],
-  en_passant: Option<[usize; 3]>,
-  halfmoves: u8,
-  moves: u16,
-  pawn_moves: usize,
-  pawn_row: usize,
-  castle_row: usize,
-  queen_column: usize,
-  king_column: usize,
-  promotion_target: Option<(usize, usize)>,
-  promotion_options: Vec<Piece>,
-  white_kings: Vec<(usize, usize)>,
-  black_kings: Vec<(usize, usize)>,
-  state: Gamestate,
-  duplicates: Vec<Hash>,
-  previous: Vec<Hash>,
-  hash: Hash,
-  /// Whether friendly fire mode is enabled.
-  /// Changing this value is only supported before moves are made.
-  pub friendly_fire: bool,
-
-  // Additional cached values
-  // Piece counts ignore kings
-  white_pieces: usize,
-  black_pieces: usize,
 }

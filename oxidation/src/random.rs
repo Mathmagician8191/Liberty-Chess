@@ -1,6 +1,7 @@
 use liberty_chess::moves::Move;
+use liberty_chess::parsing::from_chars;
 use liberty_chess::positions::get_startpos;
-use liberty_chess::Board;
+use liberty_chess::ALL_PIECES;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::collections::HashMap;
@@ -17,6 +18,7 @@ fn main() {
     username: None,
     author: "Mathmagician".to_owned(),
     options: HashMap::new(),
+    pieces: from_chars(ALL_PIECES),
   };
   let input = BufReader::new(stdin());
   let output = stdout();
@@ -27,7 +29,7 @@ fn main() {
   while let Ok(message) = rx.recv() {
     match message {
       Message::SetDebug(new_debug) => debug = new_debug,
-      Message::UpdatePosition(board) => position = Board::load_from_thread(*board),
+      Message::UpdatePosition(board) => position = board.load_from_thread(),
       Message::Go(settings) => {
         let moves = position.generate_legal();
         let moves = moves.iter().filter_map(|board| board.last_move);
@@ -91,7 +93,7 @@ fn main() {
           println!("info string servererror not currently searching");
         }
       }
-      Message::UpdateOption(_) => (),
+      Message::UpdateOption(_, _) => (),
     }
   }
 }

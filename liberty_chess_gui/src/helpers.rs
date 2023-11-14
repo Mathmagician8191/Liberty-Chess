@@ -5,8 +5,9 @@ use eframe::epaint::Vec2;
 use egui::color_picker::{color_edit_button_srgba, Alpha};
 use egui::load::SizedTexture;
 use egui::{Color32, Context, Image, TextBuffer, TextEdit, Ui};
-
 use enum_iterator::{all, Sequence};
+use liberty_chess::parsing::to_piece;
+
 #[cfg(feature = "sound")]
 use liberty_chess::{Board, Gamestate};
 #[cfg(feature = "sound")]
@@ -25,7 +26,7 @@ pub(crate) fn menu_button(gui: &mut LibertyChessGUI, ui: &mut Ui) {
 
 pub(crate) fn get_icon<'a>(gui: &mut LibertyChessGUI, ctx: &Context, piece: char) -> Image<'a> {
   Image::new(SizedTexture {
-    id: gui.get_image(ctx, liberty_chess::to_piece(piece).unwrap(), ICON_SIZE),
+    id: gui.get_image(ctx, to_piece(piece).unwrap(), ICON_SIZE),
     size: Vec2 {
       x: ICON_SIZE_FLOAT,
       y: ICON_SIZE_FLOAT,

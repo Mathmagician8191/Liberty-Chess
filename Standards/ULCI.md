@@ -135,7 +135,10 @@ Client to server:
   * version <x>
     This must be sent to indicate to the server the version of ULCI supported.
     If the server does not receive this, it should assume the client is a regular UCI client.
-    e.g. "id version 1"
+    e.g. "id version 1\n"
+  * pieces <x>
+    Identifies the pieces supported by the client. The server should not give the client positions containing other pieces. If this is not specified, the server should assume the client only supports the pieces from standard chess.
+    e.g. "id pieces kmqcaehuriwbznxlop\n"
   * name <x>
     This must be sent after receiving the "uci" command to identify the client,
     e.g. "id name Shredder X.Y\n"

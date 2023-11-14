@@ -4,7 +4,8 @@ use eframe::egui::{
   pos2, Align2, Color32, Context, FontId, PointerButton, Pos2, Rect, Response, Rounding, Sense,
   Shape, Ui, Vec2,
 };
-use liberty_chess::{to_letters, Board, Piece};
+use liberty_chess::parsing::to_letters;
+use liberty_chess::{Board, Piece};
 
 #[cfg(feature = "sound")]
 use crate::helpers::update_sound;

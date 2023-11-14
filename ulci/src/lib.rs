@@ -4,6 +4,7 @@
 
 use core::ops::Neg;
 use liberty_chess::moves::Move;
+use liberty_chess::Piece;
 use parking_lot::Mutex;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -33,6 +34,8 @@ pub struct ClientInfo {
   pub author: String,
   /// Options for the client
   pub options: HashMap<String, UlciOption>,
+  /// Pieces supported by the client
+  pub pieces: Vec<Piece>,
 }
 
 /// Settings for a search
@@ -44,13 +47,14 @@ pub struct SearchSettings {
 }
 
 /// The time control for searching
+#[derive(Clone, Copy)]
 pub enum SearchTime {
   /// Fixed time per move
   FixedTime(Duration),
   /// Time and increment
   Increment(Duration, Duration),
   /// Depth
-  Depth(u16),
+  Depth(u8),
   /// Nodes
   Nodes(usize),
   /// Infinite
@@ -61,15 +65,15 @@ pub enum SearchTime {
 pub enum OptionValue {
   // First string name in option is the option name, second parameter is the value
   /// The value of a string option
-  UpdateString(String, String),
+  UpdateString(String),
   /// The value of an integer option
-  UpdateInt(String, usize),
+  UpdateInt(usize),
   /// The value of a true/false option
-  UpdateBool(String, bool),
+  UpdateBool(bool),
   /// The value of an option from a range of possibilities
-  UpdateRange(String, String),
+  UpdateRange(String),
   /// A trigger signal for the engine
-  SendTrigger(String),
+  SendTrigger,
 }
 
 /// An option supported by the client
@@ -100,20 +104,19 @@ impl ToString for UlciOption {
 
 /// An option with an integer value and optional min/max
 pub struct IntOption {
-  default: usize,
-  min: Option<usize>,
-  max: Option<usize>,
+  /// the default value of the option
+  pub default: usize,
+  /// the minimum value of the option
+  pub min: usize,
+  /// the maximum value of the option
+  pub max: usize,
 }
 
 impl ToString for IntOption {
   fn to_string(&self) -> String {
     let mut result = format!("type spin default {}", self.default);
-    if let Some(min) = self.min {
-      result += &format!(" min {min}");
-    }
-    if let Some(max) = self.max {
-      result += &format!(" max {max}");
-    }
+    result += &format!(" min {}", self.min);
+    result += &format!(" max {}", self.max);
     result
   }
 }

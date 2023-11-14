@@ -19,7 +19,8 @@ use egui::{
 };
 use enum_iterator::all;
 use helpers::{populate_dropdown, populate_dropdown_transform};
-use liberty_chess::{to_name, Board, Gamestate, Piece};
+use liberty_chess::parsing::to_name;
+use liberty_chess::{Board, Gamestate, Piece};
 use oxidation::random_move;
 use players::{PlayerColour, PlayerType};
 use resvg::tiny_skia::{Pixmap, Transform};
@@ -350,8 +351,7 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
   gui.screen = screen;
 }
 
-// draw main areas for each screen
-fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
+fn draw_nav_buttons(gui: &mut LibertyChessGUI, ui: &mut Ui) {
   ui.horizontal_top(|ui| {
     if ui.button("Help").clicked() {
       switch_screen(gui, Screen::Help);
@@ -363,6 +363,11 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
       switch_screen(gui, Screen::Settings);
     }
   });
+}
+
+// draw main areas for each screen
+fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
+  draw_nav_buttons(gui, ui);
   ComboBox::from_id_source("Gamemode")
     .selected_text("Gamemode: ".to_owned() + &gui.gamemode.to_string())
     .show_ui(ui, |ui| {

@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 #[cfg(feature = "parallel")]
 use std::sync::mpsc::Sender;
 #[cfg(feature = "parallel")]
+use std::thread::available_parallelism;
+#[cfg(feature = "parallel")]
 use threadpool::ThreadPool;
 
 // Updated 7 Februrary 2023
@@ -70,8 +72,7 @@ fn perft(board: &Board, depth: usize) -> usize {
 fn perft_process_final(pool: &ThreadPool, tx: Sender<usize>, board: &Board, depth: usize) {
   let board = board.send_to_thread();
   let closure = move || {
-    tx.send(perft(&Board::load_from_thread(board), depth))
-      .unwrap();
+    tx.send(perft(&board.load_from_thread(), depth)).unwrap();
   };
   pool.execute(closure);
 }
@@ -79,7 +80,7 @@ fn perft_process_final(pool: &ThreadPool, tx: Sender<usize>, board: &Board, dept
 #[cfg(feature = "parallel")]
 fn perft_process_other(pool: &ThreadPool, board: &Board, depth: usize, result: usize) {
   let board = board.send_to_thread();
-  let closure = move || assert_eq!(perft(&Board::load_from_thread(board), depth), result);
+  let closure = move || assert_eq!(perft(&board.load_from_thread(), depth), result);
   pool.execute(closure);
 }
 
@@ -99,7 +100,7 @@ fn perft_test(fen: &'static str, results: &[usize]) {
   }
 
   #[cfg(feature = "parallel")]
-  let cores = std::thread::available_parallelism().unwrap().get();
+  let cores = available_parallelism().unwrap().get();
   #[cfg(feature = "parallel")]
   let pool = ThreadPool::new(cores);
 

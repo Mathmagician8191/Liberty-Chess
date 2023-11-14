@@ -3,6 +3,8 @@ use crate::{
   UlciOption,
 };
 use liberty_chess::moves::Move;
+use liberty_chess::parsing::to_piece;
+use liberty_chess::{BISHOP, KING, KNIGHT, PAWN, QUEEN, ROOK};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Write};
@@ -18,7 +20,7 @@ pub enum Request {
   /// Stop the analysis
   StopAnalysis,
   /// The server wants to update an option
-  SetOption(OptionValue),
+  SetOption(String, OptionValue),
   /// Shut down the server and client
   Quit,
 }
@@ -59,6 +61,8 @@ pub struct AnalysisResult {
   pub depth: u16,
   /// Nodes evaluated
   pub nodes: usize,
+  /// Time
+  pub time: u128,
 }
 
 impl Default for AnalysisResult {
@@ -68,6 +72,7 @@ impl Default for AnalysisResult {
       score: Score::Centipawn(0.0),
       depth: 1,
       nodes: 1,
+      time: 0,
     }
   }
 }
@@ -92,24 +97,28 @@ fn process_info(mut words: SplitWhitespace, tx: &Sender<UlciResult>) {
   while let Some(word) = words.next() {
     match word {
       "string" => {
-        tx.send(UlciResult::Info(InfoType::String, convert_words(words)))
-          .ok();
-        return;
-      }
-      "clienterror" => {
-        tx.send(UlciResult::Info(
-          InfoType::ClientError,
-          convert_words(words),
-        ))
-        .ok();
-        return;
-      }
-      "servererror" => {
-        tx.send(UlciResult::Info(
-          InfoType::ServerError,
-          convert_words(words),
-        ))
-        .ok();
+        if let Some(word) = words.next() {
+          match word {
+            "clienterror" => {
+              tx.send(UlciResult::Info(
+                InfoType::ClientError,
+                convert_words(words),
+              ))
+              .ok();
+            }
+            "servererror" => {
+              tx.send(UlciResult::Info(
+                InfoType::ServerError,
+                convert_words(words),
+              ))
+              .ok();
+            }
+            _ => {
+              let result = word.to_owned() + " " + &convert_words(words);
+              tx.send(UlciResult::Info(InfoType::String, result)).ok();
+            }
+          }
+        }
         return;
       }
       "depth" => {
@@ -121,6 +130,12 @@ fn process_info(mut words: SplitWhitespace, tx: &Sender<UlciResult>) {
       "nodes" => {
         if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
           result.nodes = value;
+          modified = true;
+        }
+      }
+      "time" => {
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          result.time = value;
           modified = true;
         }
       }
@@ -146,18 +161,18 @@ fn process_info(mut words: SplitWhitespace, tx: &Sender<UlciResult>) {
                 modified = true;
               }
             }
-            "wdl" => {
-              if let (Some(win), Some(draw), Some(loss)) = (
-                words.next().and_then(|w| w.parse().ok()),
-                words.next().and_then(|w| w.parse().ok()),
-                words.next().and_then(|w| w.parse().ok()),
-              ) {
-                result.score = Score::WDL(win, draw, loss);
-                modified = true;
-              }
-            }
             _ => (),
           }
+        }
+      }
+      "wdl" => {
+        if let (Some(win), Some(draw), Some(loss)) = (
+          words.next().and_then(|w| w.parse().ok()),
+          words.next().and_then(|w| w.parse().ok()),
+          words.next().and_then(|w| w.parse().ok()),
+        ) {
+          result.score = Score::WDL(win, draw, loss);
+          modified = true;
         }
       }
       // TODO fix: only works as the last option
@@ -188,6 +203,7 @@ pub fn startup(
 ) -> Option<()> {
   write(&mut out, "uci");
   let mut version = 0;
+  let mut pieces = vec![PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING];
   let mut name = String::new();
   let mut username = None;
   let mut author = String::new();
@@ -203,6 +219,11 @@ pub fn startup(
         Some("version") => {
           if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
             version = value;
+          }
+        }
+        Some("pieces") => {
+          if let Some(word) = words.next() {
+            pieces = word.chars().flat_map(to_piece).collect();
           }
         }
         Some("name") => name = convert_words(words),
@@ -248,7 +269,11 @@ pub fn startup(
                 if let Some(default) = default {
                   options.insert(
                     option_name,
-                    UlciOption::Int(IntOption { default, min, max }),
+                    UlciOption::Int(IntOption {
+                      default,
+                      min: min.unwrap_or(usize::MIN),
+                      max: max.unwrap_or(usize::MAX),
+                    }),
                   );
                 }
               }
@@ -320,6 +345,7 @@ pub fn startup(
         username,
         author,
         options,
+        pieces,
       },
       version,
     ))
@@ -342,17 +368,17 @@ fn process_server(
         tx.send(request).ok()?;
       }
       Request::StopAnalysis => write_mutex(out, "stop"),
-      Request::SetOption(option) => {
+      Request::SetOption(name, option) => {
         write_mutex(
           out,
           match option {
-            OptionValue::UpdateString(name, value) => {
+            OptionValue::UpdateString(value) => {
               format!("setoption name {name} value {value}")
             }
-            OptionValue::UpdateInt(name, value) => format!("setoption name {name} value {value}"),
-            OptionValue::UpdateBool(name, value) => format!("setoption name {name} value {value}"),
-            OptionValue::UpdateRange(name, value) => format!("setoption name {name} value {value}"),
-            OptionValue::SendTrigger(name) => format!("setoption name {name}"),
+            OptionValue::UpdateInt(value) => format!("setoption name {name} value {value}"),
+            OptionValue::UpdateBool(value) => format!("setoption name {name} value {value}"),
+            OptionValue::UpdateRange(value) => format!("setoption name {name} value {value}"),
+            OptionValue::SendTrigger => format!("setoption name {name}"),
           },
         );
       }
@@ -415,7 +441,7 @@ fn process_analysis(
         SearchTime::Increment(time, inc) => {
           let time = time.as_millis();
           let inc = inc.as_millis();
-          format!("go wtime {time} winc {inc} btime {time} binc {time}{moves}")
+          format!("go wtime {time} winc {inc} btime {time} binc {inc}{moves}")
         }
         SearchTime::Depth(depth) => format!("go depth {depth}{moves}"),
         SearchTime::Nodes(nodes) => format!("go nodes {nodes}{moves}"),
