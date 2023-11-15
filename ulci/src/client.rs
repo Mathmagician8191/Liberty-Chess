@@ -1,5 +1,5 @@
-use crate::ClientInfo;
 use crate::{write, OptionValue, SearchSettings, SearchTime, UlciOption, VERSION};
+use crate::{ClientInfo, Limits};
 use liberty_chess::parsing::to_char;
 use liberty_chess::positions::get_startpos;
 use liberty_chess::threading::CompressedBoard;
@@ -8,7 +8,6 @@ use std::io::BufRead;
 use std::io::Write;
 use std::str::SplitWhitespace;
 use std::sync::mpsc::Sender;
-use std::time::Duration;
 
 /// The functions tha need to be implemented for the ULCI interface
 pub enum Message {
@@ -263,7 +262,13 @@ fn go(
       "depth" => {
         if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
           let depth = usize::from(u8::MAX).min(value);
-          time = SearchTime::Depth(depth as u8);
+          let mut limits = if let SearchTime::Other(limits) = time {
+            limits
+          } else {
+            Limits::default()
+          };
+          limits.depth = depth as u8;
+          time = SearchTime::Other(limits);
         } else if debug {
           write(out, "info string servererror no depth specified");
         }
@@ -271,21 +276,39 @@ fn go(
       "mate" => {
         if let Some(value) = words.next().and_then(|w| w.parse::<usize>().ok()) {
           let depth = usize::from(u8::MAX).min(value * 2);
-          time = SearchTime::Depth(depth as u8);
+          let mut limits = if let SearchTime::Other(limits) = time {
+            limits
+          } else {
+            Limits::default()
+          };
+          limits.depth = depth as u8;
+          time = SearchTime::Other(limits);
         } else if debug {
           write(out, "info string servererror no move count specified");
         }
       }
       "nodes" => {
         if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-          time = SearchTime::Nodes(value);
+          let mut limits = if let SearchTime::Other(limits) = time {
+            limits
+          } else {
+            Limits::default()
+          };
+          limits.nodes = value;
+          time = SearchTime::Other(limits);
         } else if debug {
           write(out, "info string servererror no node count specified");
         }
       }
       "movetime" => {
         if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-          time = SearchTime::FixedTime(Duration::from_millis(value));
+          let mut limits = if let SearchTime::Other(limits) = time {
+            limits
+          } else {
+            Limits::default()
+          };
+          limits.time = value;
+          time = SearchTime::Other(limits);
         } else if debug {
           write(out, "info string servererror no time specified");
         }
@@ -293,11 +316,10 @@ fn go(
       "wtime" => {
         if board.to_move() {
           if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-            let new_time = Duration::from_millis(value);
             if let SearchTime::Increment(ref mut time, _) = time {
-              *time = new_time;
+              *time = value;
             } else {
-              time = SearchTime::Increment(new_time, Duration::ZERO);
+              time = SearchTime::Increment(value, 0);
             }
           } else if debug {
             write(out, "info string servererror no time specified");
@@ -307,11 +329,10 @@ fn go(
       "btime" => {
         if !board.to_move() {
           if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-            let new_time = Duration::from_millis(value);
             if let SearchTime::Increment(ref mut time, _) = time {
-              *time = new_time;
+              *time = value;
             } else {
-              time = SearchTime::Increment(new_time, Duration::ZERO);
+              time = SearchTime::Increment(value, 0);
             }
           } else if debug {
             write(out, "info string servererror no time specified");
@@ -321,11 +342,10 @@ fn go(
       "winc" => {
         if board.to_move() {
           if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-            let new_inc = Duration::from_millis(value);
             if let SearchTime::Increment(_, ref mut inc) = time {
-              *inc = new_inc;
+              *inc = value;
             } else {
-              time = SearchTime::Increment(Duration::from_secs(1), new_inc);
+              time = SearchTime::Increment(1000, value);
             }
           } else if debug {
             write(out, "info string servererror no time specified");
@@ -335,11 +355,10 @@ fn go(
       "binc" => {
         if !board.to_move() {
           if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-            let new_inc = Duration::from_millis(value);
             if let SearchTime::Increment(_, ref mut inc) = time {
-              *inc = new_inc;
+              *inc = value;
             } else {
-              time = SearchTime::Increment(Duration::from_secs(1), new_inc);
+              time = SearchTime::Increment(1000, value);
             }
           } else if debug {
             write(out, "info string servererror no time specified");

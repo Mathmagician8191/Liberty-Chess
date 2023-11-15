@@ -18,15 +18,17 @@ use egui::{
   SidePanel, Slider, TextureHandle, TextureOptions, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
-use helpers::{populate_dropdown, populate_dropdown_transform};
+use helpers::{populate_dropdown, populate_dropdown_transform, raw_text_edit};
 use liberty_chess::parsing::to_name;
 use liberty_chess::{Board, Gamestate, Piece};
-use oxidation::random_move;
-use players::{PlayerColour, PlayerType};
+use players::{PlayerColour, PlayerData, PlayerType, SearchType};
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{FitTo, Tree};
 use themes::CustomTheme;
+use ulci::{Limits, SearchTime};
 
+#[cfg(not(feature = "benchmarking"))]
+use std::time::Duration;
 #[cfg(feature = "benchmarking")]
 use std::time::Instant;
 
@@ -64,6 +66,8 @@ mod themes;
 #[cfg(feature = "clock")]
 mod clock;
 
+const MAX_TIME: u64 = 360;
+
 #[derive(Eq, PartialEq)]
 enum Screen {
   Menu,
@@ -95,6 +99,7 @@ pub(crate) struct LibertyChessGUI {
   #[cfg(feature = "clock")]
   clock_data: [NumericalInput<u64>; 4],
   alternate_player: Option<PlayerType>,
+  searchtime: SearchType,
   alternate_player_colour: PlayerColour,
 
   // fields for game screen
@@ -102,9 +107,9 @@ pub(crate) struct LibertyChessGUI {
   #[cfg(feature = "clock")]
   clock: Option<Clock>,
   promotion: Piece,
-  player: Option<(PlayerType, bool)>,
+  player: Option<(PlayerData, bool)>,
 
-  // fields for different screens
+  // fields for other screens
   help_page: HelpPage,
   credits: Credits,
 
@@ -164,6 +169,7 @@ impl LibertyChessGUI {
       #[cfg(feature = "clock")]
       clock_data: [(); 4].map(|()| init_input()),
       alternate_player: None,
+      searchtime: SearchType::default(),
       alternate_player_colour: PlayerColour::Random,
 
       undo: Vec::new(),
@@ -290,6 +296,26 @@ impl App for LibertyChessGUI {
       player.poll();
     }
 
+    // Re-render every 100 ms if clock is ticking or waiting for engine
+    #[cfg(not(feature = "benchmarking"))]
+    {
+      let mut should_poll = if let Some((player, _)) = &self.player {
+        match player {
+          PlayerData::RandomEngine => false,
+          PlayerData::BuiltIn(interface) => interface.is_waiting(),
+        }
+      } else {
+        false
+      };
+      #[cfg(feature = "clock")]
+      if self.clock.is_some() {
+        should_poll = true;
+      }
+      if should_poll {
+        ctx.request_repaint_after(Duration::from_millis(100));
+      }
+    }
+
     // Add no delay between rendering frames and log FPS when benchmarking
     #[cfg(feature = "benchmarking")]
     {
@@ -328,6 +354,7 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
     Screen::Game(_) => {
       gui.selected = None;
       gui.undo = Vec::new();
+      gui.player = None;
       #[cfg(feature = "clock")]
       {
         gui.clock = None;
@@ -426,15 +453,35 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
           gui.flipped = !board.to_move();
         }
 
-        gui.player = gui.alternate_player.map(|player| {
-          let colour = gui.alternate_player_colour.get_colour();
-          if gui.config.get_opponentflip() {
-            gui.flipped = colour;
-          }
-          (player, colour)
-        });
+        let (player, message) = gui
+          .alternate_player
+          .as_ref()
+          .map_or((None, None), |player| {
+            let colour = gui.alternate_player_colour.get_colour();
+            if gui.config.get_opponentflip() {
+              gui.flipped = colour;
+            }
+            #[cfg(not(feature = "clock"))]
+            let searchtime = gui.searchtime.get_value();
+            #[cfg(feature = "clock")]
+            let (searchtime, clock) = gui.searchtime.get_value();
+            #[cfg(feature = "clock")]
+            if let Some(clock) = clock {
+              gui.clock = Some(Clock::new(clock, board.to_move()));
+            }
+            if searchtime == SearchTime::Other(Limits::default()) {
+              (None, Some("Must limit depth, nodes or time".to_owned()))
+            } else {
+              (Some((PlayerData::new(player, searchtime), colour)), None)
+            }
+          });
 
-        switch_screen(gui, Screen::Game(Box::new(board)));
+        gui.player = player;
+
+        if message.is_none() {
+          switch_screen(gui, Screen::Game(Box::new(board)));
+        }
+        gui.message = message;
       }
       Err(error) => {
         gui.message = Some(error.to_string());
@@ -446,17 +493,26 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   }
 
   #[cfg(feature = "clock")]
-  draw_edit(gui, ui, size * 2.0);
+  if let Some(PlayerType::BuiltIn(_)) = gui.alternate_player {
+    gui.clock_type = Type::None;
+  } else {
+    draw_edit(gui, ui, size * 2.0);
+  }
 
   let player_name = gui
     .alternate_player
-    .map_or_else(|| "Local Opponent".to_string(), |player| player.to_string());
+    .as_ref()
+    .map_or_else(|| "Local Opponent".to_string(), ToString::to_string);
 
   ComboBox::from_id_source("Opponent")
     .selected_text(format!("Opponent: {player_name}"))
     .show_ui(ui, |ui| {
       ui.selectable_value(&mut gui.alternate_player, None, "Local Opponent");
-      populate_dropdown_transform(ui, &mut gui.alternate_player, Some);
+      let values = [PlayerType::RandomEngine, PlayerType::built_in()];
+      for value in values {
+        let string = value.to_string();
+        ui.selectable_value(&mut gui.alternate_player, Some(value), string);
+      }
     });
 
   if gui.alternate_player.is_some() {
@@ -469,9 +525,99 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         populate_dropdown(ui, &mut gui.alternate_player_colour);
       });
   }
+  if let Some(PlayerType::BuiltIn(ref mut qdepth)) = gui.alternate_player {
+    ComboBox::from_id_source("Searchtime")
+      .selected_text(format!("Searchtime: {}", gui.searchtime.to_string()))
+      .show_ui(ui, |ui| {
+        let values = [
+          SearchType::default(),
+          #[cfg(feature = "clock")]
+          SearchType::increment(1, 2),
+        ];
+        for value in values {
+          let string = value.to_string();
+          ui.selectable_value(&mut gui.searchtime, value, string);
+        }
+      });
+    match gui.searchtime {
+      #[cfg(feature = "clock")]
+      SearchType::Increment(ref mut time, ref mut inc) => {
+        ui.horizontal_top(|ui| {
+          ui.label("Initial time (minutes)");
+          raw_text_edit(ui, size * 3.0, time);
+        });
+        ui.horizontal_top(|ui| {
+          ui.label("Increment (seconds)");
+          raw_text_edit(ui, size * 3.0, inc);
+        });
+      }
+      SearchType::Other(ref mut limits) => {
+        ui.horizontal_top(|ui| {
+          if checkbox(
+            ui,
+            &mut limits.depth.is_some(),
+            "Limit search by depth",
+            #[cfg(feature = "sound")]
+            gui.audio_engine.as_mut(),
+          ) {
+            if limits.depth.is_some() {
+              limits.depth = None;
+            } else {
+              limits.depth = Some(SearchType::depth());
+            }
+          }
+          if let Some(ref mut depth) = limits.depth {
+            raw_text_edit(ui, size * 2.0, depth);
+          }
+        });
+        ui.horizontal_top(|ui| {
+          if checkbox(
+            ui,
+            &mut limits.nodes.is_some(),
+            "Limit search by nodes",
+            #[cfg(feature = "sound")]
+            gui.audio_engine.as_mut(),
+          ) {
+            if limits.nodes.is_some() {
+              limits.nodes = None;
+            } else {
+              limits.nodes = Some(SearchType::nodes());
+            }
+          }
+          if let Some(ref mut nodes) = limits.nodes {
+            raw_text_edit(ui, size * 5.0, nodes);
+          }
+        });
+        ui.horizontal_top(|ui| {
+          if checkbox(
+            ui,
+            &mut limits.time.is_some(),
+            "Limit search by time (ms)",
+            #[cfg(feature = "sound")]
+            gui.audio_engine.as_mut(),
+          ) {
+            if limits.time.is_some() {
+              limits.time = None;
+            } else {
+              limits.time = Some(SearchType::time());
+            }
+          }
+          if let Some(ref mut time) = limits.time {
+            raw_text_edit(ui, size * 3.0, time);
+          }
+        });
+      }
+    }
+    if gui.config.get_advanced() {
+      ui.horizontal_top(|ui| {
+        ui.label("Quiescence depth");
+        raw_text_edit(ui, size * 2.0, qdepth);
+      });
+    }
+  }
 }
 
-fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Board) {
+fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: Board) {
   let mut clickable;
   clickable = !board.promotion_available() && board.state() == Gamestate::InProgress;
   #[cfg(feature = "clock")]
@@ -481,27 +627,30 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Board) {
       clickable = false;
     }
   }
-  if let Some((player, side)) = gui.player {
-    if side == board.to_move() {
+  if let Some((player, side)) = &mut gui.player {
+    if *side == board.to_move() {
       clickable = false;
-      match player {
-        PlayerType::RandomEngine => {
-          let random_move = random_move(&board);
-          if let Some(random_move) = random_move {
-            #[cfg(feature = "sound")]
-            let capture = board.get_piece(random_move.end()) != 0;
-            board.play_move(random_move);
-            gui.screen = Screen::Game(Box::new(board.clone()));
-            #[cfg(feature = "sound")]
-            if let Some(engine) = &mut gui.audio_engine {
-              let mut effect = Effect::Illegal;
-              update_sound(&mut effect, &board, capture);
-              engine.play(&effect);
+      if let Some(bestmove) = player.get_bestmove(&board) {
+        if let Some(position) = board.move_if_legal(bestmove) {
+          #[cfg(feature = "sound")]
+          let capture = board.get_piece(bestmove.end()) != 0;
+          #[cfg(feature = "sound")]
+          if let Some(engine) = &mut gui.audio_engine {
+            let mut effect = Effect::Illegal;
+            update_sound(&mut effect, &position, capture);
+            engine.play(&effect);
+            #[cfg(feature = "music")]
+            {
+              let dramatic = get_dramatic(&position) + if capture { 0.5 } else { 0.0 };
+              engine.set_dramatic(dramatic);
             }
-            #[cfg(feature = "clock")]
-            if let Some(clock) = &mut gui.clock {
-              clock.update_status(&board);
-            }
+          }
+          gui.screen = Screen::Game(Box::new(position));
+          // It needs 1 more frame to update for some reason
+          ctx.request_repaint();
+          #[cfg(feature = "clock")]
+          if let Some(clock) = &mut gui.clock {
+            clock.update_status(&board);
           }
         }
       }
@@ -620,6 +769,15 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       }
     }
   }
+  if checkbox(
+    ui,
+    &mut gui.config.get_advanced(),
+    "Show advanced engine settings",
+    #[cfg(feature = "sound")]
+    gui.audio_engine.as_mut(),
+  ) {
+    gui.config.toggle_advanced();
+  }
   //Currently non-functional due to https://github.com/emilk/egui/issues/2641
   //if gui.config.settings_changed() && ui.button("Reset all").clicked() {
   //  gui.config.reset_all(ctx);
@@ -640,6 +798,12 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
       player.set_dramatic(get_dramatic(&gamestate));
     }
     gui.screen = Screen::Game(Box::new(gamestate));
+    if let Some((player, _)) = &mut gui.player {
+      match player {
+        PlayerData::RandomEngine => (),
+        PlayerData::BuiltIn(interface) => interface.cancel_move(),
+      }
+    }
     #[cfg(feature = "clock")]
     if let Some(clock) = &mut gui.clock {
       if gui.player.is_none() {

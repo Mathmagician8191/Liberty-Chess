@@ -7,13 +7,23 @@ use liberty_chess::{Board, Gamestate};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::cmp::max;
+use std::io::{Stdout, Write};
 use std::sync::mpsc::Receiver;
+use std::sync::mpsc::TryRecvError::Disconnected;
 use std::time::Instant;
 use ulci::client::Message;
-use ulci::{OptionValue, Score};
+use ulci::{OptionValue, Score, SearchTime};
+
+/// Interface for efficiently integrating into another application
+pub mod glue;
+
+/// The version number of the engine
+pub const VERSION_NUMBER: &str = env!("CARGO_PKG_VERSION");
 
 /// Internal naming thing - do not use
 pub const QDEPTH_NAME: &str = "QDepth";
+/// Default Quiescence depth
+pub const QDEPTH: u8 = 3;
 
 const PIECE_VALUES: [f64; 18] = [
   100.0,  // pawn
@@ -52,7 +62,7 @@ pub struct SearchConfig<'a> {
 
 impl<'a> SearchConfig<'a> {
   /// Initialise the search config
-  pub fn new(
+  fn new(
     qdepth: &'a mut u8,
     max_depth: u8,
     max_time: u128,
@@ -71,6 +81,27 @@ impl<'a> SearchConfig<'a> {
       can_stop: false,
       nodes: 0,
       debug,
+    }
+  }
+
+  /// Initialise the search config based on the search time
+  pub fn new_time(
+    qdepth: &'a mut u8,
+    time: SearchTime,
+    rx: &'a Receiver<Message>,
+    debug: &'a mut bool,
+  ) -> Self {
+    match time {
+      SearchTime::Increment(time, inc) => {
+        let time = time.saturating_sub(100);
+        let time = time.min(time / 20 + inc / 2);
+        let time = 1.max(time);
+        Self::new(qdepth, u8::MAX, time, usize::MAX, rx, debug)
+      }
+      SearchTime::Infinite => Self::new(qdepth, u8::MAX, u128::MAX, usize::MAX, rx, debug),
+      SearchTime::Other(limits) => {
+        Self::new(qdepth, limits.depth, limits.time, limits.nodes, rx, debug)
+      }
     }
   }
 
@@ -121,6 +152,11 @@ impl<'a> SearchConfig<'a> {
           }
         }
       }
+      // channel has hung up due to quit or input EOF, stop search
+      if matches!(self.rx.try_recv(), Err(Disconnected)) {
+        self.stopped = true;
+        return true;
+      }
     }
     false
   }
@@ -131,6 +167,27 @@ impl<'a> SearchConfig<'a> {
 pub fn random_move(board: &Board) -> Option<Move> {
   let moves = board.generate_legal();
   moves.choose(&mut thread_rng())?.last_move
+}
+
+/// Sort the searchmoves from a position
+#[must_use]
+pub fn get_move_order(position: &Board, searchmoves: &Vec<Move>) -> Vec<Move> {
+  let (capture, other) = position.generate_legal_buckets();
+  let capture = capture.iter().filter_map(|board| board.last_move);
+  let other = other.iter().filter_map(|board| board.last_move);
+  let (mut capture, mut other): (Vec<Move>, Vec<Move>) = if searchmoves.is_empty() {
+    (capture.collect(), other.collect())
+  } else {
+    (
+      capture.filter(|m| searchmoves.contains(m)).collect(),
+      other.filter(|m| searchmoves.contains(m)).collect(),
+    )
+  };
+  capture.shuffle(&mut thread_rng());
+  other.shuffle(&mut thread_rng());
+  let mut moves = capture;
+  moves.append(&mut other);
+  moves
 }
 
 /// Returns an evaluation of the provided position
@@ -265,7 +322,12 @@ fn alpha_beta_root(
 }
 
 /// Search the specified position and moves to the specified depth
-pub fn search(mut settings: SearchConfig, position: &Board, mut moves: Vec<Move>) -> Vec<Move> {
+pub fn search(
+  mut settings: SearchConfig,
+  position: &Board,
+  mut moves: Vec<Move>,
+  mut out: Option<Stdout>,
+) -> Vec<Move> {
   let mut best_pv = Vec::new();
   let mut depth = 0;
   let mut current_score = Score::Loss(0);
@@ -278,17 +340,23 @@ pub fn search(mut settings: SearchConfig, position: &Board, mut moves: Vec<Move>
       best_pv = pv;
       current_score = score;
     }
-    // TODO: make it use output correctly
-    println!(
-      "info depth {depth} score {} time {time} nodes {} nps {nps} pv {}",
-      current_score.to_string(),
-      settings.nodes,
-      best_pv
-        .iter()
-        .map(Move::to_string)
-        .collect::<Vec<String>>()
-        .join(" ")
-    );
+    if let Some(ref mut out) = out {
+      out
+        .write(
+          format!(
+            "info depth {depth} score {} time {time} nodes {} nps {nps} pv {}\n",
+            current_score.to_string(),
+            settings.nodes,
+            best_pv
+              .iter()
+              .map(Move::to_string)
+              .collect::<Vec<String>>()
+              .join(" ")
+          )
+          .as_bytes(),
+        )
+        .ok();
+    }
     if settings.search_is_over() {
       break;
     }

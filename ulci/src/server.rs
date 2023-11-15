@@ -21,8 +21,6 @@ pub enum Request {
   StopAnalysis,
   /// The server wants to update an option
   SetOption(String, OptionValue),
-  /// Shut down the server and client
-  Quit,
 }
 
 /// A request for analysis
@@ -382,7 +380,6 @@ fn process_server(
           },
         );
       }
-      Request::Quit => write_mutex(out, "quit"),
     }
   }
   Some(())
@@ -434,20 +431,7 @@ fn process_analysis(
           .join(" ")
       )
     };
-    write_mutex(
-      out,
-      match request.time {
-        SearchTime::FixedTime(time) => format!("go movetime {}{moves}", time.as_millis()),
-        SearchTime::Increment(time, inc) => {
-          let time = time.as_millis();
-          let inc = inc.as_millis();
-          format!("go wtime {time} winc {inc} btime {time} binc {inc}{moves}")
-        }
-        SearchTime::Depth(depth) => format!("go depth {depth}{moves}"),
-        SearchTime::Nodes(nodes) => format!("go nodes {nodes}{moves}"),
-        SearchTime::Infinite => format!("go infinite{moves}"),
-      },
-    );
+    write_mutex(out, format!("{}{moves}", request.time.to_string()));
     while let Ok(chars) = input.read_line(&mut buffer) {
       if chars == 0 {
         return None;

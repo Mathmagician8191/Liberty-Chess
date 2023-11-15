@@ -139,3 +139,16 @@ impl ToString for Type {
     }
   }
 }
+
+/// Convert time in milliseconds to a user-friendly output
+#[must_use]
+pub fn format_time(millis: u128) -> String {
+  let secs = millis / 1000;
+  if secs >= 180 {
+    format!("{secs} s")
+  } else if secs >= 20 {
+    format!("{secs}.{} s", (millis / 100) % 10)
+  } else {
+    format!("{millis} ms")
+  }
+}

@@ -1,17 +1,158 @@
+use crate::helpers::NumericalInput;
+use crate::MAX_TIME;
 use enum_iterator::Sequence;
+use liberty_chess::moves::Move;
+use liberty_chess::threading::CompressedBoard;
+use liberty_chess::{Board, Gamestate};
+use oxidation::glue::startup;
+use oxidation::{random_move, QDEPTH, VERSION_NUMBER};
 use rand::{thread_rng, Rng};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread::spawn;
+use ulci::client::Message;
+use ulci::server::UlciResult;
+use ulci::{Limits as OtherLimits, SearchTime};
 
-#[derive(Clone, Copy, Eq, PartialEq, Sequence)]
+#[cfg(feature = "clock")]
+use crate::clock::convert;
+#[cfg(feature = "clock")]
+use std::time::Duration;
+
+#[derive(Eq, PartialEq)]
+pub enum SearchType {
+  #[cfg(feature = "clock")]
+  Increment(NumericalInput<u64>, NumericalInput<u64>),
+  Other(Limits),
+}
+
+impl ToString for SearchType {
+  fn to_string(&self) -> String {
+    match self {
+      #[cfg(feature = "clock")]
+      Self::Increment(_, _) => "Limit both players by clock",
+      Self::Other(_) => "Limit by depth, nodes and/or time",
+    }
+    .to_owned()
+  }
+}
+
+impl Default for SearchType {
+  fn default() -> Self {
+    Self::Other(Limits {
+      depth: Some(Self::depth()),
+      nodes: Some(Self::nodes()),
+      time: None,
+    })
+  }
+}
+
+impl SearchType {
+  #[cfg(feature = "clock")]
+  pub fn get_value(&self) -> (SearchTime, Option<[Duration; 4]>) {
+    match self {
+      Self::Increment(time, inc) => (
+        SearchTime::Increment(
+          u128::from(time.get_value() * 60_000),
+          u128::from(inc.get_value() * 1000),
+        ),
+        Some(convert(&[
+          time.clone(),
+          time.clone(),
+          inc.clone(),
+          inc.clone(),
+        ])),
+      ),
+      Self::Other(limits) => (
+        SearchTime::Other(OtherLimits {
+          depth: limits
+            .depth
+            .as_ref()
+            .map_or(u8::MAX, |v| v.get_value() as u8),
+          nodes: limits
+            .nodes
+            .as_ref()
+            .map_or(usize::MAX, NumericalInput::get_value),
+          time: limits
+            .time
+            .as_ref()
+            .map_or(u128::MAX, NumericalInput::get_value),
+        }),
+        None,
+      ),
+    }
+  }
+
+  #[cfg(not(feature = "clock"))]
+  pub fn get_value(&self) -> SearchTime {
+    match &self {
+      Self::Other(limits) => SearchTime::Other(OtherLimits {
+        depth: limits
+          .depth
+          .as_ref()
+          .map_or(u8::MAX, |v| v.get_value() as u8),
+        nodes: limits
+          .nodes
+          .as_ref()
+          .map_or(usize::MAX, NumericalInput::get_value),
+        time: limits
+          .time
+          .as_ref()
+          .map_or(u128::MAX, NumericalInput::get_value),
+      }),
+    }
+  }
+
+  pub fn depth() -> NumericalInput<u16> {
+    NumericalInput::new(3, 0, u16::from(u8::MAX))
+  }
+
+  pub fn nodes() -> NumericalInput<usize> {
+    NumericalInput::new(100_000, 0, usize::MAX)
+  }
+
+  pub fn time() -> NumericalInput<u128> {
+    NumericalInput::new(1000, 0, u128::from(MAX_TIME * 1000))
+  }
+
+  #[cfg(feature = "clock")]
+  pub fn increment(time: u64, inc: u64) -> Self {
+    Self::Increment(
+      NumericalInput::new(time, 0, MAX_TIME),
+      NumericalInput::new(inc, 0, MAX_TIME),
+    )
+  }
+}
+
+#[derive(Eq, PartialEq)]
+pub struct Limits {
+  pub depth: Option<NumericalInput<u16>>,
+  pub nodes: Option<NumericalInput<usize>>,
+  pub time: Option<NumericalInput<u128>>,
+}
+
+#[derive(Clone, Eq, PartialEq)]
 pub enum PlayerType {
   RandomEngine,
+  // parameter is qdepth, it is u16 but capped at u8::MAX
+  BuiltIn(NumericalInput<u16>),
 }
 
 impl ToString for PlayerType {
   fn to_string(&self) -> String {
     match self {
-      Self::RandomEngine => "Random Mover",
+      Self::RandomEngine => "Random Mover".to_owned(),
+      Self::BuiltIn(_) => format!("Oxidation v{VERSION_NUMBER}"),
     }
-    .to_string()
+  }
+}
+
+impl PlayerType {
+  pub fn built_in() -> Self {
+    Self::BuiltIn(NumericalInput::new(
+      u16::from(QDEPTH),
+      0,
+      u16::from(u8::MAX),
+    ))
   }
 }
 
@@ -40,5 +181,100 @@ impl PlayerColour {
       Self::Black => false,
       Self::Random => thread_rng().gen(),
     }
+  }
+}
+
+pub enum PlayerData {
+  RandomEngine,
+  BuiltIn(EngineInterface),
+}
+
+impl PlayerData {
+  pub fn new(player: &PlayerType, searchtime: SearchTime) -> Self {
+    match player {
+      PlayerType::RandomEngine => Self::RandomEngine,
+      PlayerType::BuiltIn(qdepth) => {
+        let (send_request, recieve_request) = channel();
+        let (send_result, recieve_result) = channel();
+        let qdepth = qdepth.get_value() as u8;
+        let (send_message, receive_message) = channel();
+        spawn(move || {
+          startup(
+            &recieve_request,
+            &send_result,
+            &receive_message,
+            searchtime,
+            qdepth,
+          )
+        });
+        Self::BuiltIn(EngineInterface {
+          tx: send_request,
+          rx: recieve_result,
+          send_message,
+          status: false,
+        })
+      }
+    }
+  }
+
+  pub fn get_bestmove(&mut self, board: &Board) -> Option<Move> {
+    match self {
+      Self::RandomEngine => random_move(board),
+      Self::BuiltIn(interface) => interface.get_move(board),
+    }
+  }
+}
+
+pub struct EngineInterface {
+  tx: Sender<CompressedBoard>,
+  rx: Receiver<UlciResult>,
+  send_message: Sender<Message>,
+  status: bool,
+}
+
+impl EngineInterface {
+  pub fn get_move(&mut self, board: &Board) -> Option<Move> {
+    let mut result = None;
+    if self.status {
+      // request sent, poll for results
+      while let Ok(message) = self.rx.try_recv() {
+        match message {
+          UlciResult::AnalysisStopped(bestmove) => {
+            result = Some(bestmove);
+            self.status = false;
+          }
+          UlciResult::Analysis(_) | UlciResult::Startup(_, _) | UlciResult::Info(_, _) => (),
+        }
+      }
+    } else if board.state() == Gamestate::InProgress && !board.promotion_available() {
+      // send request
+      self.tx.send(board.send_to_thread()).ok();
+      self.status = true;
+    }
+    result
+  }
+
+  #[cfg(not(feature = "benchmarking"))]
+  pub const fn is_waiting(&self) -> bool {
+    self.status
+  }
+
+  pub fn cancel_move(&mut self) {
+    if self.status {
+      self.send_message.send(Message::Stop).ok();
+      // wait for results
+      while let Ok(message) = self.rx.recv() {
+        match message {
+          UlciResult::AnalysisStopped(_) => self.status = false,
+          UlciResult::Analysis(_) | UlciResult::Startup(_, _) | UlciResult::Info(_, _) => (),
+        }
+      }
+    }
+  }
+}
+
+impl Drop for EngineInterface {
+  fn drop(&mut self) {
+    self.send_message.send(Message::Stop).ok();
   }
 }

@@ -82,13 +82,14 @@ These are all the command the client gets from the interface.
 
 * position [fen <fenstring> | startpos ] moves <move1> .... <movei>
   Set up the position described as an L-FEN on the internal board and play the moves on the internal chess board.
-  If the game was played from the start position the string "startpos" will be sent
+  This position should only contain pieces the client indicates support for.
+  If the game was played from the standard chess start position the string "startpos" will be sent
   Note: no "new" command is needed. However, if this position is from a different game than the last position sent to the client, the server should have sent a "ucinewgame" inbetween.
 
 * go
   start calculating on the current position set up with the "position" command.
   There are a number of commands that can follow this command, all will be sent in the same string.
-  If one command is not sent its value should be interpreted as it would not influence the search.
+  If multiple limits are sent, the client should respect all of them.
   * searchmoves <move1> .... <movei>
     restrict search to this moves only
     Example: After "position startpos" and "go infinite searchmoves e2e4 d2d4"
@@ -103,13 +104,13 @@ These are all the command the client gets from the interface.
   * binc <x>
     black increment per move in mseconds if x > 0
   * depth <x>
-    search x plies only.
+    search a maximum of x plies
   * nodes <x>
-    search x nodes only,
+    search a maximum of x nodes
   * mate <x>
     search for a mate in x moves
   * movetime <x>
-    search exactly x mseconds
+    search a maximum of x mseconds
   * infinite
     search until the "stop" command. Do not exit the search without being told so in this mode! The server should still handle exiting the search, e.g. in case of a human player.
 

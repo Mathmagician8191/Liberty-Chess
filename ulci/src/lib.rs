@@ -12,7 +12,6 @@ use std::fmt::Display;
 use std::io::Write;
 use std::ops::Not;
 use std::sync::Arc;
-use std::time::Duration;
 
 /// The functionality for a ULCI client
 pub mod client;
@@ -47,18 +46,66 @@ pub struct SearchSettings {
 }
 
 /// The time control for searching
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum SearchTime {
-  /// Fixed time per move
-  FixedTime(Duration),
   /// Time and increment
-  Increment(Duration, Duration),
-  /// Depth
-  Depth(u8),
-  /// Nodes
-  Nodes(usize),
-  /// Infinite
+  Increment(u128, u128),
+  /// Infinite search
   Infinite,
+  /// Depth/Nodes/Movetime
+  Other(Limits),
+}
+
+impl ToString for SearchTime {
+  fn to_string(&self) -> String {
+    match self {
+      Self::Increment(time, inc) => {
+        format!("go wtime {time} winc {inc} btime {time} binc {inc}")
+      }
+      Self::Infinite => "go infinite".to_owned(),
+      Self::Other(limits) => {
+        let mut result = "go".to_owned();
+        let mut limit_count = 0;
+        if limits.depth < u8::MAX {
+          result += &format!(" depth {}", limits.depth);
+          limit_count += 1;
+        }
+        if limits.nodes < usize::MAX {
+          result += &format!(" nodes {}", limits.nodes);
+          limit_count += 1;
+        }
+        if limits.time < u128::MAX {
+          result += &format!(" movetime {}", limits.time);
+          limit_count += 1;
+        }
+        if limit_count == 0 {
+          result += " infinite";
+        }
+        result
+      }
+    }
+  }
+}
+
+/// Combined depth/modes/movetime limits
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub struct Limits {
+  /// Limit search to depth
+  pub depth: u8,
+  /// Limit search to nodes
+  pub nodes: usize,
+  /// Limit search to time in ms
+  pub time: u128,
+}
+
+impl Default for Limits {
+  fn default() -> Self {
+    Self {
+      depth: u8::MAX,
+      nodes: usize::MAX,
+      time: u128::MAX,
+    }
+  }
 }
 
 /// The value of some option to update

@@ -1,12 +1,11 @@
 use crate::helpers::{populate_dropdown, raw_text_edit, NumericalInput};
 use crate::themes::Colours;
-use crate::LibertyChessGUI;
+use crate::{LibertyChessGUI, MAX_TIME};
 use core::time::Duration;
 use eframe::egui::{ComboBox, Context, RichText, TopBottomPanel, Ui};
 use liberty_chess::clock::{Clock, Type};
 
 const DEFAULT_TIME: u64 = 10;
-const MAX_TIME: u64 = 360;
 
 pub fn init_input() -> NumericalInput<u64> {
   NumericalInput::new(DEFAULT_TIME, 0, MAX_TIME)
@@ -36,8 +35,6 @@ pub fn draw(ctx: &Context, clock: &mut Clock, flipped: bool) {
   TopBottomPanel::top("Black Clock")
     .resizable(false)
     .show(ctx, |ui| ui.label(black_text));
-  #[cfg(not(feature = "benchmarking"))]
-  ctx.request_repaint_after(Duration::from_millis(100));
 }
 
 pub(crate) fn draw_edit(gui: &mut LibertyChessGUI, ui: &mut Ui, size: f32) {

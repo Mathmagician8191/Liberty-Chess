@@ -1,3 +1,8 @@
+#![forbid(unsafe_code)]
+#![warn(missing_docs, unused)]
+//! A testing program for comparing 2 different engines against each other in a range of positions.
+
+use liberty_chess::clock::format_time;
 use liberty_chess::moves::Move;
 use liberty_chess::positions::{
   AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, HORDE, LIBERTY_CHESS, LOADED_BOARD,
@@ -39,10 +44,8 @@ const POSITIONS: &[(&str, &str)] = &[
 const MATCH_SIZE: usize = 200;
 const MOVE_COUNT: usize = 100;
 
-const CHAMP_TIME: SearchTime =
-  SearchTime::Increment(Duration::from_millis(5000), Duration::from_millis(50));
-const CHALLENGE_TIME: SearchTime =
-  SearchTime::Increment(Duration::from_millis(5000), Duration::from_millis(50));
+const CHAMP_TIME: SearchTime = SearchTime::Increment(5000, 50);
+const CHALLENGE_TIME: SearchTime = SearchTime::Increment(5000, 50);
 
 struct GameInfo {
   result: GameResult,
@@ -84,18 +87,6 @@ fn load_engine(path: &'static str) -> (Sender<Request>, Receiver<UlciResult>) {
     }
   }
   (tx, results)
-}
-
-// Copied from perft with modification
-fn format_time(micros: u128) -> String {
-  let millis = micros / 1000;
-  if millis > 100 {
-    format!("{millis} ms")
-  } else if millis >= 10 {
-    format!("{millis}.{} ms", (micros / 100) % 10)
-  } else {
-    format!("{micros} μs")
-  }
 }
 
 fn process_move(
@@ -145,9 +136,10 @@ fn process_move(
           );
         }
         let elapsed = move_time.elapsed();
+        let millis = elapsed.as_millis();
         match search_time {
           SearchTime::Increment(time, inc) => {
-            let excess = elapsed.saturating_sub(*time).as_micros();
+            let excess = millis.saturating_sub(*time);
             if excess > 0 {
               println!(
                 "{name} took {} extra time in posiiton {}",
@@ -155,11 +147,11 @@ fn process_move(
                 current_board.to_string()
               );
             }
-            *time = time.saturating_sub(elapsed) + *inc;
+            *time = time.saturating_sub(millis) + *inc;
           }
-          SearchTime::FixedTime(time) => {
-            let excess = elapsed.saturating_sub(*time).as_micros();
-            if excess >= 25000 {
+          SearchTime::Other(limits) => {
+            let excess = millis.saturating_sub(limits.time);
+            if excess >= 25 {
               println!(
                 "{name} took {} extra time in posiiton {}",
                 format_time(excess),
@@ -167,7 +159,7 @@ fn process_move(
               );
             }
           }
-          _ => (),
+          SearchTime::Infinite => (),
         }
         let index = (usize::from(current_board.moves() - 1)).min(MOVE_COUNT - 1);
         time[index] += elapsed;

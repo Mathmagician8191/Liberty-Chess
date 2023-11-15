@@ -1,6 +1,6 @@
 [package]
 name = "liberty_chess_gui"
-version = "0.16.0"
+version = "0.17.0"
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -14,6 +14,7 @@ oxidation = {workspace = true}
 rand = {workspace = true}
 resvg = {workspace = true}
 sound = {workspace = true, optional = true}
+ulci = {workspace = true}
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom = {workspace = true}

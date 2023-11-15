@@ -1,3 +1,4 @@
+use crate::helpers::unwrap_tuple;
 use crate::themes::Colours;
 use crate::{LibertyChessGUI, Screen};
 use eframe::egui::{
@@ -33,6 +34,7 @@ pub(crate) fn draw_board(
   let sense = if clickable {
     Sense::click_and_drag()
   } else {
+    gui.drag = None;
     Sense::hover()
   };
   let (response, painter) = ui.allocate_painter(board_size, sense);
@@ -42,11 +44,7 @@ pub(crate) fn draw_board(
     let hover = get_hovered(board_rect, location, size as usize, flipped, gamestate);
     register_response(gui, gamestate, &response, hover);
   }
-  let (dragged, offset) = if let Some((coords, offset)) = gui.drag {
-    (Some(coords), offset)
-  } else {
-    (None, Pos2::default())
-  };
+  let (dragged, offset) = unwrap_tuple(gui.drag);
   let numbers = size >= NUMBER_SCALE && gui.config.get_numbers();
   let mut dragged_image = None;
   let mut images = Vec::new();

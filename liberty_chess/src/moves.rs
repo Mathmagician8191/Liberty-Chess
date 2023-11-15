@@ -140,6 +140,8 @@ impl Board {
     self.make_move(played_move.start(), played_move.end());
     if let Some(piece) = played_move.promotion() {
       self.promote(piece);
+    } else {
+      self.update();
     }
   }
 

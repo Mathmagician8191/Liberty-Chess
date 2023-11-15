@@ -2,6 +2,7 @@
 #![warn(missing_docs, unused)]
 //! A helpful program to test and benchmark the move generation
 
+use liberty_chess::clock::format_time;
 use liberty_chess::positions::{
   AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, HORDE, LIBERTY_CHESS, LOADED_BOARD,
   MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
@@ -37,17 +38,6 @@ use threadpool::ThreadPool;
 // 200 million = 380s
 // max = 26 1/2 mins
 const LIMIT: usize = 5_000_000;
-
-fn format_time(millis: u128) -> String {
-  let secs = millis / 1000;
-  if secs >= 180 {
-    format!("{secs} s")
-  } else if secs >= 20 {
-    format!("{secs}.{} s", (millis / 100) % 10)
-  } else {
-    format!("{millis} ms")
-  }
-}
 
 fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
   let millis = time.as_millis();

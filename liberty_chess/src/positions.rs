@@ -32,6 +32,8 @@ pub const HORDE: &str =
 
 /// The starting position
 #[must_use]
+// Should never panic
+#[allow(clippy::missing_panics_doc)]
 pub fn get_startpos() -> Board {
   Board::new(STARTPOS).unwrap()
 }

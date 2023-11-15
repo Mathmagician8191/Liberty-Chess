@@ -63,13 +63,14 @@ pub fn populate_dropdown<T: Copy + PartialEq + Sequence + ToString>(ui: &mut Ui,
   }
 }
 
-pub fn populate_dropdown_transform<T: Copy + Sequence + ToString, S: PartialEq>(
+pub fn populate_dropdown_transform<T: Sequence + ToString, S: PartialEq>(
   ui: &mut Ui,
   selected: &mut S,
   transform: impl Fn(T) -> S,
 ) {
   for item in all::<T>() {
-    ui.selectable_value(selected, transform(item), item.to_string());
+    let string = item.to_string();
+    ui.selectable_value(selected, transform(item), string);
   }
 }
 
@@ -113,6 +114,16 @@ pub fn label_text_edit(ui: &mut Ui, size: f32, input: &mut impl TextBuffer, labe
     ui.label(label);
     raw_text_edit(ui, size, input);
   });
+}
+
+// Converts Option<(T, S)> to (Option<T>, S)
+// Uses S::default() if the option is None
+pub fn unwrap_tuple<T, S: Default>(value: Option<(T, S)>) -> (Option<T>, S) {
+  if let Some((optional, required)) = value {
+    (Some(optional), required)
+  } else {
+    (None, Default::default())
+  }
 }
 
 #[derive(Clone, Eq, PartialEq)]
