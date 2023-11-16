@@ -466,10 +466,14 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
             #[cfg(not(feature = "clock"))]
             let searchtime = gui.searchsettings.get_value();
             #[cfg(feature = "clock")]
-            let (searchtime, clock) = gui.searchsettings.get_value();
+            let (searchtime, clock) = gui.searchsettings.get_value(colour);
             #[cfg(feature = "clock")]
             if let Some(clock) = clock {
-              gui.clock = Some(Clock::new(clock, board.to_move()));
+              let mut clock = Clock::new(clock, board.to_move());
+              if !board.to_move() ^ colour {
+                clock.toggle_pause();
+              }
+              gui.clock = Some(clock);
             }
             if searchtime == SearchTime::Other(Limits::default()) {
               (None, Some("Must limit depth, nodes or time".to_owned()))
@@ -536,6 +540,8 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
           SearchType::default(),
           #[cfg(feature = "clock")]
           SearchType::increment(1, 2),
+          #[cfg(feature = "clock")]
+          SearchType::handicap(10, 10, 1, 2),
         ];
         for value in values {
           let string = value.to_string();
@@ -552,6 +558,26 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         ui.horizontal_top(|ui| {
           ui.label("Increment (seconds)");
           raw_text_edit(ui, size * 3.0, inc);
+        });
+      }
+      #[cfg(feature = "clock")]
+      SearchType::Handicap(
+        ref mut human_time,
+        ref mut human_inc,
+        ref mut engine_time,
+        ref mut engine_inc,
+      ) => {
+        ui.horizontal_top(|ui| {
+          ui.label("Human time (minutes)");
+          raw_text_edit(ui, size * 3.0, human_time);
+          ui.label("Human increment (seconds)");
+          raw_text_edit(ui, size * 3.0, human_inc);
+        });
+        ui.horizontal_top(|ui| {
+          ui.label("Engine time (minutes)");
+          raw_text_edit(ui, size * 3.0, engine_time);
+          ui.label("Engine increment (seconds)");
+          raw_text_edit(ui, size * 3.0, engine_inc);
         });
       }
       SearchType::Other(ref mut limits) => {
@@ -656,13 +682,13 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: Board) {
               engine.set_dramatic(dramatic);
             }
           }
+          #[cfg(feature = "clock")]
+          if let Some(clock) = &mut gui.clock {
+            clock.update_status(&position);
+          }
           gui.screen = Screen::Game(Box::new(position));
           // It needs 1 more frame to update for some reason
           ctx.request_repaint();
-          #[cfg(feature = "clock")]
-          if let Some(clock) = &mut gui.clock {
-            clock.update_status(&board);
-          }
         }
       }
     }

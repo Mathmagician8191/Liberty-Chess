@@ -22,6 +22,13 @@ use std::time::Duration;
 pub enum SearchType {
   #[cfg(feature = "clock")]
   Increment(NumericalInput<u64>, NumericalInput<u64>),
+  #[cfg(feature = "clock")]
+  Handicap(
+    NumericalInput<u64>,
+    NumericalInput<u64>,
+    NumericalInput<u64>,
+    NumericalInput<u64>,
+  ),
   Other(Limits),
 }
 
@@ -30,6 +37,8 @@ impl ToString for SearchType {
     match self {
       #[cfg(feature = "clock")]
       Self::Increment(_, _) => "Limit both players by clock",
+      #[cfg(feature = "clock")]
+      Self::Handicap(_, _, _, _) => "Limit players by different amounts of time",
       Self::Other(_) => "Limit by depth, nodes and/or time",
     }
     .to_owned()
@@ -48,7 +57,7 @@ impl Default for SearchType {
 
 impl SearchType {
   #[cfg(feature = "clock")]
-  pub fn get_value(&self) -> (SearchTime, Option<[Duration; 4]>) {
+  pub fn get_value(&self, engine_side: bool) -> (SearchTime, Option<[Duration; 4]>) {
     match self {
       Self::Increment(time, inc) => (
         SearchTime::Increment(
@@ -62,6 +71,27 @@ impl SearchType {
           inc.clone(),
         ])),
       ),
+      Self::Handicap(human_time, human_inc, engine_time, engine_inc) => {
+        let engine = (engine_time, engine_inc);
+        let human = (human_time, human_inc);
+        let ((white_time, white_inc), (black_time, black_inc)) = if engine_side {
+          (engine, human)
+        } else {
+          (human, engine)
+        };
+        (
+          SearchTime::Increment(
+            u128::from(engine_time.get_value() * 60_000),
+            u128::from(engine_inc.get_value() * 1000),
+          ),
+          Some(convert(&[
+            white_time.clone(),
+            black_time.clone(),
+            white_inc.clone(),
+            black_inc.clone(),
+          ])),
+        )
+      }
       Self::Other(limits) => (
         SearchTime::Other(OtherLimits {
           depth: limits
@@ -119,6 +149,16 @@ impl SearchType {
     Self::Increment(
       NumericalInput::new(time, 0, MAX_TIME),
       NumericalInput::new(inc, 0, MAX_TIME),
+    )
+  }
+
+  #[cfg(feature = "clock")]
+  pub fn handicap(human_time: u64, human_inc: u64, engine_time: u64, engine_inc: u64) -> Self {
+    Self::Handicap(
+      NumericalInput::new(human_time, 0, MAX_TIME),
+      NumericalInput::new(human_inc, 0, MAX_TIME),
+      NumericalInput::new(engine_time, 0, MAX_TIME),
+      NumericalInput::new(engine_inc, 0, MAX_TIME),
     )
   }
 }
