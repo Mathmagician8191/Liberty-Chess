@@ -11,13 +11,12 @@ use ulci::SearchTime;
 ///
 /// Blocks the current thread
 pub fn startup(
-  rx: &Receiver<CompressedBoard>,
+  rx: &Receiver<(CompressedBoard, SearchTime)>,
   tx: &Sender<UlciResult>,
   receive_message: &Receiver<Message>,
-  searchtime: SearchTime,
   mut qdepth: u8,
 ) -> Option<()> {
-  while let Ok(board) = rx.recv() {
+  while let Ok((board, searchtime)) = rx.recv() {
     let position = board.load_from_thread();
     let mut debug = false;
     while receive_message.try_recv().is_ok() {}

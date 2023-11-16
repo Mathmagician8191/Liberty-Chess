@@ -190,7 +190,7 @@ pub enum PlayerData {
 }
 
 impl PlayerData {
-  pub fn new(player: &PlayerType, searchtime: SearchTime) -> Self {
+  pub fn new(player: &PlayerType) -> Self {
     match player {
       PlayerType::RandomEngine => Self::RandomEngine,
       PlayerType::BuiltIn(qdepth) => {
@@ -198,15 +198,7 @@ impl PlayerData {
         let (send_result, recieve_result) = channel();
         let qdepth = qdepth.get_value() as u8;
         let (send_message, receive_message) = channel();
-        spawn(move || {
-          startup(
-            &recieve_request,
-            &send_result,
-            &receive_message,
-            searchtime,
-            qdepth,
-          )
-        });
+        spawn(move || startup(&recieve_request, &send_result, &receive_message, qdepth));
         Self::BuiltIn(EngineInterface {
           tx: send_request,
           rx: recieve_result,
@@ -217,23 +209,23 @@ impl PlayerData {
     }
   }
 
-  pub fn get_bestmove(&mut self, board: &Board) -> Option<Move> {
+  pub fn get_bestmove(&mut self, board: &Board, searchtime: SearchTime) -> Option<Move> {
     match self {
       Self::RandomEngine => random_move(board),
-      Self::BuiltIn(interface) => interface.get_move(board),
+      Self::BuiltIn(interface) => interface.get_move(board, searchtime),
     }
   }
 }
 
 pub struct EngineInterface {
-  tx: Sender<CompressedBoard>,
+  tx: Sender<(CompressedBoard, SearchTime)>,
   rx: Receiver<UlciResult>,
   send_message: Sender<Message>,
   status: bool,
 }
 
 impl EngineInterface {
-  pub fn get_move(&mut self, board: &Board) -> Option<Move> {
+  pub fn get_move(&mut self, board: &Board, searchtime: SearchTime) -> Option<Move> {
     let mut result = None;
     if self.status {
       // request sent, poll for results
@@ -248,7 +240,7 @@ impl EngineInterface {
       }
     } else if board.state() == Gamestate::InProgress && !board.promotion_available() {
       // send request
-      self.tx.send(board.send_to_thread()).ok();
+      self.tx.send((board.send_to_thread(), searchtime)).ok();
       self.status = true;
     }
     result

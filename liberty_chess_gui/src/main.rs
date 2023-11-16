@@ -99,7 +99,7 @@ pub(crate) struct LibertyChessGUI {
   #[cfg(feature = "clock")]
   clock_data: [NumericalInput<u64>; 4],
   alternate_player: Option<PlayerType>,
-  searchtime: SearchType,
+  searchsettings: SearchType,
   alternate_player_colour: PlayerColour,
 
   // fields for game screen
@@ -108,6 +108,7 @@ pub(crate) struct LibertyChessGUI {
   clock: Option<Clock>,
   promotion: Piece,
   player: Option<(PlayerData, bool)>,
+  searchtime: SearchTime,
 
   // fields for other screens
   help_page: HelpPage,
@@ -169,7 +170,7 @@ impl LibertyChessGUI {
       #[cfg(feature = "clock")]
       clock_data: [(); 4].map(|()| init_input()),
       alternate_player: None,
-      searchtime: SearchType::default(),
+      searchsettings: SearchType::default(),
       alternate_player_colour: PlayerColour::Random,
 
       undo: Vec::new(),
@@ -177,6 +178,7 @@ impl LibertyChessGUI {
       clock: None,
       promotion: liberty_chess::QUEEN,
       player: None,
+      searchtime: SearchTime::Infinite,
 
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
@@ -462,9 +464,9 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
               gui.flipped = colour;
             }
             #[cfg(not(feature = "clock"))]
-            let searchtime = gui.searchtime.get_value();
+            let searchtime = gui.searchsettings.get_value();
             #[cfg(feature = "clock")]
-            let (searchtime, clock) = gui.searchtime.get_value();
+            let (searchtime, clock) = gui.searchsettings.get_value();
             #[cfg(feature = "clock")]
             if let Some(clock) = clock {
               gui.clock = Some(Clock::new(clock, board.to_move()));
@@ -472,7 +474,8 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
             if searchtime == SearchTime::Other(Limits::default()) {
               (None, Some("Must limit depth, nodes or time".to_owned()))
             } else {
-              (Some((PlayerData::new(player, searchtime), colour)), None)
+              gui.searchtime = searchtime;
+              (Some((PlayerData::new(player), colour)), None)
             }
           });
 
@@ -527,7 +530,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   }
   if let Some(PlayerType::BuiltIn(ref mut qdepth)) = gui.alternate_player {
     ComboBox::from_id_source("Searchtime")
-      .selected_text(format!("Searchtime: {}", gui.searchtime.to_string()))
+      .selected_text(format!("Searchtime: {}", gui.searchsettings.to_string()))
       .show_ui(ui, |ui| {
         let values = [
           SearchType::default(),
@@ -536,10 +539,10 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         ];
         for value in values {
           let string = value.to_string();
-          ui.selectable_value(&mut gui.searchtime, value, string);
+          ui.selectable_value(&mut gui.searchsettings, value, string);
         }
       });
-    match gui.searchtime {
+    match gui.searchsettings {
       #[cfg(feature = "clock")]
       SearchType::Increment(ref mut time, ref mut inc) => {
         ui.horizontal_top(|ui| {
@@ -630,7 +633,15 @@ fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: Board) {
   if let Some((player, side)) = &mut gui.player {
     if *side == board.to_move() {
       clickable = false;
-      if let Some(bestmove) = player.get_bestmove(&board) {
+      #[cfg(feature = "clock")]
+      if let Some(ref mut clock) = gui.clock {
+        let (wtime, btime) = clock.get_clocks();
+        let new_time = if board.to_move() { wtime } else { btime };
+        if let SearchTime::Increment(ref mut time, _) = gui.searchtime {
+          *time = new_time.as_millis();
+        }
+      }
+      if let Some(bestmove) = player.get_bestmove(&board, gui.searchtime) {
         if let Some(position) = board.move_if_legal(bestmove) {
           #[cfg(feature = "sound")]
           let capture = board.get_piece(bestmove.end()) != 0;
