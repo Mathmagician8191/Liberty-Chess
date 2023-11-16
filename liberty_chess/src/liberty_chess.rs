@@ -994,7 +994,7 @@ impl Board {
       } else {
         Gamestate::Checkmate(!self.to_move)
       }
-    } else if self.halfmoves > 100 {
+    } else if self.halfmoves >= 100 {
       self.state = Gamestate::Move50;
     } else if self.duplicates.contains(&self.hash) {
       self.state = Gamestate::Repetition;
