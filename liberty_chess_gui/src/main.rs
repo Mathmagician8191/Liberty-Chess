@@ -5,16 +5,15 @@
 use crate::config::{Configuration, BOARD_KEY};
 use crate::credits::Credits;
 use crate::gamemodes::{GameMode, Presets, RandomConfig};
-use crate::help_page::HelpPage;
+use crate::help_page::{HelpPage, draw_help};
 use crate::helpers::{
   char_text_edit, checkbox, colour_edit, get_fen, label_text_edit, menu_button,
 };
-use crate::render::draw_board;
 use crate::themes::{Colours, Theme};
 use eframe::epaint::{Pos2, TextureId};
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
-  Align2, Area, Button, CentralPanel, ColorImage, ComboBox, Context, Label, RichText, ScrollArea,
+  Area, Button, CentralPanel, ColorImage, ComboBox, Context, Label, RichText, ScrollArea,
   SidePanel, Slider, TextureHandle, TextureOptions, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
@@ -22,6 +21,7 @@ use helpers::{populate_dropdown, populate_dropdown_transform, raw_text_edit};
 use liberty_chess::parsing::to_name;
 use liberty_chess::{Board, Gamestate, Piece};
 use players::{PlayerColour, PlayerData, PlayerType, SearchType};
+use crate::render::draw_game;
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{FitTo, Tree};
 use themes::CustomTheme;
@@ -500,7 +500,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
   }
 
   #[cfg(feature = "clock")]
-  if let Some(PlayerType::BuiltIn(_)) = gui.alternate_player {
+  if let Some(PlayerType::BuiltIn(_, _)) = gui.alternate_player {
     gui.clock_type = Type::None;
   } else {
     draw_edit(gui, ui, size * 2.0);
@@ -532,7 +532,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         populate_dropdown(ui, &mut gui.alternate_player_colour);
       });
   }
-  if let Some(PlayerType::BuiltIn(ref mut qdepth)) = gui.alternate_player {
+  if let Some(PlayerType::BuiltIn(ref mut qdepth, ref mut hash_size)) = gui.alternate_player {
     ComboBox::from_id_source("Searchtime")
       .selected_text(format!("Searchtime: {}", gui.searchsettings.to_string()))
       .show_ui(ui, |ui| {
@@ -642,71 +642,12 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
         ui.label("Quiescence depth");
         raw_text_edit(ui, size * 2.0, qdepth);
       });
+      ui.horizontal_top(|ui| {
+        ui.label("Hash size (MB)");
+        raw_text_edit(ui, size * 4.0, hash_size);
+      });
     }
   }
-}
-
-fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: Board) {
-  let mut clickable;
-  clickable = !board.promotion_available() && board.state() == Gamestate::InProgress;
-  #[cfg(feature = "clock")]
-  if let Some(clock) = &gui.clock {
-    if clock.is_flagged() {
-      gui.selected = None;
-      clickable = false;
-    }
-  }
-  if let Some((player, side)) = &mut gui.player {
-    if *side == board.to_move() {
-      clickable = false;
-      #[cfg(feature = "clock")]
-      if let Some(ref mut clock) = gui.clock {
-        let (wtime, btime) = clock.get_clocks();
-        let new_time = if board.to_move() { wtime } else { btime };
-        if let SearchTime::Increment(ref mut time, _) = gui.searchtime {
-          *time = new_time.as_millis();
-        }
-      }
-      if let Some(bestmove) = player.get_bestmove(&board, gui.searchtime) {
-        if let Some(position) = board.move_if_legal(bestmove) {
-          #[cfg(feature = "sound")]
-          let capture = board.get_piece(bestmove.end()) != 0;
-          #[cfg(feature = "sound")]
-          if let Some(engine) = &mut gui.audio_engine {
-            let mut effect = Effect::Illegal;
-            update_sound(&mut effect, &position, capture);
-            engine.play(&effect);
-            #[cfg(feature = "music")]
-            {
-              let dramatic = get_dramatic(&position) + if capture { 0.5 } else { 0.0 };
-              engine.set_dramatic(dramatic);
-            }
-          }
-          #[cfg(feature = "clock")]
-          if let Some(clock) = &mut gui.clock {
-            clock.update_status(&position);
-          }
-          gui.screen = Screen::Game(Box::new(position));
-          // It needs 1 more frame to update for some reason
-          ctx.request_repaint();
-        }
-      }
-    }
-  }
-  Area::new("Board")
-    .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-    .show(ctx, |ui| {
-      draw_board(gui, ctx, ui, &board, clickable, gui.flipped);
-    });
-}
-
-fn draw_help(gui: &mut LibertyChessGUI, ctx: &Context) {
-  gui.selected = Some(gui.help_page.selected());
-  Area::new("Board")
-    .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-    .show(ctx, |ui| {
-      draw_board(gui, ctx, ui, &gui.help_page.board(), false, false);
-    });
 }
 
 fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
@@ -939,7 +880,7 @@ fn get_dramatic(board: &Board) -> f64 {
   if board.state() != Gamestate::InProgress {
     dramatic += 0.5;
   }
-  if !board.attacked_kings().is_empty() {
+  if board.in_check() {
     dramatic += 0.5;
   }
   dramatic

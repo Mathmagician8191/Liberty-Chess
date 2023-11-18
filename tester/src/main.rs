@@ -6,7 +6,7 @@ use liberty_chess::clock::format_time;
 use liberty_chess::moves::Move;
 use liberty_chess::positions::{
   AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, HORDE, LIBERTY_CHESS, LOADED_BOARD,
-  MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
+  MINI, MONGOL, NARNIA, STARTPOS, TRUMP, ELIMINATION,
 };
 use liberty_chess::threading::CompressedBoard;
 use liberty_chess::{Board, Gamestate, Hash};
@@ -21,7 +21,7 @@ use threadpool::ThreadPool;
 use ulci::server::{startup, AnalysisRequest, Request, UlciResult};
 use ulci::SearchTime;
 
-const CHAMPION: &str = "./target/release/oxidation";
+const CHAMPION: &str = "./target/release/nott";
 
 const CHALLENGER: &str = "./target/release/oxidation";
 
@@ -38,6 +38,7 @@ const POSITIONS: &[(&str, &str)] = &[
   ("loaded", LOADED_BOARD),
   ("double", DOUBLE_CHESS),
   ("horde", HORDE),
+  ("elimination", ELIMINATION),
   ("endgame", "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1"),
 ];
 

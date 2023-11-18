@@ -10,7 +10,6 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::io::Write;
-use std::ops::Not;
 use std::sync::Arc;
 
 /// The functionality for a ULCI client
@@ -185,46 +184,37 @@ impl ToString for RangeOption {
 }
 
 /// An evaluation of a position
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq)]
 pub enum Score {
-  /// Side to move wins in this many moves
+  /// Side to move wins on this move
   Win(u16),
-  /// Side to move loses in this many moves
+  /// Side to move loses on this move
   Loss(u16),
   /// Side to move has this advantage in centipawns
-  Centipawn(f64),
-  /// Side to move has these chances to win, draw and loss permill
-  WDL(u16, u16, u16),
-}
-
-impl PartialEq for Score {
-  fn eq(&self, other: &Self) -> bool {
-    self.partial_cmp(other) == Some(Ordering::Equal)
-  }
+  Centipawn(i64),
 }
 
 impl PartialOrd for Score {
   fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl Ord for Score {
+  fn cmp(&self, other: &Self) -> Ordering {
     match self {
       Self::Win(moves) => match other {
-        Self::Win(other_moves) => Some(other_moves.cmp(moves)),
-        _ => Some(Ordering::Greater),
+        Self::Win(other_moves) => other_moves.cmp(moves),
+        _ => Ordering::Greater,
       },
       Self::Loss(moves) => match other {
-        Self::Loss(other_moves) => Some(moves.cmp(other_moves)),
-        _ => Some(Ordering::Less),
+        Self::Loss(other_moves) => moves.cmp(other_moves),
+        _ => Ordering::Less,
       },
       Self::Centipawn(score) => match other {
-        Self::Win(_) => Some(Ordering::Less),
-        Self::Loss(_) => Some(Ordering::Greater),
-        Self::Centipawn(other_score) => score.partial_cmp(other_score),
-        Self::WDL(_, _, _) => None,
-      },
-      Self::WDL(win, _, loss) => match other {
-        Self::Win(_) => Some(Ordering::Less),
-        Self::Loss(_) => Some(Ordering::Greater),
-        Self::Centipawn(_) => None,
-        Self::WDL(other_win, _, other_loss) => Some((win + other_loss).cmp(&(other_win + loss))),
+        Self::Win(_) => Ordering::Less,
+        Self::Loss(_) => Ordering::Greater,
+        Self::Centipawn(other_score) => score.cmp(other_score),
       },
     }
   }
@@ -237,36 +227,33 @@ impl Neg for Score {
   fn neg(self) -> Self::Output {
     match self {
       Self::Win(moves) => Self::Loss(moves),
-      Self::Loss(moves) => Self::Win(moves + 1),
-      Self::Centipawn(score) => Self::Centipawn(-score),
-      Self::WDL(w, d, l) => Self::WDL(l, d, w),
-    }
-  }
-}
-
-// Design for decaying alpha/beta
-// Reverses the effect of Neg
-impl Not for Score {
-  type Output = Self;
-
-  fn not(self) -> Self::Output {
-    match self {
-      Self::Win(moves) => Self::Loss(moves.saturating_sub(1)),
       Self::Loss(moves) => Self::Win(moves),
       Self::Centipawn(score) => Self::Centipawn(-score),
-      Self::WDL(w, d, l) => Self::WDL(l, d, w),
     }
   }
 }
 
-impl ToString for Score {
-  fn to_string(&self) -> String {
+impl Score {
+  /// Uci output for the score
+  pub fn show_uci(&self, move_count: u16) -> String {
     match self {
-      Self::Win(moves) => format!("mate {moves}"),
-      Self::Loss(moves) => format!("mate -{moves}"),
-      Self::Centipawn(cp) => format!("cp {}", cp.round() as i64),
-      Self::WDL(w, d, l) => format!("wdl {w} {d} {l}"),
+      Self::Win(moves) => format!("mate {}", moves - move_count),
+      Self::Loss(moves) => format!("mate -{}", moves - move_count),
+      Self::Centipawn(cp) => format!("cp {cp}"),
     }
+  }
+}
+
+/// Side to move has these chances to win, draw and loss permill
+pub struct WDL {
+  win: u16,
+  draw: u16,
+  loss: u16,
+}
+
+impl ToString for WDL {
+  fn to_string(&self) -> String {
+    format!("wdl {} {} {}", self.win, self.draw, self.loss)
   }
 }
 

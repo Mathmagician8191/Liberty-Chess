@@ -194,14 +194,12 @@ pub fn update_sound(effect: &mut Effect, board: &Board, capture: bool) {
       Effect::Draw
     }
     Gamestate::InProgress => {
-      if board.attacked_kings().is_empty() {
-        if capture {
-          Effect::Capture
-        } else {
-          Effect::Move
-        }
-      } else {
+      if board.in_check() {
         Effect::Check
+      } else if capture {
+        Effect::Capture
+      } else {
+        Effect::Move
       }
     }
   };

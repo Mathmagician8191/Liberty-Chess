@@ -1,6 +1,6 @@
 #![allow(clippy::inline_always)]
 
-use crate::{Piece, SQUARE};
+use crate::{Piece, SQUARE, Board};
 use array2d::Array2D;
 use rand::Rng;
 use rand_chacha::rand_core::SeedableRng;
@@ -58,6 +58,33 @@ impl Zobrist {
     *hash ^= self.en_passant[(row_min, column)];
     if row_min != row_max {
       *hash ^= self.en_passant[(row_max, column)];
+    }
+  }
+}
+
+/// Things not included in Zobrist Hash
+#[derive(Eq, PartialEq)]
+pub struct ExtraFlags {
+  promotion_options: Vec<Piece>,
+  pawn_moves: usize,
+  pawn_row: usize,
+  castle_row: usize,
+  queen_column: usize,
+  king_column: usize,
+  friendly_fire: bool,
+}
+
+impl ExtraFlags {
+  /// Extract the flags from a board
+  pub fn new(board: &Board) -> Self {
+    Self {
+      promotion_options: board.promotion_options.to_vec(),
+      pawn_moves: board.pawn_moves,
+      pawn_row: board.pawn_row,
+      castle_row: board.castle_row,
+      queen_column: board.queen_column,
+      king_column: board.king_column,
+      friendly_fire: board.friendly_fire,
     }
   }
 }

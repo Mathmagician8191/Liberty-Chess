@@ -1,7 +1,7 @@
 use liberty_chess::parsing::from_chars;
 use liberty_chess::positions::get_startpos;
 use liberty_chess::ALL_PIECES;
-use oxidation::{get_move_order, search, SearchConfig, QDEPTH, QDEPTH_NAME};
+use oxidation::{get_move_order, search, SearchConfig, QDEPTH, QDEPTH_NAME, HASH_SIZE, HASH_NAME, State};
 use std::collections::HashMap;
 use std::io::{stdin, stdout, BufReader};
 use std::sync::mpsc::channel;
@@ -15,9 +15,17 @@ fn main() {
   options.insert(
     QDEPTH_NAME.to_owned(),
     UlciOption::Int(IntOption {
-      default: QDEPTH as usize,
+      default: usize::from(QDEPTH),
       min: 0,
       max: usize::from(u8::MAX),
+    }),
+  );
+  options.insert(
+    HASH_NAME.to_owned(),
+    UlciOption::Int(IntOption {
+      default: HASH_SIZE,
+      min: 0,
+      max: 1 << 32,
     }),
   );
   let info = ClientInfo {
@@ -28,6 +36,8 @@ fn main() {
     pieces: from_chars(ALL_PIECES),
   };
   let mut qdepth = QDEPTH;
+  let mut hash_size = HASH_SIZE;
+  let mut state = State::new(hash_size);
   let input = BufReader::new(stdin());
   let output = stdout();
   let mut position = get_startpos();
@@ -56,7 +66,7 @@ fn main() {
           println!("bestmove 0000");
         } else {
           let settings = SearchConfig::new_time(&mut qdepth, settings.time, &rx, &mut debug);
-          let pv = search(settings, &position, moves, Some(stdout()));
+          let pv = search(&mut state, settings, &position, moves, Some(stdout()));
           println!("bestmove {}", pv[0].to_string());
         }
       }
@@ -64,18 +74,39 @@ fn main() {
         println!("info string servererror not currently searching");
       }
       Message::UpdateOption(name, value) => {
-        if name == QDEPTH_NAME {
-          match value {
-            OptionValue::UpdateInt(value) => qdepth = value as u8,
-            OptionValue::SendTrigger
-            | OptionValue::UpdateBool(_)
-            | OptionValue::UpdateRange(_)
-            | OptionValue::UpdateString(_) => {
-              if debug {
-                println!("info string servererror incorrect option type");
+        match &*name {
+          QDEPTH_NAME => {
+            match value {
+              OptionValue::UpdateInt(value) => qdepth = value as u8,
+              OptionValue::SendTrigger
+              | OptionValue::UpdateBool(_)
+              | OptionValue::UpdateRange(_)
+              | OptionValue::UpdateString(_) => {
+                if debug {
+                  println!("info string servererror incorrect option type");
+                }
               }
             }
           }
+          HASH_NAME => {
+            match value {
+              OptionValue::UpdateInt(value) => {
+                if value != hash_size {
+                  hash_size = value;
+                  state = State::new(hash_size);
+                }
+              }
+              OptionValue::SendTrigger
+              | OptionValue::UpdateBool(_)
+              | OptionValue::UpdateRange(_)
+              | OptionValue::UpdateString(_) => {
+                if debug {
+                  println!("info string servererror incorrect option type");
+                }
+              }
+            }
+          }
+          _ => (),
         }
       }
     }

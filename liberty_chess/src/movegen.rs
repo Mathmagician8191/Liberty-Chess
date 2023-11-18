@@ -5,7 +5,7 @@ impl Board {
   #[must_use]
   pub fn generate_legal(&self) -> Vec<Self> {
     let mut boards = Vec::new();
-    let king_safe = self.attacked_kings().is_empty();
+    let king_safe = !self.in_check();
     for i in 0..self.height() {
       for j in 0..self.width() {
         let piece = self.pieces[(i, j)];
@@ -117,10 +117,10 @@ impl Board {
   ///
   /// Buckets the moves into enemy captures/promotions and other moves.
   #[must_use]
-  pub fn generate_legal_buckets(&self) -> (Vec<Self>, Vec<Self>) {
+  pub fn generate_legal_buckets(&self) -> (Vec<(Self, u8, u8)>, Vec<Self>) {
     let mut enemy_captures = Vec::new();
     let mut boards = Vec::new();
-    let king_safe = self.attacked_kings().is_empty();
+    let king_safe = !self.in_check();
     for i in 0..self.height() {
       for j in 0..self.width() {
         let piece = self.pieces[(i, j)];
@@ -147,13 +147,13 @@ impl Board {
                         for piece in self.promotion_options.as_ref() {
                           let mut promotion = board.clone();
                           promotion.promote(*piece);
-                          enemy_captures.push(promotion);
+                          enemy_captures.push((promotion, PAWN as u8, piece.unsigned_abs()));
                         }
                       } else {
                         board.update();
                         let target = self.pieces[(k, l)];
                         if target != 0 && (piece > 0) ^ (target > 0) {
-                          enemy_captures.push(board);
+                          enemy_captures.push((board, PAWN as u8, target.unsigned_abs()));
                         } else {
                           boards.push(board);
                         }
@@ -246,7 +246,7 @@ impl Board {
   #[inline(always)]
   fn add_if_legal_buckets(
     &self,
-    enemy_captures: &mut Vec<Self>,
+    enemy_captures: &mut Vec<(Self, u8, u8)>,
     boards: &mut Vec<Self>,
     start: (usize, usize),
     end: (usize, usize),
@@ -262,17 +262,19 @@ impl Board {
         let mut board = self.clone();
         board.make_move(start, end);
         board.update();
+        let piece = self.pieces[start];
         let target = self.pieces[end];
-        if target != 0 && (self.pieces[start] > 0) ^ (target > 0) {
-          enemy_captures.push(board);
+        if target != 0 && (piece > 0) ^ (target > 0) {
+          enemy_captures.push((board, piece.unsigned_abs(), target.unsigned_abs()));
         } else {
           boards.push(board);
         }
       } else if let Some(mut board) = self.get_legal(start, end) {
         board.update();
+        let piece = self.pieces[start];
         let target = self.pieces[end];
-        if target != 0 && (self.pieces[start] > 0) ^ (target > 0) {
-          enemy_captures.push(board);
+        if target != 0 && (piece > 0) ^ (target > 0) {
+          enemy_captures.push((board, piece.unsigned_abs(), target.unsigned_abs()));
         } else {
           boards.push(board);
         }
@@ -282,9 +284,9 @@ impl Board {
 
   /// Generates all captures of enemy pieces and promotions from a position.
   #[must_use]
-  pub fn generate_legal_quiescence(&self) -> Vec<Self> {
+  pub fn generate_legal_quiescence(&self) -> Vec<(Self, u8, u8)> {
     let mut boards = Vec::new();
-    let king_safe = self.attacked_kings().is_empty();
+    let king_safe = !self.in_check();
     for i in 0..self.height() {
       for j in 0..self.width() {
         let piece = self.pieces[(i, j)];
@@ -311,13 +313,13 @@ impl Board {
                         for piece in self.promotion_options.as_ref() {
                           let mut promotion = board.clone();
                           promotion.promote(*piece);
-                          boards.push(promotion);
+                          boards.push((promotion, PAWN as u8, piece.unsigned_abs()));
                         }
                       } else {
                         board.update();
                         let target = self.pieces[(k, l)];
                         if target != 0 && (piece > 0) ^ (target > 0) {
-                          boards.push(board);
+                          boards.push((board, PAWN as u8, target.unsigned_abs()));
                         }
                       }
                     }
@@ -373,7 +375,7 @@ impl Board {
   #[inline(always)]
   fn add_if_legal_quiescence(
     &self,
-    boards: &mut Vec<Self>,
+    boards: &mut Vec<(Self, u8, u8)>,
     start: (usize, usize),
     end: (usize, usize),
     skip_legality: &mut Option<bool>,
@@ -390,10 +392,12 @@ impl Board {
         let mut board = self.clone();
         board.make_move(start, end);
         board.update();
-        boards.push(board);
+        let piece = self.pieces[start].unsigned_abs();
+        boards.push((board, piece, target.unsigned_abs()));
       } else if let Some(mut board) = self.get_legal(start, end) {
         board.update();
-        boards.push(board);
+        let piece = self.pieces[start].unsigned_abs();
+        boards.push((board, piece, target.unsigned_abs()));
       }
     }
   }

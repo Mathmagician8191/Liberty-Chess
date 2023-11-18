@@ -3,10 +3,13 @@ use crate::themes::Colours;
 use crate::{LibertyChessGUI, Screen};
 use eframe::egui::{
   pos2, Align2, Color32, Context, FontId, PointerButton, Pos2, Rect, Response, Rounding, Sense,
-  Shape, Ui, Vec2,
+  Shape, Ui, Vec2, Area,
 };
 use liberty_chess::parsing::to_letters;
-use liberty_chess::{Board, Piece};
+use liberty_chess::{Board, Piece, Gamestate};
+
+#[cfg(feature = "clock")]
+use ulci::SearchTime;
 
 #[cfg(feature = "sound")]
 use crate::helpers::update_sound;
@@ -19,6 +22,60 @@ use crate::get_dramatic;
 //UV that does nothing
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 const NUMBER_SCALE: f32 = 5.0;
+
+pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: Board) {
+  let mut clickable;
+  clickable = !board.promotion_available() && board.state() == Gamestate::InProgress;
+  #[cfg(feature = "clock")]
+  if let Some(clock) = &gui.clock {
+    if clock.is_flagged() {
+      gui.selected = None;
+      clickable = false;
+    }
+  }
+  if let Some((player, side)) = &mut gui.player {
+    if *side == board.to_move() {
+      clickable = false;
+      #[cfg(feature = "clock")]
+      if let Some(ref mut clock) = gui.clock {
+        let (wtime, btime) = clock.get_clocks();
+        let new_time = if board.to_move() { wtime } else { btime };
+        if let SearchTime::Increment(ref mut time, _) = gui.searchtime {
+          *time = new_time.as_millis();
+        }
+      }
+      if let Some(bestmove) = player.get_bestmove(&board, gui.searchtime) {
+        if let Some(position) = board.move_if_legal(bestmove) {
+          #[cfg(feature = "sound")]
+          let capture = board.get_piece(bestmove.end()) != 0;
+          #[cfg(feature = "sound")]
+          if let Some(engine) = &mut gui.audio_engine {
+            let mut effect = Effect::Illegal;
+            update_sound(&mut effect, &position, capture);
+            engine.play(&effect);
+            #[cfg(feature = "music")]
+            {
+              let dramatic = get_dramatic(&position) + if capture { 0.5 } else { 0.0 };
+              engine.set_dramatic(dramatic);
+            }
+          }
+          #[cfg(feature = "clock")]
+          if let Some(clock) = &mut gui.clock {
+            clock.update_status(&position);
+          }
+          gui.screen = Screen::Game(Box::new(position));
+          // It needs 1 more frame to update for some reason
+          ctx.request_repaint();
+        }
+      }
+    }
+  }
+  Area::new("Board")
+    .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+    .show(ctx, |ui| {
+      draw_board(gui, ctx, ui, &board, clickable, gui.flipped);
+    });
+}
 
 pub(crate) fn draw_board(
   gui: &mut LibertyChessGUI,
