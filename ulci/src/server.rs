@@ -157,7 +157,7 @@ fn process_info(mut words: SplitWhitespace, tx: &Sender<UlciResult>) {
               }
             }
             "cp" => {
-              if let Some(score) = words.next().and_then(|w| w.parse::<i64>().ok()) {
+              if let Some(score) = words.next().and_then(|w| w.parse().ok()) {
                 result.score = Score::Centipawn(score);
                 modified = true;
               }
@@ -172,11 +172,7 @@ fn process_info(mut words: SplitWhitespace, tx: &Sender<UlciResult>) {
           words.next().and_then(|w| w.parse().ok()),
           words.next().and_then(|w| w.parse().ok()),
         ) {
-          result.wdl = Some(WDL {
-            win,
-            draw,
-            loss,
-          });
+          result.wdl = Some(WDL { win, draw, loss });
           modified = true;
         }
       }

@@ -1,11 +1,12 @@
 use crate::helpers::NumericalInput;
 use crate::MAX_TIME;
+use eframe::egui::Context;
 use enum_iterator::Sequence;
 use liberty_chess::moves::Move;
 use liberty_chess::threading::CompressedBoard;
 use liberty_chess::{Board, Gamestate};
-use oxidation::glue::startup;
-use oxidation::{random_move, QDEPTH, VERSION_NUMBER, HASH_SIZE};
+use oxidation::glue::process_position;
+use oxidation::{random_move, State, HASH_SIZE, QDEPTH, VERSION_NUMBER};
 use rand::{thread_rng, Rng};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
@@ -189,16 +190,8 @@ impl ToString for PlayerType {
 impl PlayerType {
   pub fn built_in() -> Self {
     Self::BuiltIn(
-      NumericalInput::new(
-        u16::from(QDEPTH),
-        0,
-        u16::from(u8::MAX),
-      ),
-      NumericalInput::new(
-        HASH_SIZE,
-        0,
-        1 << 32,
-      )
+      NumericalInput::new(u16::from(QDEPTH), 0, u16::from(u8::MAX)),
+      NumericalInput::new(HASH_SIZE, 0, 1 << 32),
     )
   }
 }
@@ -237,7 +230,7 @@ pub enum PlayerData {
 }
 
 impl PlayerData {
-  pub fn new(player: &PlayerType) -> Self {
+  pub fn new(player: &PlayerType, ctx: &Context) -> Self {
     match player {
       PlayerType::RandomEngine => Self::RandomEngine,
       PlayerType::BuiltIn(qdepth, hash_size) => {
@@ -246,7 +239,21 @@ impl PlayerData {
         let hash_size = hash_size.get_value();
         let qdepth = qdepth.get_value() as u8;
         let (send_message, receive_message) = channel();
-        spawn(move || startup(&recieve_request, &send_result, &receive_message, hash_size, qdepth));
+        let ctx = ctx.clone();
+        spawn(move || {
+          let mut state = State::new(hash_size);
+          while let Ok((board, searchtime)) = recieve_request.recv() {
+            process_position(
+              &send_result,
+              &receive_message,
+              board,
+              searchtime,
+              qdepth,
+              &mut state,
+            );
+            ctx.request_repaint();
+          }
+        });
         Self::BuiltIn(EngineInterface {
           tx: send_request,
           rx: recieve_result,
@@ -292,11 +299,6 @@ impl EngineInterface {
       self.status = true;
     }
     result
-  }
-
-  #[cfg(not(feature = "benchmarking"))]
-  pub const fn is_waiting(&self) -> bool {
-    self.status
   }
 
   pub fn cancel_move(&mut self) {

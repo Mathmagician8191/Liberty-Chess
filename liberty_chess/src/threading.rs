@@ -5,6 +5,7 @@ use crate::{Board, Gamestate, Piece};
 use array2d::Array2D;
 
 /// A `Board`, compressed to be sent to another thread
+#[derive(Clone)]
 pub struct CompressedBoard {
   pieces: Array2D<Piece>,
   to_move: bool,

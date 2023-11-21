@@ -1,6 +1,6 @@
 #![allow(clippy::inline_always)]
 
-use crate::{Piece, SQUARE, Board};
+use crate::{Board, Piece, SQUARE};
 use array2d::Array2D;
 use rand::Rng;
 use rand_chacha::rand_core::SeedableRng;

@@ -191,7 +191,7 @@ pub enum Score {
   /// Side to move loses on this move
   Loss(u16),
   /// Side to move has this advantage in centipawns
-  Centipawn(i64),
+  Centipawn(i32),
 }
 
 impl PartialOrd for Score {

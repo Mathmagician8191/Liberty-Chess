@@ -1,14 +1,14 @@
 use std::cmp::max;
 
 use liberty_chess::moves::Move;
-use liberty_chess::{Hash, ExtraFlags, Board};
+use liberty_chess::{Board, ExtraFlags, Hash};
 use ulci::Score;
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum ScoreType {
-  Exact(Score),
-  LowerBound(Score),
-  UpperBound(Score),
+  Exact,
+  LowerBound,
+  UpperBound,
 }
 
 #[derive(Clone, Copy)]
@@ -16,7 +16,8 @@ pub struct Entry {
   pub hash: Hash,
   pub depth: u8,
   pub movecount: u16,
-  pub score: ScoreType,
+  pub scoretype: ScoreType,
+  pub score: Score,
   pub bestmove: Option<Move>,
 }
 
@@ -30,7 +31,7 @@ pub struct TranspositionTable {
 impl TranspositionTable {
   // Initialise a tt based on a size in megabytes
   pub fn new(megabytes: usize) -> Self {
-    let size = megabytes * 12_500;
+    let size = megabytes * 31_250;
     let entries = vec![None; size].into_boxed_slice();
     Self {
       entries,
@@ -39,38 +40,57 @@ impl TranspositionTable {
     }
   }
 
-  pub fn get(&self, hash: Hash, movecount: u16) -> Option<Entry> {
-    let index = hash as usize % self.entries.len();
-    if let Some(entry) = &self.entries[index] {
-      if entry.hash == hash {
-        let mut entry = *entry;
-        if movecount != entry.movecount {
-          let score = match entry.score {
-            ScoreType::Exact(ref mut score) | ScoreType::LowerBound(ref mut score) | ScoreType::UpperBound(ref mut score) => score,
-          };
-          match score {
-            Score::Win(moves) | Score::Loss(moves) => {
-              if movecount > entry.movecount {
-                *moves += movecount - entry.movecount;
-              } else {
-                *moves = moves.saturating_sub(entry.movecount - movecount);
+  pub fn get(
+    &self,
+    hash: Hash,
+    movecount: u16,
+    alpha: Score,
+    beta: Score,
+    depth: u8,
+  ) -> Option<(Vec<Move>, Score)> {
+    if self.entries.len() > 0 {
+      let index = hash as usize % self.entries.len();
+      if let Some(entry) = &self.entries[index] {
+        if entry.depth >= depth && entry.hash == hash {
+          let mut entry = *entry;
+          if movecount != entry.movecount {
+            match entry.score {
+              Score::Win(ref mut moves) | Score::Loss(ref mut moves) => {
+                if movecount > entry.movecount {
+                  *moves += movecount - entry.movecount;
+                } else {
+                  *moves = moves.saturating_sub(entry.movecount - movecount);
+                }
               }
+              _ => (),
             }
-            _ => (),
           }
+          let mut pv = Vec::new();
+          if let Some(bestmove) = entry.bestmove {
+            pv.push(bestmove);
+          }
+          return match entry.scoretype {
+            ScoreType::Exact => Some((pv, entry.score)),
+            ScoreType::LowerBound if entry.score >= beta => Some((pv, beta)),
+            ScoreType::UpperBound if entry.score <= alpha => Some((pv, alpha)),
+            _ => None,
+          };
         }
-        return Some(entry)
       }
+      None
+    } else {
+      None
     }
-    None
   }
 
   pub fn store(&mut self, entry: Entry) {
-    let index = entry.hash as usize % self.entries.len();
-    if self.entries[index].is_none() {
-      self.capacity += 1;
+    if self.entries.len() > 0 {
+      let index = entry.hash as usize % self.entries.len();
+      if self.entries[index].is_none() {
+        self.capacity += 1;
+      }
+      self.entries[index] = Some(entry);
     }
-    self.entries[index] = Some(entry);
   }
 
   // Clears the table if the flags change

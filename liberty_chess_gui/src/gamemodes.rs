@@ -1,8 +1,8 @@
 use crate::helpers::NumericalInput;
 use enum_iterator::Sequence;
 use liberty_chess::positions::{
-  AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, HORDE, LIBERTY_CHESS, LOADED_BOARD,
-  MINI, MONGOL, NARNIA, STARTPOS, TRUMP, ELIMINATION,
+  AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, ELIMINATION, HORDE, LIBERTY_CHESS,
+  LOADED_BOARD, MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
 };
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};

@@ -5,27 +5,23 @@ use ulci::client::Message;
 use ulci::server::UlciResult;
 use ulci::SearchTime;
 
-/// Start up an engine embedded in the program
-///
-/// Has limited error handling
+/// Analyse the given position
 ///
 /// Blocks the current thread
-pub fn startup(
-  rx: &Receiver<(CompressedBoard, SearchTime)>,
+pub fn process_position(
   tx: &Sender<UlciResult>,
   receive_message: &Receiver<Message>,
-  megabytes: usize,
+  board: CompressedBoard,
+  searchtime: SearchTime,
   mut qdepth: u8,
+  state: &mut State,
 ) -> Option<()> {
-  let mut state = State::new(megabytes);
-  while let Ok((board, searchtime)) = rx.recv() {
-    let position = board.load_from_thread();
-    let mut debug = false;
-    while receive_message.try_recv().is_ok() {}
-    let config = SearchConfig::new_time(&mut qdepth, searchtime, receive_message, &mut debug);
-    let moves = get_move_order(&position, &Vec::new());
-    let pv = search(&mut state, config, &position, moves, None);
-    tx.send(UlciResult::AnalysisStopped(pv[0])).ok()?;
-  }
+  let position = board.load_from_thread();
+  let mut debug = false;
+  while receive_message.try_recv().is_ok() {}
+  let config = SearchConfig::new_time(&mut qdepth, searchtime, receive_message, &mut debug);
+  let moves = get_move_order(&position, &Vec::new());
+  let pv = search(state, config, &position, moves, None);
+  tx.send(UlciResult::AnalysisStopped(pv[0])).ok()?;
   Some(())
 }

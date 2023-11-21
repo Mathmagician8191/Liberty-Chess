@@ -6,12 +6,12 @@ use liberty_chess::moves::Move;
 use liberty_chess::{Board, Gamestate};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use tt::{TranspositionTable, ScoreType, Entry};
-use std::cmp::{max, min};
+use std::cmp::max;
 use std::io::{Stdout, Write};
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::TryRecvError::Disconnected;
 use std::time::Instant;
+use tt::{Entry, ScoreType, TranspositionTable};
 use ulci::client::Message;
 use ulci::{OptionValue, Score, SearchTime};
 
@@ -33,7 +33,7 @@ pub const QDEPTH_NAME: &str = "QDepth";
 /// Internal naming thing - do not use
 pub const HASH_NAME: &str = "Hash";
 
-const PIECE_VALUES: [i64; 18] = [
+const PIECE_VALUES: [i32; 18] = [
   100,  // pawn
   320,  // knight
   330,  // bishop
@@ -56,7 +56,7 @@ const PIECE_VALUES: [i64; 18] = [
 
 /// The state of the engine
 pub struct State {
-  table: TranspositionTable
+  table: TranspositionTable,
 }
 
 impl State {
@@ -77,7 +77,6 @@ pub struct SearchConfig<'a> {
   max_nodes: usize,
   rx: &'a Receiver<Message>,
   stopped: bool,
-  can_stop: bool,
   nodes: usize,
   debug: &'a mut bool,
   // maximum ply count reached
@@ -102,7 +101,6 @@ impl<'a> SearchConfig<'a> {
       max_nodes,
       rx,
       stopped: false,
-      can_stop: false,
       nodes: 0,
       debug,
       seldepth: 0,
@@ -131,9 +129,6 @@ impl<'a> SearchConfig<'a> {
   }
 
   fn search_is_over(&mut self) -> bool {
-    if !self.can_stop {
-      return false;
-    }
     if self.stopped
       || self.nodes >= self.max_nodes
       || self.start.elapsed().as_millis() >= self.max_time
@@ -197,23 +192,27 @@ pub fn random_move(board: &Board) -> Option<Move> {
 /// Sort the searchmoves from a position
 #[must_use]
 pub fn get_move_order(position: &Board, searchmoves: &Vec<Move>) -> Vec<Move> {
-  let (capture, other) = position.generate_legal_buckets();
-  let capture = capture.into_iter().filter_map(|(board, piece, capture)| board.last_move.map(|m| (m, piece, capture)));
-  let other = other.iter().filter_map(|board| board.last_move);
-  let (mut capture, mut other): (Vec<(Move, u8, u8)>, Vec<Move>) = if searchmoves.is_empty() {
-    (capture.collect(), other.collect())
+  let (captures, other) = position.generate_pseudolegal();
+  let (mut captures, mut other): (Vec<(Move, u8, u8)>, Vec<Move>) = if searchmoves.is_empty() {
+    (captures, other)
   } else {
     (
-      capture.filter(|(m, _, _)| searchmoves.contains(m)).collect(),
-      other.filter(|m| searchmoves.contains(m)).collect(),
+      captures
+        .into_iter()
+        .filter(|(m, _, _)| searchmoves.contains(m))
+        .collect(),
+      other
+        .into_iter()
+        .filter(|m| searchmoves.contains(m))
+        .collect(),
     )
   };
-  capture.shuffle(&mut thread_rng());
-  capture.sort_by_key(|(_, piece, capture)| {
+  captures.shuffle(&mut thread_rng());
+  captures.sort_by_key(|(_, piece, capture)| {
     PIECE_VALUES[usize::from(*piece - 1)] - PIECE_VALUES[usize::from(*capture - 1)]
   });
   other.shuffle(&mut thread_rng());
-  let mut moves: Vec<Move> = capture.into_iter().map(|(m, _, _)| m).collect();
+  let mut moves: Vec<Move> = captures.into_iter().map(|(m, _, _)| m).collect();
   moves.append(&mut other);
   moves
 }
@@ -254,30 +253,12 @@ fn quiescence(
   board: &Board,
   depth: u8,
   mut alpha: Score,
-  mut beta: Score,
+  beta: Score,
 ) -> (Vec<Move>, Score) {
   let hash = board.hash();
-  if let Some(entry) = state.table.get(hash, board.moves()) {
-    if board.state() == Gamestate::InProgress {
-      let mut pv = Vec::new();
-      if let Some(bestmove) = entry.bestmove {
-        pv.push(bestmove);
-      }
-      let score = match entry.score {
-        ScoreType::Exact(score) => return (pv, score),
-        ScoreType::LowerBound(score) if score >= beta => {
-          alpha = max(alpha, score);
-          score
-        }
-        ScoreType::UpperBound(score) if score <= alpha => {
-          beta = min(beta, score);
-          score
-        }
-        _ => Score::Centipawn(0),
-      };
-      if alpha >= beta {
-        return (pv, score)
-      }
+  if board.state() == Gamestate::InProgress {
+    if let Some((pv, score)) = state.table.get(hash, board.moves(), alpha, beta, 0) {
+      return (pv, score);
     }
   }
   let score = evaluate(board);
@@ -291,28 +272,26 @@ fn quiescence(
     alpha = score;
   }
   if !settings.search_is_over() && (depth != 0) && (board.state() == Gamestate::InProgress) {
-    let mut moves = board.generate_legal_quiescence();
+    let mut moves = board.generate_qsearch();
     moves.sort_by_key(|(_, piece, capture)| {
       PIECE_VALUES[usize::from(*piece - 1)] - PIECE_VALUES[usize::from(*capture - 1)]
     });
-    for (position, _, _) in moves {
-      let (mut pv, mut score) = quiescence(state, settings, &position, depth - 1, -beta, -alpha);
-      score = -score;
-      if score >= beta {
-        return (Vec::new(), beta);
-      }
-      if score > alpha {
-        alpha = score;
-        if let Some(bestmove) = position.last_move {
+    for (bestmove, _, _) in moves {
+      if let Some(position) = board.test_move_legality(bestmove) {
+        let (mut pv, mut score) = quiescence(state, settings, &position, depth - 1, -beta, -alpha);
+        score = -score;
+        if score >= beta {
+          return (Vec::new(), beta);
+        }
+        if score > alpha {
+          alpha = score;
           let mut new_pv = vec![bestmove];
           new_pv.append(&mut pv);
           best_pv = new_pv;
-        } else {
-          eprintln!("No lastmove for qsearch board {}", position.to_string())
         }
-      }
-      if settings.search_is_over() {
-        return (best_pv, alpha);
+        if settings.search_is_over() {
+          return (best_pv, alpha);
+        }
       }
     }
   }
@@ -325,12 +304,8 @@ fn alpha_beta(
   board: &Board,
   mut depth: u8,
   mut alpha: Score,
-  mut beta: Score,
+  beta: Score,
 ) -> (Vec<Move>, Score) {
-  if alpha >= beta {
-    let moves = board.moves();
-    eprintln!("{} alpha {} beta {}", board.to_string(), alpha.show_uci(moves), beta.show_uci(moves));
-  }
   if board.in_check() {
     depth += 1;
   }
@@ -338,96 +313,85 @@ fn alpha_beta(
     quiescence(state, settings, board, *settings.qdepth, alpha, beta)
   } else if depth == 0 {
     let (pv, score) = quiescence(state, settings, board, *settings.qdepth, alpha, beta);
-    let tt_score = if score >= beta {
-      ScoreType::LowerBound(beta)
+    let (tt_flag, tt_score) = if score >= beta {
+      (ScoreType::LowerBound, beta)
+    } else if settings.search_is_over() {
+      (ScoreType::LowerBound, score)
     } else if score > alpha {
-      ScoreType::Exact(score)
+      (ScoreType::Exact, score)
     } else {
-      ScoreType::UpperBound(score)
+      (ScoreType::UpperBound, alpha)
     };
     state.table.store(Entry {
       hash: board.hash(),
       depth: 0,
       movecount: board.moves(),
+      scoretype: tt_flag,
       score: tt_score,
       bestmove: pv.get(0).copied(),
     });
     (pv, score)
   } else {
     let hash = board.hash();
-    if let Some(entry) = state.table.get(hash, board.moves()) {
-      if board.state() == Gamestate::InProgress && entry.depth >= depth {
-        let mut pv = Vec::new();
-        if let Some(bestmove) = entry.bestmove {
-          pv.push(bestmove);
-        }
-        let score = match entry.score {
-          ScoreType::Exact(score) => return (pv, score),
-          ScoreType::LowerBound(score) if score >= beta => {
-            alpha = max(alpha, score);
-            score
-          }
-          ScoreType::UpperBound(score) if score <= alpha => {
-            beta = min(beta, score);
-            score
-          }
-          _ => Score::Centipawn(0),
-        };
-        if alpha >= beta {
-          return (pv, score)
-        }
-      }
+    if let Some((pv, score)) = state.table.get(hash, board.moves(), alpha, beta, depth) {
+      return (pv, score);
     }
     let mut best_pv = Vec::new();
-    let (mut moves, mut other) = board.generate_legal_buckets();
+    let (mut moves, mut other) = board.generate_pseudolegal();
     moves.sort_by_key(|(_, piece, capture)| {
       PIECE_VALUES[usize::from(*piece - 1)] - PIECE_VALUES[usize::from(*capture - 1)]
     });
-    let mut moves: Vec<Board> = moves.into_iter().map(|(m, _, _)| m).collect();
+    let mut moves: Vec<Move> = moves.into_iter().map(|(m, _, _)| m).collect();
     moves.append(&mut other);
-    for position in moves {
-      let (mut pv, mut score) = alpha_beta(state, settings, &position, depth - 1, -beta, -alpha);
-      score = -score;
-      if score >= beta {
-        state.table.store(
-          Entry {
+    for bestmove in moves {
+      if let Some(position) = board.test_move_legality(bestmove) {
+        let (mut pv, mut score) = alpha_beta(state, settings, &position, depth - 1, -beta, -alpha);
+        score = -score;
+        if score >= beta {
+          state.table.store(Entry {
             hash,
             depth,
             movecount: board.moves(),
-            score: ScoreType::LowerBound(beta),
+            scoretype: ScoreType::LowerBound,
+            score: beta,
             bestmove: None,
-          }
-        );
-        return (Vec::new(), beta);
-      }
-      if score > alpha {
-        alpha = score;
-        if let Some(bestmove) = position.last_move {
+          });
+          return (Vec::new(), beta);
+        }
+        if score > alpha {
+          alpha = score;
           let mut new_pv = vec![bestmove];
           new_pv.append(&mut pv);
           best_pv = new_pv;
-        } else {
-          eprintln!("No lastmove for board {}", position.to_string())
+        }
+        if settings.search_is_over() {
+          if !best_pv.is_empty() {
+            state.table.store(Entry {
+              hash,
+              depth,
+              movecount: board.moves(),
+              scoretype: ScoreType::LowerBound,
+              score: alpha,
+              bestmove: best_pv.get(0).copied(),
+            });
+          }
+          return (best_pv, alpha);
         }
       }
-      if settings.search_is_over() {
-        break;
-      }
     }
-    let score = if best_pv.is_empty() {
-      ScoreType::UpperBound(alpha)
+    let scoretype = if best_pv.is_empty() {
+      ScoreType::UpperBound
     } else {
-      ScoreType::Exact(alpha)
+      ScoreType::Exact
     };
-    state.table.store(
-      Entry {
-        hash,
-        depth,
-        movecount: board.moves(),
-        score,
-        bestmove: best_pv.get(0).copied(),
-      }
-    );
+    state.table.store(Entry {
+      hash,
+      depth,
+      movecount: board.moves(),
+      scoretype,
+      score: alpha,
+      bestmove: best_pv.get(0).copied(),
+    });
     (best_pv, alpha)
   }
 }
@@ -444,7 +408,14 @@ fn alpha_beta_root(
   let mut best_pv = Vec::new();
   for candidate in moves {
     if let Some(position) = board.move_if_legal(*candidate) {
-      let (mut pv, mut score) = alpha_beta(state, settings, &position, depth - 1, Score::Loss(0), -alpha);
+      let (mut pv, mut score) = alpha_beta(
+        state,
+        settings,
+        &position,
+        depth - 1,
+        Score::Loss(0),
+        -alpha,
+      );
       if settings.search_is_over() {
         return (best_pv, alpha);
       }
@@ -454,9 +425,12 @@ fn alpha_beta_root(
         let mut new_pv = vec![*candidate];
         new_pv.append(&mut pv);
         best_pv = new_pv;
-        settings.can_stop = true;
-      } else if score == Score::Loss(0) {
-        eprintln!("Position {} move {} bug found", board.to_string(), candidate.to_string())
+      } else if score == Score::Loss(0) && !settings.search_is_over() {
+        eprintln!(
+          "Position {} move {} bug found without unwind",
+          board.to_string(),
+          candidate.to_string()
+        )
       }
     }
   }
@@ -472,9 +446,9 @@ pub fn search(
   mut out: Option<Stdout>,
 ) -> Vec<Move> {
   state.table.new_position(position);
-  let mut best_pv = Vec::new();
+  let mut best_pv = vec![moves[0]];
+  let mut current_score = evaluate(position);
   let mut depth = 0;
-  let mut current_score = Score::Loss(0);
   while depth < settings.max_depth {
     depth += 1;
     let (pv, score) = alpha_beta_root(state, &mut settings, position, &moves, depth);

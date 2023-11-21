@@ -2,11 +2,11 @@ use crate::helpers::unwrap_tuple;
 use crate::themes::Colours;
 use crate::{LibertyChessGUI, Screen};
 use eframe::egui::{
-  pos2, Align2, Color32, Context, FontId, PointerButton, Pos2, Rect, Response, Rounding, Sense,
-  Shape, Ui, Vec2, Area,
+  pos2, Align2, Area, Color32, Context, FontId, PointerButton, Pos2, Rect, Response, Rounding,
+  Sense, Shape, Ui, Vec2,
 };
 use liberty_chess::parsing::to_letters;
-use liberty_chess::{Board, Piece, Gamestate};
+use liberty_chess::{Board, Gamestate, Piece};
 
 #[cfg(feature = "clock")]
 use ulci::SearchTime;

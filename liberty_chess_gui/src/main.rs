@@ -5,10 +5,11 @@
 use crate::config::{Configuration, BOARD_KEY};
 use crate::credits::Credits;
 use crate::gamemodes::{GameMode, Presets, RandomConfig};
-use crate::help_page::{HelpPage, draw_help};
+use crate::help_page::{draw_help, HelpPage};
 use crate::helpers::{
   char_text_edit, checkbox, colour_edit, get_fen, label_text_edit, menu_button,
 };
+use crate::render::draw_game;
 use crate::themes::{Colours, Theme};
 use eframe::epaint::{Pos2, TextureId};
 use eframe::{egui, App, CreationContext, Frame, Storage};
@@ -21,13 +22,12 @@ use helpers::{populate_dropdown, populate_dropdown_transform, raw_text_edit};
 use liberty_chess::parsing::to_name;
 use liberty_chess::{Board, Gamestate, Piece};
 use players::{PlayerColour, PlayerData, PlayerType, SearchType};
-use crate::render::draw_game;
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{FitTo, Tree};
 use themes::CustomTheme;
 use ulci::{Limits, SearchTime};
 
-#[cfg(not(feature = "benchmarking"))]
+#[cfg(all(not(feature = "benchmarking"), feature = "clock"))]
 use std::time::Duration;
 #[cfg(feature = "benchmarking")]
 use std::time::Instant;
@@ -299,21 +299,9 @@ impl App for LibertyChessGUI {
     }
 
     // Re-render every 100 ms if clock is ticking or waiting for engine
-    #[cfg(not(feature = "benchmarking"))]
-    {
-      let mut should_poll = if let Some((player, _)) = &self.player {
-        match player {
-          PlayerData::RandomEngine => false,
-          PlayerData::BuiltIn(interface) => interface.is_waiting(),
-        }
-      } else {
-        false
-      };
-      #[cfg(feature = "clock")]
-      if self.clock.is_some() {
-        should_poll = true;
-      }
-      if should_poll {
+    #[cfg(all(not(feature = "benchmarking"), feature = "clock"))]
+    if let Some(clock) = &self.clock {
+      if !clock.is_paused() {
         ctx.request_repaint_after(Duration::from_millis(100));
       }
     }
@@ -395,7 +383,7 @@ fn draw_nav_buttons(gui: &mut LibertyChessGUI, ui: &mut Ui) {
 }
 
 // draw main areas for each screen
-fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
+fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
   draw_nav_buttons(gui, ui);
   ComboBox::from_id_source("Gamemode")
     .selected_text("Gamemode: ".to_owned() + &gui.gamemode.to_string())
@@ -479,7 +467,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, _ctx: &Context, ui: &mut Ui) {
               (None, Some("Must limit depth, nodes or time".to_owned()))
             } else {
               gui.searchtime = searchtime;
-              (Some((PlayerData::new(player), colour)), None)
+              (Some((PlayerData::new(player, ctx), colour)), None)
             }
           });
 

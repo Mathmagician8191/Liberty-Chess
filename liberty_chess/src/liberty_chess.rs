@@ -3,8 +3,8 @@
 #![allow(clippy::inline_always)]
 //! The backend for Liberty Chess
 
-pub use crate::keys::Hash;
 pub use crate::keys::ExtraFlags;
+pub use crate::keys::Hash;
 
 use crate::keys::Zobrist;
 use crate::parsing::{from_chars, get_indices, process_board, FenError};

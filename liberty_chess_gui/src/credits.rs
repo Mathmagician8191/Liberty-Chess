@@ -68,6 +68,7 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.label("The code is licensed under GPL v3 and can be found here:");
       let code_link = "https://github.com/Mathmagician8191/Liberty-Chess";
       link(ui, code_link, code_link);
+      ui.label("Credit to the Stockfish Discord for helping me debug my TT implmentation");
     }
     Credits::Images => {
       ScrollArea::vertical().show(ui, |ui| {

@@ -1,11 +1,11 @@
-use eframe::egui::{Context, Area};
+use crate::render::draw_board;
+use crate::LibertyChessGUI;
+use eframe::egui::{Area, Context};
 use eframe::emath::Align2;
 use eframe::epaint::Vec2;
 use enum_iterator::Sequence;
 use liberty_chess::moves::Move;
 use liberty_chess::Board;
-use crate::LibertyChessGUI;
-use crate::render::draw_board;
 
 #[derive(Clone, Copy, Eq, PartialEq, Sequence)]
 pub enum HelpPage {

@@ -1,7 +1,9 @@
 use liberty_chess::parsing::from_chars;
 use liberty_chess::positions::get_startpos;
 use liberty_chess::ALL_PIECES;
-use oxidation::{get_move_order, search, SearchConfig, QDEPTH, QDEPTH_NAME, HASH_SIZE, HASH_NAME, State};
+use oxidation::{
+  get_move_order, search, SearchConfig, State, HASH_NAME, HASH_SIZE, QDEPTH, QDEPTH_NAME,
+};
 use std::collections::HashMap;
 use std::io::{stdin, stdout, BufReader};
 use std::sync::mpsc::channel;
@@ -73,42 +75,36 @@ fn main() {
       Message::Stop => {
         println!("info string servererror not currently searching");
       }
-      Message::UpdateOption(name, value) => {
-        match &*name {
-          QDEPTH_NAME => {
-            match value {
-              OptionValue::UpdateInt(value) => qdepth = value as u8,
-              OptionValue::SendTrigger
-              | OptionValue::UpdateBool(_)
-              | OptionValue::UpdateRange(_)
-              | OptionValue::UpdateString(_) => {
-                if debug {
-                  println!("info string servererror incorrect option type");
-                }
-              }
+      Message::UpdateOption(name, value) => match &*name {
+        QDEPTH_NAME => match value {
+          OptionValue::UpdateInt(value) => qdepth = value as u8,
+          OptionValue::SendTrigger
+          | OptionValue::UpdateBool(_)
+          | OptionValue::UpdateRange(_)
+          | OptionValue::UpdateString(_) => {
+            if debug {
+              println!("info string servererror incorrect option type");
             }
           }
-          HASH_NAME => {
-            match value {
-              OptionValue::UpdateInt(value) => {
-                if value != hash_size {
-                  hash_size = value;
-                  state = State::new(hash_size);
-                }
-              }
-              OptionValue::SendTrigger
-              | OptionValue::UpdateBool(_)
-              | OptionValue::UpdateRange(_)
-              | OptionValue::UpdateString(_) => {
-                if debug {
-                  println!("info string servererror incorrect option type");
-                }
-              }
+        },
+        HASH_NAME => match value {
+          OptionValue::UpdateInt(value) => {
+            if value != hash_size {
+              hash_size = value;
+              state = State::new(hash_size);
             }
           }
-          _ => (),
-        }
-      }
+          OptionValue::SendTrigger
+          | OptionValue::UpdateBool(_)
+          | OptionValue::UpdateRange(_)
+          | OptionValue::UpdateString(_) => {
+            if debug {
+              println!("info string servererror incorrect option type");
+            }
+          }
+        },
+        _ => (),
+      },
     }
   }
 }
