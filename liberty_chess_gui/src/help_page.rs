@@ -1,3 +1,8 @@
+use crate::render::draw_board;
+use crate::LibertyChessGUI;
+use eframe::egui::{Area, Context};
+use eframe::emath::Align2;
+use eframe::epaint::Vec2;
 use enum_iterator::Sequence;
 use liberty_chess::moves::Move;
 use liberty_chess::Board;
@@ -133,4 +138,13 @@ impl HelpPage {
       Self::Check => "If a King is in danger of being captured, it is in check. The King must get out of check on the next move. If that is not possible, the game ends in checkmate.",
     }
   }
+}
+
+pub(crate) fn draw_help(gui: &mut LibertyChessGUI, ctx: &Context) {
+  gui.selected = Some(gui.help_page.selected());
+  Area::new("Board")
+    .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+    .show(ctx, |ui| {
+      draw_board(gui, ctx, ui, &gui.help_page.board(), false, false);
+    });
 }

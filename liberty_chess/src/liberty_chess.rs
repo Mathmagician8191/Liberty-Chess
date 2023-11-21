@@ -3,6 +3,7 @@
 #![allow(clippy::inline_always)]
 //! The backend for Liberty Chess
 
+pub use crate::keys::ExtraFlags;
 pub use crate::keys::Hash;
 
 use crate::keys::Zobrist;
@@ -313,6 +314,17 @@ impl Board {
     attacked
   }
 
+  /// Whether the side to move is in check
+  #[must_use]
+  pub fn in_check(&self) -> bool {
+    for king in self.kings(self.to_move()) {
+      if self.is_attacked((king.0, king.1), !self.to_move) {
+        return true;
+      }
+    }
+    false
+  }
+
   /// Get the current state of the game
   #[must_use]
   pub const fn state(&self) -> Gamestate {
@@ -443,7 +455,7 @@ impl Board {
           || (start.0 == self.castle_row(self.to_move)
             && rows == 0
             && cols == 2
-            && !self.attacked_kings().contains(&&start)
+            && !self.in_check()
             && {
               let offset = Self::castle_offset(self.to_move);
               let (iter, offset) = if start.1 > end.1 {
@@ -491,6 +503,8 @@ impl Board {
       // Test for El Vaticano
       if start.0 == end.0 {
         self.halfmoves = 0;
+        self.previous = Vec::new();
+        self.duplicates = Vec::new();
         let lowest = usize::min(start.1, end.1);
         let highest = usize::max(start.1, end.1);
         for i in lowest + 1..highest {
@@ -506,6 +520,8 @@ impl Board {
         return;
       } else if start.1 == end.1 {
         self.halfmoves = 0;
+        self.previous = Vec::new();
+        self.duplicates = Vec::new();
         let lowest = usize::min(start.0, end.0);
         let highest = usize::max(start.0, end.0);
         for i in lowest + 1..highest {
@@ -989,10 +1005,10 @@ impl Board {
       (false, false) => (),
     }
     if !self.any_moves() {
-      self.state = if self.attacked_kings().is_empty() {
-        Gamestate::Stalemate
-      } else {
+      self.state = if self.in_check() {
         Gamestate::Checkmate(!self.to_move)
+      } else {
+        Gamestate::Stalemate
       }
     } else if self.halfmoves >= 100 {
       self.state = Gamestate::Move50;

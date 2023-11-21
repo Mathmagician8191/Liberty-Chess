@@ -12,8 +12,8 @@ enum Stage {
 /// A struct to represent a move
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Move {
-  start: (usize, usize),
-  end: (usize, usize),
+  start: (u16, u16),
+  end: (u16, u16),
   promotion: Option<Piece>,
 }
 
@@ -22,8 +22,16 @@ impl ToString for Move {
   fn to_string(&self) -> String {
     let mut result = format!(
       "{}{}",
-      to_indices(self.start.1, self.start.0, self.start.0),
-      to_indices(self.end.1, self.end.0, self.end.0),
+      to_indices(
+        usize::from(self.start.1),
+        usize::from(self.start.0),
+        usize::from(self.start.0)
+      ),
+      to_indices(
+        usize::from(self.end.1),
+        usize::from(self.end.0),
+        usize::from(self.end.0)
+      ),
     );
     if let Some(piece) = self.promotion {
       result.push(to_char(piece).to_ascii_lowercase());
@@ -57,8 +65,8 @@ impl FromStr for Move {
                 Err(())
               } else {
                 Ok(Self {
-                  start: (start_row - 1, start_col - 1),
-                  end: (end_row - 1, end_col - 1),
+                  start: (start_row as u16 - 1, start_col as u16 - 1),
+                  end: (end_row as u16 - 1, end_col as u16 - 1),
                   promotion,
                 })
               };
@@ -86,8 +94,8 @@ impl FromStr for Move {
             Err(())
           } else {
             Ok(Self {
-              start: (start_row - 1, start_col - 1),
-              end: (end_row - 1, end_col - 1),
+              start: (start_row as u16 - 1, start_col as u16 - 1),
+              end: (end_row as u16 - 1, end_col as u16 - 1),
               promotion: None,
             })
           }
@@ -104,8 +112,8 @@ impl Move {
   #[must_use]
   pub const fn new(start: (usize, usize), end: (usize, usize)) -> Self {
     Self {
-      start,
-      end,
+      start: (start.0 as u16, start.1 as u16),
+      end: (end.0 as u16, end.1 as u16),
       promotion: None,
     }
   }
@@ -117,14 +125,14 @@ impl Move {
 
   /// Get the start position of the move
   #[must_use]
-  pub const fn start(&self) -> (usize, usize) {
-    self.start
+  pub fn start(&self) -> (usize, usize) {
+    (usize::from(self.start.0), usize::from(self.start.1))
   }
 
   /// Get the end position of the move
   #[must_use]
-  pub const fn end(&self) -> (usize, usize) {
-    self.end
+  pub fn end(&self) -> (usize, usize) {
+    (usize::from(self.end.0), usize::from(self.end.1))
   }
 
   /// Get the promotion involved in the move if there is one
@@ -170,6 +178,30 @@ impl Board {
         }
       } else {
         None
+      }
+    } else {
+      None
+    }
+  }
+
+  /// Return a new board if the move is legal
+  ///
+  /// Assumes the move is pseudo-legal
+  #[must_use]
+  pub fn test_move_legality(&self, test_move: Move) -> Option<Self> {
+    let start = test_move.start();
+    let end = test_move.end();
+    if let Some(mut board) = self.get_legal(start, end) {
+      match (board.promotion_available(), test_move.promotion()) {
+        (true, Some(piece)) => {
+          board.promote(piece);
+          Some(board)
+        }
+        (false, None) => {
+          board.update();
+          Some(board)
+        }
+        (true, None) | (false, Some(_)) => None,
       }
     } else {
       None

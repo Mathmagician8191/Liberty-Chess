@@ -1,6 +1,6 @@
 use crate::{
   write, write_mutex, ClientInfo, IntOption, OptionValue, RangeOption, Score, SearchTime,
-  UlciOption,
+  UlciOption, WDL,
 };
 use liberty_chess::moves::Move;
 use liberty_chess::parsing::to_piece;
@@ -61,16 +61,19 @@ pub struct AnalysisResult {
   pub nodes: usize,
   /// Time
   pub time: u128,
+  /// WDL
+  pub wdl: Option<WDL>,
 }
 
 impl Default for AnalysisResult {
   fn default() -> Self {
     Self {
       pv: Vec::new(),
-      score: Score::Centipawn(0.0),
+      score: Score::Centipawn(0),
       depth: 1,
       nodes: 1,
       time: 0,
+      wdl: None,
     }
   }
 }
@@ -154,8 +157,8 @@ fn process_info(mut words: SplitWhitespace, tx: &Sender<UlciResult>) {
               }
             }
             "cp" => {
-              if let Some(score) = words.next().and_then(|w| w.parse::<i64>().ok()) {
-                result.score = Score::Centipawn(score as f64);
+              if let Some(score) = words.next().and_then(|w| w.parse().ok()) {
+                result.score = Score::Centipawn(score);
                 modified = true;
               }
             }
@@ -169,7 +172,7 @@ fn process_info(mut words: SplitWhitespace, tx: &Sender<UlciResult>) {
           words.next().and_then(|w| w.parse().ok()),
           words.next().and_then(|w| w.parse().ok()),
         ) {
-          result.score = Score::WDL(win, draw, loss);
+          result.wdl = Some(WDL { win, draw, loss });
           modified = true;
         }
       }

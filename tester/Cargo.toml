@@ -1,6 +1,6 @@
 [package]
 name = "tester"
-version = "0.2.0"
+version = "0.2.1"
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -10,4 +10,5 @@ edition.workspace = true
 liberty_chess = {workspace = true}
 rand = {workspace = true}
 threadpool = {workspace = true}
+oxidation = {workspace = true}
 ulci = {workspace = true}

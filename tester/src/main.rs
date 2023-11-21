@@ -5,18 +5,20 @@
 use liberty_chess::clock::format_time;
 use liberty_chess::moves::Move;
 use liberty_chess::positions::{
-  AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, HORDE, LIBERTY_CHESS, LOADED_BOARD,
-  MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
+  AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, ELIMINATION, HORDE, LIBERTY_CHESS,
+  LOADED_BOARD, MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
 };
 use liberty_chess::threading::CompressedBoard;
-use liberty_chess::{Board, Gamestate, Hash};
+use liberty_chess::{Board, Gamestate};
+use oxidation::random_move;
 use rand::{thread_rng, Rng};
 use std::collections::HashSet;
 use std::io::BufReader;
+use std::ops::AddAssign;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use threadpool::ThreadPool;
 use ulci::server::{startup, AnalysisRequest, Request, UlciResult};
 use ulci::SearchTime;
@@ -25,43 +27,54 @@ const CHAMPION: &str = "./target/release/oxidation";
 
 const CHALLENGER: &str = "./target/release/oxidation";
 
-const POSITIONS: &[(&str, &str)] = &[
-  ("startpos", STARTPOS),
-  ("rectangle", CAPABLANCA_RECTANGLE),
-  ("capablanca", CAPABLANCA),
-  ("liberty", LIBERTY_CHESS),
-  ("mini", MINI),
-  ("mongol", MONGOL),
-  ("african", AFRICAN),
-  ("narnia", NARNIA),
-  ("trump", TRUMP),
-  ("loaded", LOADED_BOARD),
-  ("double", DOUBLE_CHESS),
-  ("horde", HORDE),
-  ("endgame", "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1"),
+const POSITIONS: &[(&str, &str, u16)] = &[
+  ("startpos", STARTPOS, 20),
+  ("rectangle", CAPABLANCA_RECTANGLE, 20),
+  ("capablanca", CAPABLANCA, 25),
+  ("liberty", LIBERTY_CHESS, 90),
+  ("mini", MINI, 12),
+  ("mongol", MONGOL, 30),
+  ("african", AFRICAN, 30),
+  ("narnia", NARNIA, 15),
+  ("trump", TRUMP, 60),
+  ("loaded", LOADED_BOARD, 12),
+  ("double", DOUBLE_CHESS, 15),
+  ("horde", HORDE, 16),
+  ("elimination", ELIMINATION, 25),
+  ("endgame", "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1", 12),
 ];
 
-const MATCH_SIZE: usize = 200;
-const MOVE_COUNT: usize = 100;
+const GAME_PAIR_COUNT: usize = 150;
+const RANDOM_MOVE_COUNT: usize = 4;
 
-const CHAMP_TIME: SearchTime = SearchTime::Increment(5000, 50);
-const CHALLENGE_TIME: SearchTime = SearchTime::Increment(5000, 50);
+const CHAMP_TIME: SearchTime = SearchTime::Increment(8000, 80);
+const CHALLENGE_TIME: SearchTime = SearchTime::Increment(8000, 80);
 
 struct GameInfo {
   result: GameResult,
-  champ_moves: [u32; MOVE_COUNT],
-  challenge_moves: [u32; MOVE_COUNT],
-  champ_depth: [u32; MOVE_COUNT],
-  challenge_depth: [u32; MOVE_COUNT],
-  champ_time: [Duration; MOVE_COUNT],
-  challenge_time: [Duration; MOVE_COUNT],
-  positions: HashSet<Hash>,
+  champ_moves: (u32, u32, u32),
+  challenge_moves: (u32, u32, u32),
+  champ_depth: (u32, u32, u32),
+  challenge_depth: (u32, u32, u32),
 }
 
 enum GameResult {
   ChampWin,
   Draw,
   ChallengeWin,
+}
+
+fn sum_tuple<T: AddAssign>(accumulator: &mut (T, T, T), element: (T, T, T)) {
+  accumulator.0 += element.0;
+  accumulator.1 += element.1;
+  accumulator.2 += element.2;
+}
+
+fn total_tuple<T: AddAssign>(tuple: (T, T, T)) -> T {
+  let mut result = tuple.0;
+  result += tuple.1;
+  result += tuple.2;
+  result
 }
 
 fn spawn_engine(path: &'static str, requests: Receiver<Request>, results: &Sender<UlciResult>) {
@@ -94,10 +107,10 @@ fn process_move(
   results: &Receiver<UlciResult>,
   board: &mut Board,
   moves: &mut Vec<Move>,
+  move_threshold: u16,
   current_board: &mut Board,
-  time: &mut [Duration; MOVE_COUNT],
-  total_depth: &mut [u32; MOVE_COUNT],
-  move_count: &mut [u32; MOVE_COUNT],
+  total_depth: &mut (u32, u32, u32),
+  move_count: &mut (u32, u32, u32),
   search_time: &mut SearchTime,
 ) {
   let move_time = Instant::now();
@@ -161,10 +174,17 @@ fn process_move(
           }
           SearchTime::Infinite => (),
         }
-        let index = (usize::from(current_board.moves() - 1)).min(MOVE_COUNT - 1);
-        time[index] += elapsed;
-        total_depth[index] += depth;
-        move_count[index] += 1;
+        let moves = board.moves();
+        if moves > 2 * move_threshold {
+          total_depth.2 += depth;
+          move_count.2 += 1;
+        } else if moves > move_threshold {
+          total_depth.1 += depth;
+          move_count.1 += 1;
+        } else {
+          total_depth.0 += depth;
+          move_count.0 += 1;
+        }
         break;
       }
       UlciResult::Startup(_, _) | UlciResult::Info(_, _) => (),
@@ -172,13 +192,16 @@ fn process_move(
   }
 }
 
-fn play_game(board: CompressedBoard, champion_side: bool, results: &Sender<GameInfo>) {
+fn play_game(
+  board: CompressedBoard,
+  move_count: u16,
+  champion_side: bool,
+  results: &Sender<GameInfo>,
+) {
   let (champ_requests, champ_results) = load_engine(CHAMPION);
   let (challenge_requests, challenge_results) = load_engine(CHALLENGER);
-  let mut champ_time = [Duration::ZERO; MOVE_COUNT];
-  let mut challenge_time = [Duration::ZERO; MOVE_COUNT];
-  let (mut champ_moves, mut challenge_moves) = ([0; MOVE_COUNT], [0; MOVE_COUNT]);
-  let (mut champ_depth, mut challenge_depth) = ([0; MOVE_COUNT], [0; MOVE_COUNT]);
+  let (mut champ_moves, mut challenge_moves) = ((0, 0, 0), (0, 0, 0));
+  let (mut champ_depth, mut challenge_depth) = ((0, 0, 0), (0, 0, 0));
   let mut positions = HashSet::new();
   let mut board = board.load_from_thread();
   let mut moves = Vec::new();
@@ -200,8 +223,8 @@ fn play_game(board: CompressedBoard, champion_side: bool, results: &Sender<GameI
         &challenge_results,
         &mut board,
         &mut moves,
+        move_count,
         &mut current_board,
-        &mut challenge_time,
         &mut challenge_depth,
         &mut challenge_moves,
         &mut challenge_tc,
@@ -220,8 +243,8 @@ fn play_game(board: CompressedBoard, champion_side: bool, results: &Sender<GameI
         &champ_results,
         &mut board,
         &mut moves,
+        move_count,
         &mut current_board,
-        &mut champ_time,
         &mut champ_depth,
         &mut champ_moves,
         &mut champ_tc,
@@ -251,79 +274,77 @@ fn play_game(board: CompressedBoard, champion_side: bool, results: &Sender<GameI
       challenge_moves,
       champ_depth,
       challenge_depth,
-      champ_time,
-      challenge_time,
-      positions,
     })
     .ok();
 }
 
-fn test_position(name: &str, board: &Board) {
+fn test_position(name: &str, board: &Board, moves: u16) {
   println!("Testing {name}");
   let cores = std::thread::available_parallelism().unwrap().get();
   let pool = ThreadPool::new(cores - 1);
-  let mut champion_side: bool = thread_rng().gen();
+  let champion_side: bool = thread_rng().gen();
   let (tx, rx) = channel();
-  for _ in 0..MATCH_SIZE {
-    champion_side = !champion_side;
+  for _ in 0..GAME_PAIR_COUNT {
     let tx = tx.clone();
+    let tx2 = tx.clone();
+    let mut board = board.clone();
+    for _ in 1..RANDOM_MOVE_COUNT {
+      if let Some(randommove) = random_move(&board) {
+        if let Some(new_board) = board.move_if_legal(randommove) {
+          board = new_board;
+        }
+      }
+    }
     let compressed_board = board.send_to_thread();
-    pool.execute(move || play_game(compressed_board, champion_side, &tx));
+    let compressed_board_2 = compressed_board.clone();
+    pool.execute(move || play_game(compressed_board, moves, champion_side, &tx));
+    pool.execute(move || play_game(compressed_board_2, moves, !champion_side, &tx2));
   }
   // to make sure it actually finishes
   drop(tx);
   let (mut win, mut draw, mut loss) = (0, 0, 0);
-  let mut champ_time = [Duration::ZERO; MOVE_COUNT];
-  let mut challenge_time = [Duration::ZERO; MOVE_COUNT];
-  let (mut champ_moves, mut challenge_moves) = ([0; MOVE_COUNT], [0; MOVE_COUNT]);
-  let (mut champ_depth, mut challenge_depth) = ([0; MOVE_COUNT], [0; MOVE_COUNT]);
-  let mut positions = HashSet::new();
+  let (mut champ_moves, mut challenge_moves) = ((0, 0, 0), (0, 0, 0));
+  let (mut champ_depth, mut challenge_depth) = ((0, 0, 0), (0, 0, 0));
   for result in &rx {
     match result.result {
       GameResult::ChampWin => win += 1,
       GameResult::Draw => draw += 1,
       GameResult::ChallengeWin => loss += 1,
     }
-    for (i, value) in result.champ_time.iter().enumerate() {
-      champ_time[i] += *value;
-    }
-    for (i, value) in result.challenge_time.iter().enumerate() {
-      challenge_time[i] += *value;
-    }
-    for (i, value) in result.champ_moves.iter().enumerate() {
-      champ_moves[i] += *value;
-    }
-    for (i, value) in result.challenge_moves.iter().enumerate() {
-      challenge_moves[i] += *value;
-    }
-    for (i, value) in result.champ_depth.iter().enumerate() {
-      champ_depth[i] += *value;
-    }
-    for (i, value) in result.challenge_depth.iter().enumerate() {
-      challenge_depth[i] += *value;
-    }
-    for position in result.positions {
-      positions.insert(position);
-    }
+    sum_tuple(&mut champ_moves, result.champ_moves);
+    sum_tuple(&mut challenge_moves, result.challenge_moves);
+    sum_tuple(&mut champ_depth, result.champ_depth);
+    sum_tuple(&mut challenge_depth, result.challenge_depth);
   }
-  assert_eq!(win + draw + loss, MATCH_SIZE);
+  assert_eq!(win + draw + loss, GAME_PAIR_COUNT * 2);
+  let move_count = total_tuple(champ_moves) + total_tuple(challenge_moves);
+  let average_move_count = move_count as usize / GAME_PAIR_COUNT / 2;
   println!(
-    "+{win} ={draw} -{loss}, {} moves",
-    champ_moves.iter().sum::<u32>() + challenge_moves.iter().sum::<u32>()
+    "+{win} ={draw} -{loss}, {} moves per game",
+    average_move_count
   );
   println!(
-    "Champion: {:.2} average depth, Challenger: {:.2} average depth",
-    champ_depth.iter().sum::<u32>() as f32 / champ_moves.iter().sum::<u32>() as f32,
-    challenge_depth.iter().sum::<u32>() as f32 / challenge_moves.iter().sum::<u32>() as f32
+    "Average opening depth: Champion: {:.2}, Challenger: {:.2}",
+    champ_depth.0 as f32 / champ_moves.0 as f32,
+    challenge_depth.0 as f32 / challenge_moves.0 as f32
   );
-  println!("{} unique positions", positions.len());
+  println!(
+    "Average middlegame depth: Champion: {:.2}, Challenger: {:.2}",
+    champ_depth.1 as f32 / champ_moves.1 as f32,
+    challenge_depth.1 as f32 / challenge_moves.1 as f32
+  );
+  println!(
+    "Average endgame depth: Champion: {:.2}, Challenger: {:.2}",
+    champ_depth.2 as f32 / champ_moves.2 as f32,
+    challenge_depth.2 as f32 / challenge_moves.2 as f32
+  );
 }
 
 fn main() {
-  for (name, position) in POSITIONS {
-    let mut board = Board::new(position).expect("Loading board failed");
-    test_position(name, &board);
-    board.friendly_fire = true;
-    test_position(&format!("friendly {name}"), &board);
+  for (name, position, moves) in POSITIONS {
+    let board = Board::new(position).expect("Loading board failed");
+    test_position(name, &board, *moves);
+    // board.friendly_fire = true;
+    // test_position(&format!("friendly {name}"), &board, *moves);
   }
 }
