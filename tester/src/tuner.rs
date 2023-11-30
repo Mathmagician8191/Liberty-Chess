@@ -197,7 +197,7 @@ fn main() {
     println!("Starting iteration {iteration_count}, Loss {best_loss:.5}");
     parameters.shuffle(&mut thread_rng());
     changed = false;
-    for parameter in parameters.iter() {
+    for parameter in &parameters {
       let parameter = *parameter;
       // try increasing the parameter
       let mut updated = false;

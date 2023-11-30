@@ -76,6 +76,7 @@ pub struct ExtraFlags {
 
 impl ExtraFlags {
   /// Extract the flags from a board
+  #[must_use]
   pub fn new(board: &Board) -> Self {
     Self {
       promotion_options: board.promotion_options.to_vec(),

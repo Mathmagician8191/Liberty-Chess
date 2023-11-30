@@ -61,7 +61,7 @@ impl TranspositionTable {
                   *moves = moves.saturating_sub(entry.movecount - movecount);
                 }
               }
-              _ => (),
+              Score::Centipawn(_) => (),
             }
           }
           let mut pv = Vec::new();
@@ -76,10 +76,8 @@ impl TranspositionTable {
           };
         }
       }
-      None
-    } else {
-      None
     }
+    None
   }
 
   pub fn store(&mut self, entry: Entry) {

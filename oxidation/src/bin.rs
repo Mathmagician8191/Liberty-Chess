@@ -55,7 +55,7 @@ fn main() {
       Message::UpdatePosition(board) => {
         position = board.load_from_thread();
         if state.new_position(&position) && debug {
-          println!("info string Hash cleared")
+          println!("info string Hash cleared");
         }
       }
       Message::Go(settings) => {

@@ -59,6 +59,7 @@ pub struct State {
 
 impl State {
   /// Initialise a new state, sets up a TT of the provided capacity
+  #[must_use]
   pub fn new(megabytes: usize) -> Self {
     Self {
       table: TranspositionTable::new(megabytes),

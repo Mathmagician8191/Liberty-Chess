@@ -1110,6 +1110,7 @@ impl Board {
   }
 
   /// Play a null move if legal (i.e. not in check)
+  #[must_use]
   pub fn nullmove(&self) -> Option<Self> {
     if self.promotion_available() || self.in_check() {
       None
@@ -1128,6 +1129,7 @@ impl Board {
   }
 
   /// Returns whether any pieces other than kings and pawns are present
+  #[must_use]
   pub fn has_pieces(&self) -> bool {
     for piece in self.pieces.elements_row_major_iter() {
       match piece.abs() {

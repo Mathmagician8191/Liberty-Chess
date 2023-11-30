@@ -170,7 +170,7 @@ impl Configuration {
   }
 
   pub fn toggle_evalbar(&mut self) {
-    self.eval_bar = Value::Modified(self.get_evalbar())
+    self.eval_bar = Value::Modified(self.get_evalbar());
   }
 
   fn set_style(&self, ctx: &Context) {

@@ -248,6 +248,7 @@ impl Add for Score {
 
 impl Score {
   /// Uci output for the score
+  #[must_use]
   pub fn show_uci(&self, move_count: u16) -> String {
     match self {
       Self::Win(moves) => format!("mate {}", moves - move_count),

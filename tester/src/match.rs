@@ -313,10 +313,7 @@ fn test_position(
   assert_eq!(win + draw + loss, GAME_PAIR_COUNT * 2);
   let move_count = total_tuple(champ_moves) + total_tuple(challenge_moves);
   let average_move_count = move_count as usize / GAME_PAIR_COUNT / 2;
-  println!(
-    "+{win} ={draw} -{loss}, {} moves per game",
-    average_move_count
-  );
+  println!("+{win} ={draw} -{loss}, {average_move_count} moves per game");
   println!(
     "Average opening depth: Champion: {:.2}, Challenger: {:.2}",
     champ_depth.0 as f32 / champ_moves.0 as f32,
