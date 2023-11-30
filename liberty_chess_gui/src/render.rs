@@ -44,7 +44,11 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: Board) 
           *time = new_time.as_millis();
         }
       }
-      if let Some(bestmove) = player.get_bestmove(&board, gui.searchtime) {
+      let (bestmove, score) = player.get_bestmove(&board, gui.searchtime);
+      if let Some(score) = score {
+        gui.eval = Some(score);
+      }
+      if let Some(bestmove) = bestmove {
         if let Some(position) = board.move_if_legal(bestmove) {
           #[cfg(feature = "sound")]
           let capture = board.get_piece(bestmove.end()) != 0;

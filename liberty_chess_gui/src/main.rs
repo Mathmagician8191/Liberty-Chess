@@ -11,7 +11,7 @@ use crate::helpers::{
 };
 use crate::render::draw_game;
 use crate::themes::{Colours, Theme};
-use eframe::epaint::{Pos2, TextureId};
+use eframe::epaint::{pos2, Color32, Pos2, Rect, Rounding, TextureId};
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
   Area, Button, CentralPanel, ColorImage, ComboBox, Context, Label, RichText, ScrollArea,
@@ -25,7 +25,7 @@ use players::{PlayerColour, PlayerData, PlayerType, SearchType};
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{FitTo, Tree};
 use themes::CustomTheme;
-use ulci::{Limits, SearchTime};
+use ulci::{Limits, Score, SearchTime};
 
 #[cfg(all(not(feature = "benchmarking"), feature = "clock"))]
 use std::time::Duration;
@@ -68,6 +68,8 @@ mod clock;
 
 const MAX_TIME: u64 = 360;
 
+const EVAL_BAR_WIDTH: f32 = 20.0;
+
 #[derive(Eq, PartialEq)]
 enum Screen {
   Menu,
@@ -109,6 +111,7 @@ pub(crate) struct LibertyChessGUI {
   promotion: Piece,
   player: Option<(PlayerData, bool)>,
   searchtime: SearchTime,
+  eval: Option<Score>,
 
   // fields for other screens
   help_page: HelpPage,
@@ -179,6 +182,7 @@ impl LibertyChessGUI {
       promotion: liberty_chess::QUEEN,
       player: None,
       searchtime: SearchTime::Infinite,
+      eval: None,
 
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
@@ -233,6 +237,43 @@ impl App for LibertyChessGUI {
           .min_width((f32::from(self.config.get_text_size())).mul_add(4.8, 6.8))
           .resizable(false)
           .show(ctx, |ui| draw_game_sidebar(self, ui, board));
+        if self.config.get_evalbar() {
+          if let Some(score) = self.eval {
+            SidePanel::left("Eval bar")
+              .exact_width(EVAL_BAR_WIDTH)
+              .resizable(false)
+              .show(ctx, |ui| {
+                let height = ui.available_height();
+                // chance for black to win makes calculations easier
+                let black_win_chance = match score {
+                  Score::Win(_) => 0.0,
+                  Score::Loss(_) => 1.0,
+                  Score::Centipawn(score) => {
+                    // Sigmoid calculation
+                    1.0 / (1.0 + (score as f32 / 400.0).exp())
+                  }
+                };
+                let bar_height = black_win_chance * height;
+                let painter = ui.painter();
+                painter.rect_filled(
+                  Rect {
+                    min: pos2(0.0, 0.0),
+                    max: pos2(EVAL_BAR_WIDTH * 1.5, bar_height),
+                  },
+                  Rounding::ZERO,
+                  Color32::WHITE,
+                );
+                painter.rect_filled(
+                  Rect {
+                    min: pos2(0.0, bar_height),
+                    max: pos2(EVAL_BAR_WIDTH * 1.5, height),
+                  },
+                  Rounding::ZERO,
+                  Color32::BLACK,
+                );
+              });
+          }
+        }
         #[cfg(feature = "clock")]
         if let Some(clock) = &mut self.clock {
           draw(ctx, clock, self.flipped);
@@ -345,6 +386,7 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
       gui.selected = None;
       gui.undo = Vec::new();
       gui.player = None;
+      gui.eval = None;
       #[cfg(feature = "clock")]
       {
         gui.clock = None;
@@ -743,6 +785,15 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
     gui.audio_engine.as_mut(),
   ) {
     gui.config.toggle_advanced();
+  }
+  if checkbox(
+    ui,
+    &mut gui.config.get_evalbar(),
+    "Show evaluation bar",
+    #[cfg(feature = "sound")]
+    gui.audio_engine.as_mut(),
+  ) {
+    gui.config.toggle_evalbar();
   }
   //Currently non-functional due to https://github.com/emilk/egui/issues/2641
   //if gui.config.settings_changed() && ui.button("Reset all").clicked() {

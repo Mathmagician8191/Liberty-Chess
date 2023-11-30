@@ -51,6 +51,7 @@ const THEME_KEY: &str = "Theme";
 const AUTOFLIP_KEY: &str = "Autoflip";
 const OPPONENTFLIP_KEY: &str = "Opponentflip";
 const ADVANCED_KEY: &str = "Advanced_Settings";
+const EVAL_BAR_KEY: &str = "Eval_Bar";
 
 pub struct Configuration {
   theme: Value<Theme>,
@@ -59,6 +60,7 @@ pub struct Configuration {
   auto_flip: Value<bool>,
   opponent_flip: Value<bool>,
   advanced_settings: Value<bool>,
+  eval_bar: Value<bool>,
 }
 
 impl Configuration {
@@ -71,6 +73,7 @@ impl Configuration {
         auto_flip: Value::Default,
         opponent_flip: Value::Default,
         advanced_settings: Value::Default,
+        eval_bar: Value::Default,
       },
       |storage| Self {
         theme: load(storage.get_string(THEME_KEY)),
@@ -79,6 +82,7 @@ impl Configuration {
         auto_flip: load(storage.get_string(AUTOFLIP_KEY)),
         opponent_flip: load(storage.get_string(OPPONENTFLIP_KEY)),
         advanced_settings: load(storage.get_string(ADVANCED_KEY)),
+        eval_bar: load(storage.get_string(EVAL_BAR_KEY)),
       },
     );
     config.set_style(&ctx.egui_ctx);
@@ -94,6 +98,7 @@ impl Configuration {
     save(storage, AUTOFLIP_KEY, &self.auto_flip);
     save(storage, OPPONENTFLIP_KEY, &self.opponent_flip);
     save(storage, ADVANCED_KEY, &self.advanced_settings);
+    save(storage, EVAL_BAR_KEY, &self.eval_bar);
   }
 
   // Reset every parameter to their default value
@@ -158,6 +163,14 @@ impl Configuration {
 
   pub fn toggle_advanced(&mut self) {
     self.advanced_settings = Value::Modified(self.get_advanced());
+  }
+
+  pub fn get_evalbar(&self) -> bool {
+    !get_value(&self.eval_bar)
+  }
+
+  pub fn toggle_evalbar(&mut self) {
+    self.eval_bar = Value::Modified(self.get_evalbar())
   }
 
   fn set_style(&self, ctx: &Context) {

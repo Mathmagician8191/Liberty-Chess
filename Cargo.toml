@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
-version = "0.15.1"
+version = "0.15.2"
 repository = "https://github.com/Mathmagician8191/Liberty-Chess"
 license = "GPL-3.0"
 edition = "2021"
@@ -21,6 +21,7 @@ kira = {version = "0.8.4", default-features = false, features = ["cpal", "ogg"]}
 parking_lot = "0.12.1"
 rand = "0.8.5"
 rand_chacha = "0.3.1"
+rayon = "1.8.0"
 resvg = "0.29.0"
 threadpool = "1.8.1"
 

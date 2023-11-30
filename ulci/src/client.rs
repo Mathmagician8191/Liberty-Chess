@@ -21,6 +21,8 @@ pub enum Message {
   Go(SearchSettings),
   /// The server wants to stop the search
   Stop,
+  /// The server wants a static evaluation of the position
+  Eval,
 }
 
 fn print_uci(out: &mut impl Write, info: &ClientInfo) {
@@ -413,6 +415,7 @@ pub fn startup(
       Some("position") => position(&mut out, client, &mut board, words, debug)?,
       Some("go") => go(&mut out, client, &board, words, debug)?,
       Some("stop") => client.send(Message::Stop).ok()?,
+      Some("eval") => client.send(Message::Eval).ok()?,
       // End the program, the channel being dropped will stop the other thread
       Some("quit") => break,
       // Commands that can be ignored or blank line

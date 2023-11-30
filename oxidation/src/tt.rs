@@ -1,7 +1,6 @@
-use std::cmp::max;
-
 use liberty_chess::moves::Move;
 use liberty_chess::{Board, ExtraFlags, Hash};
+use std::cmp::max;
 use ulci::Score;
 
 #[derive(Clone, Copy, Eq, PartialEq)]

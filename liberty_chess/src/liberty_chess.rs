@@ -214,7 +214,9 @@ impl Board {
 
     if fields.len() > 7 && !fields[7].is_empty() {
       let promotion = from_chars(fields[7]);
-      board.promotion_options = Rc::new(promotion);
+      if !promotion.is_empty() {
+        board.promotion_options = Rc::new(promotion);
+      }
     }
 
     if fields.len() > 8 && fields[8] == "ff" {
@@ -1105,5 +1107,34 @@ impl Board {
 
   fn test_legal(&self, start: (usize, usize), end: (usize, usize)) -> bool {
     self.check_pseudolegal(start, end) && self.get_legal(start, end).is_some()
+  }
+
+  /// Play a null move if legal (i.e. not in check)
+  pub fn nullmove(&self) -> Option<Self> {
+    if self.promotion_available() || self.in_check() {
+      None
+    } else {
+      let mut new_board = self.clone();
+      if let Some(en_passant) = new_board.en_passant {
+        new_board
+          .keys
+          .update_en_passant(&mut new_board.hash, en_passant);
+        new_board.en_passant = None;
+      }
+      new_board.to_move = !new_board.to_move;
+      new_board.hash ^= new_board.keys.to_move;
+      Some(new_board)
+    }
+  }
+
+  /// Returns whether any pieces other than kings and pawns are present
+  pub fn has_pieces(&self) -> bool {
+    for piece in self.pieces.elements_row_major_iter() {
+      match piece.abs() {
+        SQUARE | PAWN | KING => (),
+        _ => return true,
+      }
+    }
+    false
   }
 }

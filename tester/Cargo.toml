@@ -1,14 +1,23 @@
 [package]
 name = "tester"
-version = "0.2.1"
+version = "0.3.0"
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "match"
+path = "src/match.rs"
+
+[[bin]]
+name = "tuner"
+path = "src/tuner.rs"
+
 [dependencies]
 liberty_chess = {workspace = true}
 rand = {workspace = true}
+rayon = {workspace = true}
 threadpool = {workspace = true}
 oxidation = {workspace = true}
 ulci = {workspace = true}

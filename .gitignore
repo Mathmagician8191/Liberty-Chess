@@ -12,3 +12,6 @@ Cargo.lock
 # flamegraph output
 flamegraph.svg
 perf.data
+
+# generated data for tuning
+datagen

@@ -77,7 +77,7 @@ fn main() {
           println!("info string servererror not currently searching");
         }
       }
-      Message::UpdateOption(_, _) => (),
+      Message::UpdateOption(_, _) | Message::Eval => (),
     }
   }
 }

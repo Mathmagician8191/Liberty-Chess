@@ -12,7 +12,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
 use ulci::client::Message;
 use ulci::server::UlciResult;
-use ulci::{Limits as OtherLimits, SearchTime};
+use ulci::{Limits as OtherLimits, Score, SearchTime};
 
 #[cfg(feature = "clock")]
 use crate::clock::convert;
@@ -264,9 +264,13 @@ impl PlayerData {
     }
   }
 
-  pub fn get_bestmove(&mut self, board: &Board, searchtime: SearchTime) -> Option<Move> {
+  pub fn get_bestmove(
+    &mut self,
+    board: &Board,
+    searchtime: SearchTime,
+  ) -> (Option<Move>, Option<Score>) {
     match self {
-      Self::RandomEngine => random_move(board),
+      Self::RandomEngine => (random_move(board), None),
       Self::BuiltIn(interface) => interface.get_move(board, searchtime),
     }
   }
@@ -280,8 +284,12 @@ pub struct EngineInterface {
 }
 
 impl EngineInterface {
-  pub fn get_move(&mut self, board: &Board, searchtime: SearchTime) -> Option<Move> {
-    let mut result = None;
+  pub fn get_move(
+    &mut self,
+    board: &Board,
+    searchtime: SearchTime,
+  ) -> (Option<Move>, Option<Score>) {
+    let (mut result, mut score) = (None, None);
     if self.status {
       // request sent, poll for results
       while let Ok(message) = self.rx.try_recv() {
@@ -290,7 +298,14 @@ impl EngineInterface {
             result = Some(bestmove);
             self.status = false;
           }
-          UlciResult::Analysis(_) | UlciResult::Startup(_, _) | UlciResult::Info(_, _) => (),
+          UlciResult::Analysis(result) => {
+            let mut result = result.score;
+            if board.to_move() {
+              result = -result;
+            }
+            score = Some(result);
+          }
+          UlciResult::Startup(_, _) | UlciResult::Info(_, _) => (),
         }
       }
     } else if board.state() == Gamestate::InProgress && !board.promotion_available() {
@@ -298,7 +313,7 @@ impl EngineInterface {
       self.tx.send((board.send_to_thread(), searchtime)).ok();
       self.status = true;
     }
-    result
+    (result, score)
   }
 
   pub fn cancel_move(&mut self) {

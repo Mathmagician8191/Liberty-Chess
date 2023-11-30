@@ -1,48 +1,25 @@
-#![forbid(unsafe_code)]
-#![warn(missing_docs, unused)]
-//! A testing program for comparing 2 different engines against each other in a range of positions.
-
 use liberty_chess::clock::format_time;
 use liberty_chess::moves::Move;
-use liberty_chess::positions::{
-  AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, ELIMINATION, HORDE, LIBERTY_CHESS,
-  LOADED_BOARD, MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
-};
 use liberty_chess::threading::CompressedBoard;
 use liberty_chess::{Board, Gamestate};
 use oxidation::random_move;
 use rand::{thread_rng, Rng};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::fs::write;
 use std::io::BufReader;
 use std::ops::AddAssign;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
 use std::time::Instant;
+use tester::POSITIONS;
 use threadpool::ThreadPool;
 use ulci::server::{startup, AnalysisRequest, Request, UlciResult};
 use ulci::SearchTime;
 
-const CHAMPION: &str = "./target/release/oxidation";
+const CHAMPION: &str = "./target/release/untuned";
 
 const CHALLENGER: &str = "./target/release/oxidation";
-
-const POSITIONS: &[(&str, &str, u16)] = &[
-  ("startpos", STARTPOS, 20),
-  ("rectangle", CAPABLANCA_RECTANGLE, 20),
-  ("capablanca", CAPABLANCA, 25),
-  ("liberty", LIBERTY_CHESS, 90),
-  ("mini", MINI, 12),
-  ("mongol", MONGOL, 30),
-  ("african", AFRICAN, 30),
-  ("narnia", NARNIA, 15),
-  ("trump", TRUMP, 60),
-  ("loaded", LOADED_BOARD, 12),
-  ("double", DOUBLE_CHESS, 15),
-  ("horde", HORDE, 16),
-  ("elimination", ELIMINATION, 25),
-  ("endgame", "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1", 12),
-];
 
 const GAME_PAIR_COUNT: usize = 150;
 const RANDOM_MOVE_COUNT: usize = 4;
@@ -52,10 +29,12 @@ const CHALLENGE_TIME: SearchTime = SearchTime::Increment(8000, 80);
 
 struct GameInfo {
   result: GameResult,
+  points: u32,
   champ_moves: (u32, u32, u32),
   challenge_moves: (u32, u32, u32),
   champ_depth: (u32, u32, u32),
   challenge_depth: (u32, u32, u32),
+  positions: HashSet<String>,
 }
 
 enum GameResult {
@@ -250,35 +229,41 @@ fn play_game(
         &mut champ_tc,
       );
     }
-    if current_board.moves() <= 4 {
-      positions.insert(current_board.hash());
-    }
+    positions.insert(current_board.to_string());
   }
-  let result = match current_board.state() {
+  let (result, points) = match current_board.state() {
     Gamestate::InProgress => unreachable!(),
-    Gamestate::Checkmate(winner) | Gamestate::Elimination(winner) => {
+    Gamestate::Checkmate(winner) | Gamestate::Elimination(winner) => (
       if champion_side ^ winner {
         GameResult::ChallengeWin
       } else {
         GameResult::ChampWin
-      }
-    }
+      },
+      if winner { 2 } else { 0 },
+    ),
     Gamestate::Material | Gamestate::Move50 | Gamestate::Repetition | Gamestate::Stalemate => {
-      GameResult::Draw
+      (GameResult::Draw, 1)
     }
   };
   results
     .send(GameInfo {
       result,
+      points,
       champ_moves,
       challenge_moves,
       champ_depth,
       challenge_depth,
+      positions,
     })
     .ok();
 }
 
-fn test_position(name: &str, board: &Board, moves: u16) {
+fn test_position(
+  name: &str,
+  board: &Board,
+  moves: u16,
+  positions: &mut HashMap<String, (u32, u32)>,
+) {
   println!("Testing {name}");
   let cores = std::thread::available_parallelism().unwrap().get();
   let pool = ThreadPool::new(cores - 1);
@@ -310,6 +295,15 @@ fn test_position(name: &str, board: &Board, moves: u16) {
       GameResult::ChampWin => win += 1,
       GameResult::Draw => draw += 1,
       GameResult::ChallengeWin => loss += 1,
+    };
+    let game_score = result.points;
+    for position in result.positions {
+      if let Some(result) = positions.get_mut(&position) {
+        result.0 += 1;
+        result.1 += game_score;
+      } else {
+        positions.insert(position, (1, game_score));
+      }
     }
     sum_tuple(&mut champ_moves, result.champ_moves);
     sum_tuple(&mut challenge_moves, result.challenge_moves);
@@ -341,10 +335,17 @@ fn test_position(name: &str, board: &Board, moves: u16) {
 }
 
 fn main() {
-  for (name, position, moves) in POSITIONS {
-    let board = Board::new(position).expect("Loading board failed");
-    test_position(name, &board, *moves);
-    // board.friendly_fire = true;
-    // test_position(&format!("friendly {name}"), &board, *moves);
+  for (name, position, moves, _) in POSITIONS {
+    let mut positions = HashMap::new();
+    let mut board = Board::new(position).expect("Loading board failed");
+    test_position(name, &board, *moves, &mut positions);
+    board.friendly_fire = true;
+    test_position(&format!("friendly {name}"), &board, *moves, &mut positions);
+    let data = positions
+      .iter()
+      .map(|(position, (games, score))| format!("{position};{games};{score}"))
+      .collect::<Vec<String>>()
+      .join("\n");
+    write(format!("target/release/{name}.txt"), data).expect("Writing file failed");
   }
 }

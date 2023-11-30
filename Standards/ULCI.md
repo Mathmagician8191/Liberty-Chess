@@ -126,6 +126,9 @@ These are all the command the client gets from the interface.
   * servererror <str>
     The server has an error message for the client
 
+* eval
+  Returns the static evaluation of the current position, optional for debugging purposes
+
 * quit
   quit the program as soon as possible
 

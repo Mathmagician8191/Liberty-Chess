@@ -10,6 +10,7 @@ use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::io::Write;
+use std::ops::Add;
 use std::sync::Arc;
 
 /// The functionality for a ULCI client
@@ -229,6 +230,18 @@ impl Neg for Score {
       Self::Win(moves) => Self::Loss(moves),
       Self::Loss(moves) => Self::Win(moves),
       Self::Centipawn(score) => Self::Centipawn(-score),
+    }
+  }
+}
+
+impl Add for Score {
+  type Output = Self;
+
+  // Only adds centipawn scores, otherwise does nothing
+  fn add(self, rhs: Self) -> Self::Output {
+    match (self, rhs) {
+      (Self::Centipawn(lhs), Self::Centipawn(rhs)) => Self::Centipawn(lhs + rhs),
+      _ => self,
     }
   }
 }

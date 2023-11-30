@@ -4,19 +4,26 @@
 
 use liberty_chess::moves::Move;
 use liberty_chess::{Board, Gamestate};
+use parameters::{
+  ENDGAME_EDGE_AVOIDANCE, ENDGAME_FACTOR, ENDGAME_PIECE_VALUES, ENDGAME_THRESHOLD,
+  MIDDLEGAME_EDGE_AVOIDANCE, MIDDLEGAME_PIECE_VALUES,
+};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use std::cmp::max;
+use std::cmp::{max, min};
 use std::io::{Stdout, Write};
-use std::sync::mpsc::Receiver;
 use std::sync::mpsc::TryRecvError::Disconnected;
+use std::sync::mpsc::{Receiver, Sender};
 use std::time::Instant;
 use tt::{Entry, ScoreType, TranspositionTable};
 use ulci::client::Message;
+use ulci::server::{AnalysisResult, UlciResult};
 use ulci::{OptionValue, Score, SearchTime};
 
 /// Interface for efficiently integrating into another application
 pub mod glue;
+/// Tunable parameters
+pub mod parameters;
 
 mod tt;
 
@@ -29,30 +36,21 @@ pub const QDEPTH: u8 = 3;
 pub const HASH_SIZE: usize = 64;
 
 /// Internal naming thing - do not use
+///
+/// Public due to being required in the binary
 pub const QDEPTH_NAME: &str = "QDepth";
 /// Internal naming thing - do not use
+///
+/// Public due to being required in the binary
 pub const HASH_NAME: &str = "Hash";
 
-const PIECE_VALUES: [i32; 18] = [
-  100,  // pawn
-  320,  // knight
-  330,  // bishop
-  500,  // rook
-  975,  // queen
-  0,    // king
-  880,  // archbishop
-  975,  // chancellor
-  200,  // camel
-  300,  // zebra
-  300,  // mann
-  450,  // nightrider
-  700,  // champion
-  700,  // centaur
-  1350, // amazon
-  800,  // elephant
-  25,   // obstacle
-  75,   // wall
-];
+/// The output type to use for analysis results
+pub enum Output<'a> {
+  /// Output to the provided stdout
+  String(Stdout),
+  /// Output to the provided results channel
+  Channel(&'a Sender<UlciResult>),
+}
 
 /// The state of the engine
 pub struct State {
@@ -65,6 +63,13 @@ impl State {
     Self {
       table: TranspositionTable::new(megabytes),
     }
+  }
+
+  /// Updates the state with the new position
+  ///
+  /// Returns true if the hash was cleared
+  pub fn new_position(&mut self, position: &Board) -> bool {
+    self.table.new_position(position)
   }
 }
 
@@ -145,7 +150,7 @@ impl<'a> SearchConfig<'a> {
               println!("info string servererror search in progress");
             }
           }
-          Message::Go(_) => {
+          Message::Go(_) | Message::Eval => {
             if *self.debug {
               println!("info string servererror already searching");
             }
@@ -194,22 +199,32 @@ pub fn random_move(board: &Board) -> Option<Move> {
 pub fn get_move_order(position: &Board, searchmoves: &Vec<Move>) -> Vec<Move> {
   let (captures, other) = position.generate_pseudolegal();
   let (mut captures, mut other): (Vec<(Move, u8, u8)>, Vec<Move>) = if searchmoves.is_empty() {
-    (captures, other)
+    (
+      captures
+        .into_iter()
+        .filter(|(m, _, _)| position.move_if_legal(*m).is_some())
+        .collect(),
+      other
+        .into_iter()
+        .filter(|m| position.move_if_legal(*m).is_some())
+        .collect(),
+    )
   } else {
     (
       captures
         .into_iter()
-        .filter(|(m, _, _)| searchmoves.contains(m))
+        .filter(|(m, _, _)| searchmoves.contains(m) && position.move_if_legal(*m).is_some())
         .collect(),
       other
         .into_iter()
-        .filter(|m| searchmoves.contains(m))
+        .filter(|m| searchmoves.contains(m) && position.move_if_legal(*m).is_some())
         .collect(),
     )
   };
   captures.shuffle(&mut thread_rng());
   captures.sort_by_key(|(_, piece, capture)| {
-    PIECE_VALUES[usize::from(*piece - 1)] - PIECE_VALUES[usize::from(*capture - 1)]
+    MIDDLEGAME_PIECE_VALUES[usize::from(*piece - 1)]
+      - MIDDLEGAME_PIECE_VALUES[usize::from(*capture - 1)]
   });
   other.shuffle(&mut thread_rng());
   let mut moves: Vec<Move> = captures.into_iter().map(|(m, _, _)| m).collect();
@@ -222,23 +237,29 @@ fn ply_count(board: &Board) -> u16 {
   board.moves() * 2 + u16::from(!board.to_move())
 }
 
-// Returns an evaluation of the provided position
+/// Returns the static evaluation of the provided position
 #[must_use]
-fn evaluate(board: &Board) -> Score {
+pub fn evaluate(
+  board: &Board,
+  mg_piece_values: &[i32; 18],
+  mg_edge_avoidance: &[i32; 18],
+  eg_piece_values: &[i32; 18],
+  eg_edge_avoidance: &[i32; 18],
+) -> Score {
   match board.state() {
     Gamestate::InProgress => {
-      let mut score = 0;
-      for piece in board.board().elements_row_major_iter() {
-        if *piece != 0 {
-          let multiplier = if *piece > 0 { 1 } else { -1 };
-          let value = PIECE_VALUES[piece.unsigned_abs() as usize - 1];
-          score += value * multiplier;
+      let middlegame = evaluate_middlegame(board, mg_piece_values, mg_edge_avoidance);
+      let endgame = evaluate_endgame(board, eg_piece_values, eg_edge_avoidance);
+      let mut material = 0;
+      for piece in board.board().as_row_major() {
+        if piece != 0 {
+          let piece_type = piece.unsigned_abs() as usize - 1;
+          material += ENDGAME_FACTOR[piece_type];
         }
       }
-      if !board.to_move() {
-        score *= -1;
-      }
-      Score::Centipawn(score)
+      material = min(material, ENDGAME_THRESHOLD);
+      let score = material * middlegame + (ENDGAME_THRESHOLD - material) * endgame;
+      Score::Centipawn(score / ENDGAME_THRESHOLD)
     }
     Gamestate::Material | Gamestate::Move50 | Gamestate::Repetition | Gamestate::Stalemate => {
       Score::Centipawn(0)
@@ -247,13 +268,76 @@ fn evaluate(board: &Board) -> Score {
   }
 }
 
-fn quiescence(
+#[must_use]
+fn evaluate_middlegame(board: &Board, piece_values: &[i32; 18], edge_avoidance: &[i32; 18]) -> i32 {
+  let mut score = 0;
+  let pieces = board.board();
+  for i in 0..board.height() {
+    for j in 0..board.width() {
+      let piece = pieces[(i, j)];
+      if piece != 0 {
+        let multiplier = if piece > 0 { 1 } else { -1 };
+        let piece_type = piece.unsigned_abs() as usize - 1;
+        let mut value = piece_values[piece_type];
+        let mut edgeness = 0;
+        if i == 0 || i == board.height() - 1 {
+          edgeness += 1;
+        }
+        if j == 0 || j == board.width() - 1 {
+          edgeness += 1;
+        }
+        value -= edgeness * edge_avoidance[piece_type];
+        score += value * multiplier;
+      }
+    }
+  }
+  if !board.to_move() {
+    score *= -1;
+  }
+  score
+}
+
+#[must_use]
+fn evaluate_endgame(board: &Board, piece_values: &[i32; 18], edge_avoidance: &[i32; 18]) -> i32 {
+  let mut score = 0;
+  let pieces = board.board();
+  for i in 0..board.height() {
+    for j in 0..board.width() {
+      let piece = pieces[(i, j)];
+      if piece != 0 {
+        let multiplier = if piece > 0 { 1 } else { -1 };
+        let piece_type = piece.unsigned_abs() as usize - 1;
+        let mut value = piece_values[piece_type];
+        let mut edgeness = 0;
+        if i == 0 || i == board.height() - 1 {
+          edgeness += 1;
+        }
+        if j == 0 || j == board.width() - 1 {
+          edgeness += 1;
+        }
+        value -= edgeness * edge_avoidance[piece_type];
+        score += value * multiplier;
+      }
+    }
+  }
+  if !board.to_move() {
+    score *= -1;
+  }
+  score
+}
+
+/// Run a quiescence search of the given position
+pub fn quiescence(
   state: &State,
   settings: &mut SearchConfig,
   board: &Board,
   depth: u8,
   mut alpha: Score,
   beta: Score,
+  mg_piece_values: &[i32; 18],
+  mg_edge_avoidance: &[i32; 18],
+  eg_piece_values: &[i32; 18],
+  eg_edge_avoidance: &[i32; 18],
 ) -> (Vec<Move>, Score) {
   let hash = board.hash();
   if board.state() == Gamestate::InProgress {
@@ -261,24 +345,41 @@ fn quiescence(
       return (pv, score);
     }
   }
-  let score = evaluate(board);
+  let score = evaluate(
+    board,
+    mg_piece_values,
+    mg_edge_avoidance,
+    eg_piece_values,
+    eg_edge_avoidance,
+  );
   settings.nodes += 1;
   settings.seldepth = max(settings.seldepth, ply_count(board));
   if score >= beta {
     return (Vec::new(), beta);
   }
   let mut best_pv = Vec::new();
-  if alpha < score {
+  if score > alpha {
     alpha = score;
   }
   if !settings.search_is_over() && (depth != 0) && (board.state() == Gamestate::InProgress) {
     let mut moves = board.generate_qsearch();
     moves.sort_by_key(|(_, piece, capture)| {
-      PIECE_VALUES[usize::from(*piece - 1)] - PIECE_VALUES[usize::from(*capture - 1)]
+      mg_piece_values[usize::from(*piece - 1)] - mg_piece_values[usize::from(*capture - 1)]
     });
     for (bestmove, _, _) in moves {
       if let Some(position) = board.test_move_legality(bestmove) {
-        let (mut pv, mut score) = quiescence(state, settings, &position, depth - 1, -beta, -alpha);
+        let (mut pv, mut score) = quiescence(
+          state,
+          settings,
+          &position,
+          depth - 1,
+          -beta,
+          -alpha,
+          mg_piece_values,
+          mg_edge_avoidance,
+          eg_piece_values,
+          eg_edge_avoidance,
+        );
         score = -score;
         if score >= beta {
           return (Vec::new(), beta);
@@ -305,14 +406,47 @@ fn alpha_beta(
   mut depth: u8,
   mut alpha: Score,
   beta: Score,
+  // not allowed to nullmove if 2 consecutive nullmoves previously
+  // nullmovecount: u8,
 ) -> (Vec<Move>, Score) {
   if board.in_check() {
     depth += 1;
+    // Null move pruning, needs further testing
+    // } else if nullmovecount < 2 && depth > 2 && board.has_pieces() && evaluate(board) >= beta {
+    //   if let Some(nullmove) = board.nullmove() {
+    //     let (_, mut score) = alpha_beta(state, settings, &nullmove, depth - 2, -beta, -beta + Score::Centipawn(1), nullmovecount + 1);
+    //     score = -score;
+    //     if score >= beta {
+    //       return (Vec::new(), beta)
+    //     }
+    //   }
   }
   if board.state() != Gamestate::InProgress {
-    quiescence(state, settings, board, *settings.qdepth, alpha, beta)
+    quiescence(
+      state,
+      settings,
+      board,
+      *settings.qdepth,
+      alpha,
+      beta,
+      &MIDDLEGAME_PIECE_VALUES,
+      &MIDDLEGAME_EDGE_AVOIDANCE,
+      &ENDGAME_PIECE_VALUES,
+      &ENDGAME_EDGE_AVOIDANCE,
+    )
   } else if depth == 0 {
-    let (pv, score) = quiescence(state, settings, board, *settings.qdepth, alpha, beta);
+    let (pv, score) = quiescence(
+      state,
+      settings,
+      board,
+      *settings.qdepth,
+      alpha,
+      beta,
+      &MIDDLEGAME_PIECE_VALUES,
+      &MIDDLEGAME_EDGE_AVOIDANCE,
+      &ENDGAME_PIECE_VALUES,
+      &ENDGAME_EDGE_AVOIDANCE,
+    );
     let (tt_flag, tt_score) = if score >= beta {
       (ScoreType::LowerBound, beta)
     } else if settings.search_is_over() {
@@ -339,7 +473,8 @@ fn alpha_beta(
     let mut best_pv = Vec::new();
     let (mut moves, mut other) = board.generate_pseudolegal();
     moves.sort_by_key(|(_, piece, capture)| {
-      PIECE_VALUES[usize::from(*piece - 1)] - PIECE_VALUES[usize::from(*capture - 1)]
+      MIDDLEGAME_PIECE_VALUES[usize::from(*piece - 1)]
+        - MIDDLEGAME_PIECE_VALUES[usize::from(*capture - 1)]
     });
     let mut moves: Vec<Move> = moves.into_iter().map(|(m, _, _)| m).collect();
     moves.append(&mut other);
@@ -425,12 +560,6 @@ fn alpha_beta_root(
         let mut new_pv = vec![*candidate];
         new_pv.append(&mut pv);
         best_pv = new_pv;
-      } else if score == Score::Loss(0) && !settings.search_is_over() {
-        eprintln!(
-          "Position {} move {} bug found without unwind",
-          board.to_string(),
-          candidate.to_string()
-        )
       }
     }
   }
@@ -443,11 +572,16 @@ pub fn search(
   mut settings: SearchConfig,
   position: &Board,
   mut moves: Vec<Move>,
-  mut out: Option<Stdout>,
+  mut out: Output,
 ) -> Vec<Move> {
-  state.table.new_position(position);
   let mut best_pv = vec![moves[0]];
-  let mut current_score = evaluate(position);
+  let mut current_score = evaluate(
+    position,
+    &MIDDLEGAME_PIECE_VALUES,
+    &MIDDLEGAME_EDGE_AVOIDANCE,
+    &ENDGAME_PIECE_VALUES,
+    &ENDGAME_EDGE_AVOIDANCE,
+  );
   let mut depth = 0;
   while depth < settings.max_depth {
     depth += 1;
@@ -458,24 +592,37 @@ pub fn search(
       best_pv = pv;
       current_score = score;
     }
-    if let Some(ref mut out) = out {
-      out
-        .write(
-          format!(
-            "info depth {depth} seldepth {} score {} time {time} nodes {} nps {nps} hashfull {} pv {}\n",
-            settings.seldepth - ply_count(position),
-            current_score.show_uci(position.moves()),
-            settings.nodes,
-            state.table.capacity(),
-            best_pv
-              .iter()
-              .map(Move::to_string)
-              .collect::<Vec<String>>()
-              .join(" ")
+    match out {
+      Output::String(ref mut out) => {
+        out
+          .write(
+            format!(
+              "info depth {depth} seldepth {} score {} time {time} nodes {} nps {nps} hashfull {} pv {}\n",
+              settings.seldepth - ply_count(position),
+              current_score.show_uci(position.moves()),
+              settings.nodes,
+              state.table.capacity(),
+              best_pv
+                .iter()
+                .map(Move::to_string)
+                .collect::<Vec<String>>()
+                .join(" ")
+            )
+            .as_bytes(),
           )
-          .as_bytes(),
-        )
+          .ok();
+      }
+      Output::Channel(tx) => {
+        tx.send(UlciResult::Analysis(AnalysisResult {
+          pv: best_pv.clone(),
+          score: current_score,
+          depth: u16::from(depth),
+          nodes: settings.nodes,
+          time,
+          wdl: None,
+        }))
         .ok();
+      }
     }
     if settings.search_is_over() {
       break;

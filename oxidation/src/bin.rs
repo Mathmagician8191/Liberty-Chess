@@ -1,8 +1,12 @@
 use liberty_chess::parsing::from_chars;
 use liberty_chess::positions::get_startpos;
 use liberty_chess::ALL_PIECES;
+use oxidation::parameters::{
+  ENDGAME_EDGE_AVOIDANCE, ENDGAME_PIECE_VALUES, MIDDLEGAME_EDGE_AVOIDANCE, MIDDLEGAME_PIECE_VALUES,
+};
 use oxidation::{
-  get_move_order, search, SearchConfig, State, HASH_NAME, HASH_SIZE, QDEPTH, QDEPTH_NAME,
+  evaluate, get_move_order, search, Output, SearchConfig, State, HASH_NAME, HASH_SIZE, QDEPTH,
+  QDEPTH_NAME,
 };
 use std::collections::HashMap;
 use std::io::{stdin, stdout, BufReader};
@@ -48,7 +52,12 @@ fn main() {
   while let Ok(message) = rx.recv() {
     match message {
       Message::SetDebug(new_debug) => debug = new_debug,
-      Message::UpdatePosition(board) => position = board.load_from_thread(),
+      Message::UpdatePosition(board) => {
+        position = board.load_from_thread();
+        if state.new_position(&position) && debug {
+          println!("info string Hash cleared")
+        }
+      }
       Message::Go(settings) => {
         let moves = get_move_order(&position, &settings.moves);
         if moves.is_empty() {
@@ -68,7 +77,13 @@ fn main() {
           println!("bestmove 0000");
         } else {
           let settings = SearchConfig::new_time(&mut qdepth, settings.time, &rx, &mut debug);
-          let pv = search(&mut state, settings, &position, moves, Some(stdout()));
+          let pv = search(
+            &mut state,
+            settings,
+            &position,
+            moves,
+            Output::String(stdout()),
+          );
           println!("bestmove {}", pv[0].to_string());
         }
       }
@@ -105,6 +120,19 @@ fn main() {
         },
         _ => (),
       },
+      Message::Eval => {
+        println!(
+          "info string score {}",
+          evaluate(
+            &position,
+            &MIDDLEGAME_PIECE_VALUES,
+            &MIDDLEGAME_EDGE_AVOIDANCE,
+            &ENDGAME_PIECE_VALUES,
+            &ENDGAME_EDGE_AVOIDANCE,
+          )
+          .show_uci(position.moves()),
+        );
+      }
     }
   }
 }
