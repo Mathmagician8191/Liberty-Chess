@@ -130,7 +130,7 @@ fn main() {
             &ENDGAME_PIECE_VALUES,
             &ENDGAME_EDGE_AVOIDANCE,
           )
-          .show_uci(position.moves()),
+          .show_uci(position.moves(), position.to_move()),
         );
       }
     }

@@ -249,9 +249,12 @@ impl Add for Score {
 impl Score {
   /// Uci output for the score
   #[must_use]
-  pub fn show_uci(&self, move_count: u32) -> String {
+  pub fn show_uci(&self, move_count: u32, to_move: bool) -> String {
     match self {
-      Self::Win(moves) => format!("mate {}", moves + 1 - move_count),
+      Self::Win(moves) => {
+        let to_move_bonus = if to_move {1} else {0};
+        format!("mate {}", moves + to_move_bonus - move_count)
+      }
       Self::Loss(moves) => format!("mate -{}", moves - move_count),
       Self::Centipawn(cp) => format!("cp {cp}"),
     }

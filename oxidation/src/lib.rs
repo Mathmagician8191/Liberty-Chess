@@ -670,7 +670,7 @@ pub fn search(
             format!(
               "info depth {depth} seldepth {} score {} time {time} nodes {} nps {nps} hashfull {} pv {}\n",
               settings.seldepth - ply_count(position),
-              current_score.show_uci(position.moves()),
+              current_score.show_uci(position.moves(), position.to_move()),
               settings.nodes,
               state.table.capacity(),
               best_pv
