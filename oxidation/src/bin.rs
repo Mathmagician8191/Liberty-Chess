@@ -6,7 +6,7 @@ use oxidation::parameters::{
 };
 use oxidation::{
   evaluate, get_move_order, search, Output, SearchConfig, State, HASH_NAME, HASH_SIZE, QDEPTH,
-  QDEPTH_NAME,
+  QDEPTH_NAME, VERSION_NUMBER,
 };
 use std::collections::HashMap;
 use std::io::{stdin, stdout, BufReader};
@@ -35,7 +35,7 @@ fn main() {
     }),
   );
   let info = ClientInfo {
-    name: "Oxidation".to_owned(),
+    name: format!("Oxidation v{VERSION_NUMBER}"),
     username: None,
     author: "Mathmagician".to_owned(),
     options,
