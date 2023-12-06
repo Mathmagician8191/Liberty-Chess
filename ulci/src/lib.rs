@@ -252,7 +252,7 @@ impl Score {
   pub fn show_uci(&self, move_count: u32, to_move: bool) -> String {
     match self {
       Self::Win(moves) => {
-        let to_move_bonus = if to_move {1} else {0};
+        let to_move_bonus = if to_move { 1 } else { 0 };
         format!("mate {}", moves + to_move_bonus - move_count)
       }
       Self::Loss(moves) => format!("mate -{}", moves - move_count),
