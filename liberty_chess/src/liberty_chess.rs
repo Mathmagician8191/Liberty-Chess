@@ -107,21 +107,20 @@ pub struct Board {
   castling: [bool; 4],
   en_passant: Option<[usize; 3]>,
   halfmoves: u8,
-  moves: u16,
+  moves: u32,
   pawn_moves: usize,
   pawn_row: usize,
   castle_row: usize,
   queen_column: usize,
   king_column: usize,
   promotion_target: Option<(usize, usize)>,
-  promotion_options: Rc<Vec<Piece>>,
   white_kings: Vec<(usize, usize)>,
   black_kings: Vec<(usize, usize)>,
   state: Gamestate,
   duplicates: Vec<Hash>,
   previous: Vec<Hash>,
   hash: Hash,
-  keys: Rc<Zobrist>,
+  shared_data: Rc<(Zobrist, Vec<Piece>)>,
   /// Whether friendly fire mode is enabled.
   /// Changing this value is only supported before moves are made.
   pub friendly_fire: bool,
@@ -130,6 +129,9 @@ pub struct Board {
   // Piece counts ignore kings
   white_pieces: usize,
   black_pieces: usize,
+
+  // Whether pawns promote to a piece that can checkmate
+  pawn_checkmates: bool,
 
   /// The last move the board has recorded
   pub last_move: Option<Move>,
@@ -157,12 +159,15 @@ impl Board {
   pub fn new(fen: &str) -> Result<Self, FenError> {
     let fields: Vec<&str> = fen.split(' ').collect();
 
-    let mut board = process_board(fields[0])?;
+    let (pieces, white_kings, black_kings, white_pieces, black_pieces) = process_board(fields[0])?;
 
-    board.to_move = fields.len() == 1 || fields[1] == "w";
+    let width = pieces.num_columns();
+    let height = pieces.num_rows();
 
+    let to_move = fields.len() == 1 || fields[1] == "w";
+
+    let mut castling = [false; 4];
     if fields.len() > 2 {
-      let mut castling = [false; 4];
       for c in fields[2].chars() {
         match c {
           'K' => castling[0] = true,
@@ -172,56 +177,96 @@ impl Board {
           _ => (),
         }
       }
-      board.castling = castling;
     }
 
+    let mut en_passant = None;
     if fields.len() > 3 {
-      board.en_passant = get_indices(fields[3]);
+      en_passant = get_indices(fields[3]);
     }
 
+    let mut halfmoves = 0;
     if let Some(value) = fields.get(4).and_then(|x| x.parse::<u8>().ok()) {
-      board.halfmoves = value;
+      halfmoves = value;
     }
 
-    if let Some(value) = fields.get(5).and_then(|x| x.parse::<u16>().ok()) {
-      board.moves = value;
+    let mut moves = 1;
+    if let Some(value) = fields.get(5).and_then(|x| x.parse().ok()) {
+      moves = value;
     }
 
+    let mut pawn_moves = 2;
+    let mut pawn_row = 2;
+    let mut castle_row = 0;
+    let mut queen_column = 0;
+    let mut king_column = width - 1;
     if fields.len() > 6 {
       let data: Vec<&str> = fields[6].split(',').collect();
-      if let Some(pawn_moves) = data.first().and_then(|x| x.parse::<usize>().ok()) {
-        board.pawn_moves = pawn_moves;
+      if let Some(pawn_move) = data.first().and_then(|x| x.parse::<usize>().ok()) {
+        pawn_moves = pawn_move;
       }
-      if let Some(pawn_row) = data.get(1).and_then(|x| x.parse::<usize>().ok()) {
-        board.pawn_row = pawn_row;
+      if let Some(pawn_rows) = data.get(1).and_then(|x| x.parse::<usize>().ok()) {
+        pawn_row = pawn_rows;
       }
-      if let Some(castle_row) = data.get(2).and_then(|x| x.parse::<usize>().ok()) {
-        if castle_row > 0 {
-          board.castle_row = castle_row - 1;
+      if let Some(raw_castle_row) = data.get(2).and_then(|x| x.parse::<usize>().ok()) {
+        if raw_castle_row > 0 {
+          castle_row = raw_castle_row - 1;
         }
       }
-      if let Some(queen_column) = data.get(3).and_then(|x| x.parse::<usize>().ok()) {
-        if queen_column > 0 && queen_column <= board.width() {
-          board.queen_column = queen_column - 1;
+      if let Some(queen_col) = data.get(3).and_then(|x| x.parse::<usize>().ok()) {
+        if queen_col > 0 && queen_col <= width {
+          queen_column = queen_col - 1;
         }
       }
-      if let Some(king_column) = data.get(4).and_then(|x| x.parse::<usize>().ok()) {
-        if king_column > 0 && king_column <= board.width() {
-          board.king_column = king_column - 1;
+      if let Some(king_col) = data.get(4).and_then(|x| x.parse::<usize>().ok()) {
+        if king_col > 0 && king_col <= width {
+          king_column = king_col - 1;
         }
       }
     }
 
+    let mut promotion_options = vec![QUEEN, ROOK, BISHOP, KNIGHT];
     if fields.len() > 7 && !fields[7].is_empty() {
       let promotion = from_chars(fields[7]);
       if !promotion.is_empty() {
-        board.promotion_options = Rc::new(promotion);
+        promotion_options = promotion;
       }
     }
 
+    let pawn_checkmates = Board::can_checkmate(&promotion_options);
+
+    let mut friendly_fire = false;
     if fields.len() > 8 && fields[8] == "ff" {
-      board.friendly_fire = true;
+      friendly_fire = true;
     }
+
+    let mut board = Board {
+      pieces,
+      to_move,
+      castling,
+      en_passant,
+      halfmoves,
+      moves,
+      pawn_moves,
+      pawn_row,
+      castle_row,
+      queen_column,
+      king_column,
+      promotion_target: None,
+      white_kings,
+      black_kings,
+      state: Gamestate::InProgress,
+      duplicates: Vec::new(),
+      previous: Vec::new(),
+      hash: 0,
+      shared_data: Rc::new((Zobrist::new(width, height), promotion_options)),
+      friendly_fire,
+      white_pieces,
+      black_pieces,
+
+      pawn_checkmates,
+
+      last_move: None,
+    };
 
     board.hash = board.get_hash();
     board.update();
@@ -264,7 +309,7 @@ impl Board {
   /// Get the valid promotion possibilities
   #[must_use]
   pub fn promotion_options(&self) -> &Vec<Piece> {
-    &self.promotion_options
+    &self.shared_data.1
   }
 
   /// Whether the board is waiting for a promotion
@@ -281,7 +326,7 @@ impl Board {
 
   /// Get the number of moves since the start of the game
   #[must_use]
-  pub const fn moves(&self) -> u16 {
+  pub const fn moves(&self) -> u32 {
     self.moves
   }
 
@@ -489,7 +534,7 @@ impl Board {
   /// This function assumes the move is legal.
   fn make_move(&mut self, start: (usize, usize), end: (usize, usize)) {
     self.last_move = Some(Move::new(start, end));
-    let keys = self.keys.as_ref();
+    let keys = &self.shared_data.0;
     self.halfmoves += 1;
     self.to_move = !self.to_move;
     self.hash ^= keys.to_move;
@@ -725,7 +770,7 @@ impl Board {
   /// This function assumes the piece is a valid promotion option.
   pub fn promote(&mut self, piece: Piece) {
     if let Some(target) = self.promotion_target {
-      let keys = self.keys.as_ref();
+      let keys = &self.shared_data.0;
       self.hash ^= keys.pieces[target][(PAWN - 1) as usize];
       self.hash ^= keys.pieces[target][(piece - 1) as usize];
       self.pieces[target] *= piece;
@@ -996,11 +1041,17 @@ impl Board {
         if self.white_kings.is_empty() {
           self.state = Gamestate::Elimination(false);
           return;
+        } else if !self.sufficient_material() {
+          self.state = Gamestate::Material;
+          return;
         }
       }
       (false, true) => {
         if self.black_kings.is_empty() {
           self.state = Gamestate::Elimination(true);
+          return;
+        } else if !self.sufficient_material() {
+          self.state = Gamestate::Material;
           return;
         }
       }
@@ -1026,7 +1077,7 @@ impl Board {
   #[must_use]
   fn get_hash(&self) -> Hash {
     let mut result = 0;
-    let keys = self.keys.as_ref();
+    let keys = &self.shared_data.0;
 
     if self.to_move {
       result ^= keys.to_move;
@@ -1105,6 +1156,55 @@ impl Board {
     false
   }
 
+  fn sufficient_material(&self) -> bool {
+    if self.white_kings.len() != 1 || self.black_kings.len() != 1 {
+      return true;
+    }
+    let mut flexible_piece = false;
+    let mut even_piece = false;
+    let mut odd_piece = false;
+    for i in 0..self.height() {
+      for j in 0..self.width() {
+        let piece = self.pieces[(i, j)];
+        let even = (i + j) % 2 == 0;
+        match piece.abs() {
+          ROOK | QUEEN | ARCHBISHOP | CHANCELLOR | MANN | CHAMPION | CENTAUR | AMAZON
+          | ELEPHANT => return true,
+          PAWN => {
+            if self.pawn_checkmates || flexible_piece || even_piece || odd_piece {
+              return true;
+            } else {
+              flexible_piece = true;
+            }
+          }
+          KNIGHT | ZEBRA | NIGHTRIDER => {
+            if flexible_piece || even_piece || odd_piece {
+              return true;
+            } else {
+              flexible_piece = true;
+            }
+          }
+          BISHOP | CAMEL => {
+            if even {
+              if flexible_piece || odd_piece {
+                return true;
+              } else {
+                even_piece = true;
+              }
+            } else if flexible_piece || even_piece {
+              return true;
+            } else {
+              odd_piece = true;
+            }
+          }
+          // King, obstacle and wall
+          _ => (),
+        }
+      }
+    }
+    false
+  }
+
   fn test_legal(&self, start: (usize, usize), end: (usize, usize)) -> bool {
     self.check_pseudolegal(start, end) && self.get_legal(start, end).is_some()
   }
@@ -1118,12 +1218,13 @@ impl Board {
       let mut new_board = self.clone();
       if let Some(en_passant) = new_board.en_passant {
         new_board
-          .keys
+          .shared_data
+          .0
           .update_en_passant(&mut new_board.hash, en_passant);
         new_board.en_passant = None;
       }
       new_board.to_move = !new_board.to_move;
-      new_board.hash ^= new_board.keys.to_move;
+      new_board.hash ^= new_board.shared_data.0.to_move;
       Some(new_board)
     }
   }
@@ -1135,6 +1236,18 @@ impl Board {
       match piece.abs() {
         SQUARE | PAWN | KING => (),
         _ => return true,
+      }
+    }
+    false
+  }
+
+  fn can_checkmate(pieces: &Vec<Piece>) -> bool {
+    for piece in pieces {
+      match *piece {
+        ROOK | QUEEN | ARCHBISHOP | CHANCELLOR | MANN | CHAMPION | CENTAUR | AMAZON | ELEPHANT => {
+          return true
+        }
+        _ => (),
       }
     }
     false

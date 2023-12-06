@@ -86,6 +86,7 @@ impl ToString for Presets {
 #[derive(Eq, PartialEq)]
 pub struct RandomConfig {
   pub pieces: String,
+  pub spawn_king: bool,
   pub width: NumericalInput<usize>,
   pub height: NumericalInput<usize>,
 }
@@ -108,7 +109,9 @@ impl ToString for RandomConfig {
       .collect();
 
     // Add a king to the board
-    pieces[rng.gen_range(0..width)] = 'k';
+    if self.spawn_king {
+      pieces[rng.gen_range(0..width)] = 'k';
+    }
 
     let pieces = pieces.iter().collect::<String>();
 
@@ -130,6 +133,7 @@ impl Default for RandomConfig {
   fn default() -> Self {
     Self {
       pieces: "qrbn".to_owned(),
+      spawn_king: true,
       width: NumericalInput::<usize>::new(8, 2, usize::MAX),
       height: NumericalInput::<usize>::new(8, 4, usize::MAX),
     }

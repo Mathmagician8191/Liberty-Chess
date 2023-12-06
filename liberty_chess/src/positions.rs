@@ -30,7 +30,7 @@ pub const DOUBLE_CHESS: &str =
 pub const HORDE: &str =
   "rnbqkbnr/pppppppp/8/1PP2PP1/PPPPPPPP/PPPPPPPP/PPPPPPPP/PPPPPPPP w kq - 0 1";
 /// Elimination chess
-pub const ELIMINATION: &str = "rnbqxbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQXBNR w - - 0 1";
+pub const ELIMINATION: &str = "rnbqxbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQXBNR w - - 0 1 - qrbnx";
 
 /// The starting position
 #[must_use]

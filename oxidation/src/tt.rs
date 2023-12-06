@@ -14,7 +14,7 @@ pub enum ScoreType {
 pub struct Entry {
   pub hash: Hash,
   pub depth: u8,
-  pub movecount: u16,
+  pub movecount: u32,
   pub scoretype: ScoreType,
   pub score: Score,
   pub bestmove: Option<Move>,
@@ -42,42 +42,42 @@ impl TranspositionTable {
   pub fn get(
     &self,
     hash: Hash,
-    movecount: u16,
+    movecount: u32,
     alpha: Score,
     beta: Score,
     depth: u8,
-  ) -> Option<(Vec<Move>, Score)> {
+  ) -> (Option<Score>, Option<Move>) {
+    let mut ttmove = None;
     if self.entries.len() > 0 {
       let index = hash as usize % self.entries.len();
       if let Some(entry) = &self.entries[index] {
-        if entry.depth >= depth && entry.hash == hash {
-          let mut entry = *entry;
-          if movecount != entry.movecount {
-            match entry.score {
-              Score::Win(ref mut moves) | Score::Loss(ref mut moves) => {
-                if movecount > entry.movecount {
-                  *moves += movecount - entry.movecount;
-                } else {
-                  *moves = moves.saturating_sub(entry.movecount - movecount);
+        if entry.hash == hash {
+          ttmove = entry.bestmove;
+          if entry.depth >= depth {
+            let mut entry = *entry;
+            if movecount != entry.movecount {
+              match entry.score {
+                Score::Win(ref mut moves) | Score::Loss(ref mut moves) => {
+                  if movecount > entry.movecount {
+                    *moves += movecount - entry.movecount;
+                  } else {
+                    *moves = moves.saturating_sub(entry.movecount - movecount);
+                  }
                 }
+                Score::Centipawn(_) => (),
               }
-              Score::Centipawn(_) => (),
             }
+            return match entry.scoretype {
+              ScoreType::Exact => (Some(entry.score), ttmove),
+              ScoreType::LowerBound if entry.score >= beta => (Some(beta), ttmove),
+              ScoreType::UpperBound if entry.score <= alpha => (Some(alpha), ttmove),
+              _ => (None, ttmove),
+            };
           }
-          let mut pv = Vec::new();
-          if let Some(bestmove) = entry.bestmove {
-            pv.push(bestmove);
-          }
-          return match entry.scoretype {
-            ScoreType::Exact => Some((pv, entry.score)),
-            ScoreType::LowerBound if entry.score >= beta => Some((pv, beta)),
-            ScoreType::UpperBound if entry.score <= alpha => Some((pv, alpha)),
-            _ => None,
-          };
         }
       }
     }
-    None
+    (None, ttmove)
   }
 
   pub fn store(&mut self, entry: Entry) {

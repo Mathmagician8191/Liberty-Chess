@@ -31,7 +31,7 @@ mod tt;
 pub const VERSION_NUMBER: &str = env!("CARGO_PKG_VERSION");
 
 /// Default Quiescence depth
-pub const QDEPTH: u8 = 3;
+pub const QDEPTH: u8 = 5;
 /// Default Hash size
 pub const HASH_SIZE: usize = 64;
 
@@ -86,7 +86,7 @@ pub struct SearchConfig<'a> {
   nodes: usize,
   debug: &'a mut bool,
   // maximum ply count reached
-  seldepth: u16,
+  seldepth: u32,
 }
 
 impl<'a> SearchConfig<'a> {
@@ -234,8 +234,8 @@ pub fn get_move_order(position: &Board, searchmoves: &Vec<Move>) -> Vec<Move> {
 }
 
 #[must_use]
-fn ply_count(board: &Board) -> u16 {
-  board.moves() * 2 + u16::from(!board.to_move())
+fn ply_count(board: &Board) -> u32 {
+  board.moves() * 2 + u32::from(!board.to_move())
 }
 
 /// Returns the static evaluation of the provided position
@@ -342,7 +342,12 @@ pub fn quiescence(
 ) -> (Vec<Move>, Score) {
   let hash = board.hash();
   if board.state() == Gamestate::InProgress {
-    if let Some((pv, score)) = state.table.get(hash, board.moves(), alpha, beta, 0) {
+    let (score, ttmove) = state.table.get(hash, board.moves(), alpha, beta, 0);
+    if let Some(score) = score {
+      let mut pv = Vec::new();
+      if let Some(bestmove) = ttmove {
+        pv.push(bestmove);
+      }
       return (pv, score);
     }
   }
@@ -408,19 +413,36 @@ fn alpha_beta(
   mut alpha: Score,
   beta: Score,
   // not allowed to nullmove if 2 consecutive nullmoves previously
-  // nullmovecount: u8,
+  nullmovecount: u8,
 ) -> (Vec<Move>, Score) {
   if board.in_check() {
     depth += 1;
-    // Null move pruning, needs further testing
-    // } else if nullmovecount < 2 && depth > 2 && board.has_pieces() && evaluate(board) >= beta {
-    //   if let Some(nullmove) = board.nullmove() {
-    //     let (_, mut score) = alpha_beta(state, settings, &nullmove, depth - 2, -beta, -beta + Score::Centipawn(1), nullmovecount + 1);
-    //     score = -score;
-    //     if score >= beta {
-    //       return (Vec::new(), beta)
-    //     }
-    //   }
+  } else if nullmovecount < 2
+    && depth > 2
+    && board.has_pieces()
+    && evaluate(
+      board,
+      &MIDDLEGAME_PIECE_VALUES,
+      &MIDDLEGAME_EDGE_AVOIDANCE,
+      &ENDGAME_PIECE_VALUES,
+      &ENDGAME_EDGE_AVOIDANCE,
+    ) >= beta
+  {
+    if let Some(nullmove) = board.nullmove() {
+      let (_, mut score) = alpha_beta(
+        state,
+        settings,
+        &nullmove,
+        depth - 2,
+        -beta,
+        -beta + Score::Centipawn(1),
+        nullmovecount + 1,
+      );
+      score = -score;
+      if score >= beta {
+        return (Vec::new(), beta);
+      }
+    }
   }
   if board.state() != Gamestate::InProgress {
     quiescence(
@@ -468,20 +490,20 @@ fn alpha_beta(
     (pv, score)
   } else {
     let hash = board.hash();
-    if let Some((pv, score)) = state.table.get(hash, board.moves(), alpha, beta, depth) {
+    let (score, ttmove) = state.table.get(hash, board.moves(), alpha, beta, depth);
+    if let Some(score) = score {
+      let mut pv = Vec::new();
+      if let Some(bestmove) = ttmove {
+        pv.push(bestmove);
+      }
       return (pv, score);
     }
     let mut best_pv = Vec::new();
-    let (mut moves, mut other) = board.generate_pseudolegal();
-    moves.sort_by_key(|(_, piece, capture)| {
-      MIDDLEGAME_PIECE_VALUES[usize::from(*piece - 1)]
-        - MIDDLEGAME_PIECE_VALUES[usize::from(*capture - 1)]
-    });
-    let mut moves: Vec<Move> = moves.into_iter().map(|(m, _, _)| m).collect();
-    moves.append(&mut other);
-    for bestmove in moves {
-      if let Some(position) = board.test_move_legality(bestmove) {
-        let (mut pv, mut score) = alpha_beta(state, settings, &position, depth - 1, -beta, -alpha);
+    // Handle TTmove
+    if let Some(ttmove) = ttmove {
+      if let Some(position) = board.test_move_legality(ttmove) {
+        let (mut pv, mut score) =
+          alpha_beta(state, settings, &position, depth - 1, -beta, -alpha, 0);
         score = -score;
         if score >= beta {
           state.table.store(Entry {
@@ -490,13 +512,13 @@ fn alpha_beta(
             movecount: board.moves(),
             scoretype: ScoreType::LowerBound,
             score: beta,
-            bestmove: None,
+            bestmove: Some(ttmove),
           });
           return (Vec::new(), beta);
         }
         if score > alpha {
           alpha = score;
-          let mut new_pv = vec![bestmove];
+          let mut new_pv = vec![ttmove];
           new_pv.append(&mut pv);
           best_pv = new_pv;
         }
@@ -512,6 +534,52 @@ fn alpha_beta(
             });
           }
           return (best_pv, alpha);
+        }
+      }
+    }
+    let (mut moves, mut other) = board.generate_pseudolegal();
+    moves.sort_by_key(|(_, piece, capture)| {
+      MIDDLEGAME_PIECE_VALUES[usize::from(*piece - 1)]
+        - MIDDLEGAME_PIECE_VALUES[usize::from(*capture - 1)]
+    });
+    let mut moves: Vec<Move> = moves.into_iter().map(|(m, _, _)| m).collect();
+    moves.append(&mut other);
+    for bestmove in moves {
+      if Some(bestmove) != ttmove {
+        if let Some(position) = board.test_move_legality(bestmove) {
+          let (mut pv, mut score) =
+            alpha_beta(state, settings, &position, depth - 1, -beta, -alpha, 0);
+          score = -score;
+          if score >= beta {
+            state.table.store(Entry {
+              hash,
+              depth,
+              movecount: board.moves(),
+              scoretype: ScoreType::LowerBound,
+              score: beta,
+              bestmove: Some(bestmove),
+            });
+            return (Vec::new(), beta);
+          }
+          if score > alpha {
+            alpha = score;
+            let mut new_pv = vec![bestmove];
+            new_pv.append(&mut pv);
+            best_pv = new_pv;
+          }
+          if settings.search_is_over() {
+            if !best_pv.is_empty() {
+              state.table.store(Entry {
+                hash,
+                depth,
+                movecount: board.moves(),
+                scoretype: ScoreType::LowerBound,
+                score: alpha,
+                bestmove: best_pv.get(0).copied(),
+              });
+            }
+            return (best_pv, alpha);
+          }
         }
       }
     }
@@ -539,7 +607,6 @@ fn alpha_beta_root(
   moves: &Vec<Move>,
   depth: u8,
 ) -> (Vec<Move>, Score) {
-  settings.seldepth = max(settings.seldepth, ply_count(board));
   let mut alpha = Score::Loss(0);
   let mut best_pv = Vec::new();
   for candidate in moves {
@@ -551,6 +618,7 @@ fn alpha_beta_root(
         depth - 1,
         Score::Loss(0),
         -alpha,
+        0,
       );
       if settings.search_is_over() {
         return (best_pv, alpha);
@@ -584,7 +652,9 @@ pub fn search(
     &ENDGAME_EDGE_AVOIDANCE,
   );
   let mut depth = 0;
-  while depth < settings.max_depth {
+  while depth < settings.max_depth
+    && (settings.start.elapsed().as_millis() * 2 <= settings.max_time)
+  {
     depth += 1;
     let (pv, score) = alpha_beta_root(state, &mut settings, position, &moves, depth);
     let time = settings.start.elapsed().as_millis();

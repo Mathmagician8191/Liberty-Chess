@@ -253,7 +253,12 @@ impl App for LibertyChessGUI {
                     1.0 / (1.0 + (score as f32 / 400.0).exp())
                   }
                 };
-                let bar_height = black_win_chance * height;
+                let (win_chance, colour_1, colour_2) = if self.flipped {
+                  (black_win_chance, Color32::WHITE, Color32::BLACK)
+                } else {
+                  (1.0 - black_win_chance, Color32::BLACK, Color32::WHITE)
+                };
+                let bar_height = win_chance * height;
                 let painter = ui.painter();
                 painter.rect_filled(
                   Rect {
@@ -261,7 +266,7 @@ impl App for LibertyChessGUI {
                     max: pos2(EVAL_BAR_WIDTH * 1.5, bar_height),
                   },
                   Rounding::ZERO,
-                  Color32::WHITE,
+                  colour_1,
                 );
                 painter.rect_filled(
                   Rect {
@@ -269,7 +274,7 @@ impl App for LibertyChessGUI {
                     max: pos2(EVAL_BAR_WIDTH * 1.5, height),
                   },
                   Rounding::ZERO,
-                  Color32::BLACK,
+                  colour_2,
                 );
               });
           }
@@ -448,6 +453,13 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
     }
     GameMode::Random(ref mut config) => {
       char_text_edit(ui, size, &mut config.pieces);
+      checkbox(
+        ui,
+        &mut config.spawn_king,
+        "Guarantee at least 1 king",
+        #[cfg(feature = "sound")]
+        gui.audio_engine.as_mut(),
+      );
       let size = size * 1.5;
       label_text_edit(ui, size, &mut config.width, "Width");
       label_text_edit(ui, size, &mut config.height, "Height");
@@ -746,7 +758,7 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
     if let Some(ref mut engine) = gui.audio_engine {
       let mut volume = engine.get_sound_volume();
       if ui
-        .add(Slider::new(&mut volume, 0..=DEFAULT_VOLUME).text("Move Volume"))
+        .add(Slider::new(&mut volume, 0..=DEFAULT_VOLUME).text("Effect Volume"))
         .changed()
       {
         engine.set_sound_volume(volume);

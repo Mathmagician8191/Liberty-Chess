@@ -17,11 +17,11 @@ use threadpool::ThreadPool;
 use ulci::server::{startup, AnalysisRequest, Request, UlciResult};
 use ulci::SearchTime;
 
-const CHAMPION: &str = "./target/release/untuned";
+const CHAMPION: &str = "./target/release/oxidation";
 
 const CHALLENGER: &str = "./target/release/oxidation";
 
-const GAME_PAIR_COUNT: usize = 150;
+const GAME_PAIR_COUNT: usize = 160;
 const RANDOM_MOVE_COUNT: usize = 4;
 
 const CHAMP_TIME: SearchTime = SearchTime::Increment(8000, 80);
@@ -86,7 +86,7 @@ fn process_move(
   results: &Receiver<UlciResult>,
   board: &mut Board,
   moves: &mut Vec<Move>,
-  move_threshold: u16,
+  move_threshold: u32,
   current_board: &mut Board,
   total_depth: &mut (u32, u32, u32),
   move_count: &mut (u32, u32, u32),
@@ -107,6 +107,7 @@ fn process_move(
               pv_move.to_string(),
               test_board.to_string()
             );
+            break;
           }
         }
         depth = u32::from(results.depth);
@@ -173,7 +174,7 @@ fn process_move(
 
 fn play_game(
   board: CompressedBoard,
-  move_count: u16,
+  move_count: u32,
   champion_side: bool,
   results: &Sender<GameInfo>,
 ) {
@@ -261,7 +262,7 @@ fn play_game(
 fn test_position(
   name: &str,
   board: &Board,
-  moves: u16,
+  moves: u32,
   positions: &mut HashMap<String, (u32, u32)>,
 ) {
   println!("Testing {name}");

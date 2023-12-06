@@ -1,10 +1,8 @@
-use crate::keys::Zobrist;
 use crate::{
-  Board, Gamestate, Piece, AMAZON, ARCHBISHOP, BISHOP, CAMEL, CENTAUR, CHAMPION, CHANCELLOR,
-  ELEPHANT, KING, KNIGHT, MANN, NIGHTRIDER, OBSTACLE, PAWN, QUEEN, ROOK, SQUARE, WALL, ZEBRA,
+  Board, Piece, AMAZON, ARCHBISHOP, BISHOP, CAMEL, CENTAUR, CHAMPION, CHANCELLOR, ELEPHANT, KING,
+  KNIGHT, MANN, NIGHTRIDER, OBSTACLE, PAWN, QUEEN, ROOK, SQUARE, WALL, ZEBRA,
 };
 use array2d::Array2D;
-use std::rc::Rc;
 use std::str::FromStr;
 
 /// An enum to represent the reasons for an L-FEN to be invalid.
@@ -109,12 +107,12 @@ impl ToString for Board {
     }
 
     let custom_promotion =
-      self.friendly_fire || self.promotion_options.as_ref() != &[QUEEN, ROOK, BISHOP, KNIGHT];
+      self.friendly_fire || self.shared_data.1 != [QUEEN, ROOK, BISHOP, KNIGHT];
 
     // save promotion options
     if custom_promotion {
       let mut promotion = String::new();
-      for piece in self.promotion_options.as_ref() {
+      for piece in &self.shared_data.1 {
         promotion.push(to_char(-1 * piece));
       }
       optional.push(promotion);
@@ -352,7 +350,18 @@ pub(crate) fn to_indices(column: usize, row_min: usize, row_max: usize) -> Strin
 }
 
 // returns a board with default values for parameters
-pub(crate) fn process_board(board: &str) -> Result<Board, FenError> {
+pub(crate) fn process_board(
+  board: &str,
+) -> Result<
+  (
+    Array2D<Piece>,
+    Vec<(usize, usize)>,
+    Vec<(usize, usize)>,
+    usize,
+    usize,
+  ),
+  FenError,
+> {
   let rows: Vec<&str> = board.split('/').collect();
 
   let height = rows.len();
@@ -410,31 +419,11 @@ pub(crate) fn process_board(board: &str) -> Result<Board, FenError> {
     Err(FenError::Size)?;
   }
 
-  Ok(Board {
-    pieces: Array2D::from_rows(&pieces),
-    to_move: true,
-    castling: [false; 4],
-    en_passant: None,
-    halfmoves: 0,
-    moves: 1,
-    pawn_moves: 2,
-    pawn_row: 2,
-    castle_row: 0,
-    queen_column: 0,
-    king_column: width - 1,
-    promotion_target: None,
-    promotion_options: Rc::new(vec![QUEEN, ROOK, BISHOP, KNIGHT]),
+  Ok((
+    Array2D::from_rows(&pieces),
     white_kings,
     black_kings,
-    state: Gamestate::InProgress,
-    duplicates: Vec::new(),
-    previous: Vec::new(),
-    hash: 0,
-    keys: Rc::new(Zobrist::new(width, height)),
-    friendly_fire: false,
     white_pieces,
     black_pieces,
-
-    last_move: None,
-  })
+  ))
 }

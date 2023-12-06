@@ -12,7 +12,7 @@ pub struct CompressedBoard {
   castling: [bool; 4],
   en_passant: Option<[usize; 3]>,
   halfmoves: u8,
-  moves: u16,
+  moves: u32,
   pawn_moves: usize,
   pawn_row: usize,
   castle_row: usize,
@@ -42,6 +42,7 @@ impl CompressedBoard {
   pub fn load_from_thread(self) -> Board {
     let width = self.pieces.num_columns();
     let height = self.pieces.num_rows();
+    let pawn_checkmates = Board::can_checkmate(&self.promotion_options);
     Board {
       pieces: self.pieces,
       to_move: self.to_move,
@@ -55,17 +56,17 @@ impl CompressedBoard {
       queen_column: self.queen_column,
       king_column: self.king_column,
       promotion_target: self.promotion_target,
-      promotion_options: Rc::new(self.promotion_options),
       white_kings: self.white_kings,
       black_kings: self.black_kings,
       state: self.state,
       duplicates: self.duplicates,
       previous: self.previous,
       hash: self.hash,
-      keys: Rc::new(Zobrist::new(width, height)),
+      shared_data: Rc::new((Zobrist::new(width, height), self.promotion_options)),
       friendly_fire: self.friendly_fire,
       white_pieces: self.white_pieces,
       black_pieces: self.black_pieces,
+      pawn_checkmates,
       last_move: None,
     }
   }
@@ -89,7 +90,7 @@ impl Board {
       queen_column: self.queen_column,
       king_column: self.king_column,
       promotion_target: self.promotion_target,
-      promotion_options: self.promotion_options.to_vec(),
+      promotion_options: self.shared_data.1.to_vec(),
       white_kings: self.white_kings.clone(),
       black_kings: self.black_kings.clone(),
       state: self.state,

@@ -8,7 +8,7 @@ use liberty_chess::positions::{
 };
 
 /// The test positions for the match
-pub const POSITIONS: &[(&str, &str, u16, f64)] = &[
+pub const POSITIONS: &[(&str, &str, u32, f64)] = &[
   ("startpos", STARTPOS, 20, 0.4395),
   ("rectangle", CAPABLANCA_RECTANGLE, 20, 0.3343),
   ("capablanca", CAPABLANCA, 25, 0.3846),
