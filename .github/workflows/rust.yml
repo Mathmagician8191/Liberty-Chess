@@ -48,3 +48,23 @@ jobs:
       with:
         name: monopoly-chess
         path: target/release/liberty_chess_gui.exe
+  oxidation:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo build --release --bin oxidation
+    - uses: actions/upload-artifact@v3
+      with:
+        name: oxidation
+        path: target/release/oxidation
+  oxidation_windows:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo build --release --bin oxidation
+    - uses: actions/upload-artifact@v3
+      with:
+        name: oxidation-windows
+        path: target/release/oxidation.exe
