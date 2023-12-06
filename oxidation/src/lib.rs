@@ -151,7 +151,7 @@ impl<'a> SearchConfig<'a> {
               println!("info string servererror search in progress");
             }
           }
-          Message::Go(_) | Message::Eval => {
+          Message::Go(_) | Message::Eval | Message::Bench(_) => {
             if *self.debug {
               println!("info string servererror already searching");
             }
@@ -709,4 +709,92 @@ pub fn search(
     moves = sorted_moves;
   }
   best_pv
+}
+
+/// Search the specified position to a certain depth and return the node count
+pub fn bench(
+  board: &Board,
+  depth: u8,
+  qdepth: &mut u8,
+  debug: &mut bool,
+  hash: usize,
+  rx: &Receiver<Message>,
+  mut out: Output,
+) -> usize {
+  println!("Bench for position {}", board.to_string());
+  let mut settings = SearchConfig::new(qdepth, depth, u128::MAX, usize::MAX, rx, debug);
+  let mut state = State::new(hash);
+  let (mut moves, mut other) = board.generate_pseudolegal();
+  moves.sort_by_key(|(_, piece, capture)| {
+    MIDDLEGAME_PIECE_VALUES[usize::from(*piece - 1)]
+      - MIDDLEGAME_PIECE_VALUES[usize::from(*capture - 1)]
+  });
+  let mut moves: Vec<Move> = moves.into_iter().map(|(m, _, _)| m).collect();
+  moves.append(&mut other);
+  let mut best_pv = vec![moves[0]];
+  let mut current_score = evaluate(
+    board,
+    &MIDDLEGAME_PIECE_VALUES,
+    &MIDDLEGAME_EDGE_AVOIDANCE,
+    &ENDGAME_PIECE_VALUES,
+    &ENDGAME_EDGE_AVOIDANCE,
+  );
+  let mut depth = 0;
+  while depth < settings.max_depth
+    && (settings.start.elapsed().as_millis() * 2 <= settings.max_time)
+  {
+    depth += 1;
+    let (pv, score) = alpha_beta_root(&mut state, &mut settings, board, &moves, depth);
+    let time = settings.start.elapsed().as_millis();
+    let nps = (1000 * settings.nodes) / max(time as usize, 1);
+    if !pv.is_empty() {
+      best_pv = pv;
+      current_score = score;
+    }
+    match out {
+      Output::String(ref mut out) => {
+        out
+          .write(
+            format!(
+              "info depth {depth} seldepth {} score {} time {time} nodes {} nps {nps} hashfull {} pv {}\n",
+              settings.seldepth - ply_count(board),
+              current_score.show_uci(board.moves(), board.to_move()),
+              settings.nodes,
+              state.table.capacity(),
+              best_pv
+                .iter()
+                .map(Move::to_string)
+                .collect::<Vec<String>>()
+                .join(" ")
+            )
+            .as_bytes(),
+          )
+          .ok();
+      }
+      Output::Channel(tx) => {
+        tx.send(UlciResult::Analysis(AnalysisResult {
+          pv: best_pv.clone(),
+          score: current_score,
+          depth: u16::from(depth),
+          nodes: settings.nodes,
+          time,
+          wdl: None,
+        }))
+        .ok();
+      }
+    }
+    if settings.search_is_over() {
+      break;
+    }
+    let bestmove = best_pv[0];
+    let mut sorted_moves = vec![bestmove];
+    sorted_moves.append(
+      &mut moves
+        .into_iter()
+        .filter(|m| *m != bestmove)
+        .collect::<Vec<Move>>(),
+    );
+    moves = sorted_moves;
+  }
+  settings.nodes
 }

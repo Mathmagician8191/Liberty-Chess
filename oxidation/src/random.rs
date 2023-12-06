@@ -19,6 +19,7 @@ fn main() {
     author: "Mathmagician".to_owned(),
     options: HashMap::new(),
     pieces: from_chars(ALL_PIECES),
+    depth: 0,
   };
   let input = BufReader::new(stdin());
   let output = stdout();
@@ -77,7 +78,7 @@ fn main() {
           println!("info string servererror not currently searching");
         }
       }
-      Message::UpdateOption(_, _) | Message::Eval => (),
+      Message::UpdateOption(_, _) | Message::Eval | Message::Bench(_) => (),
     }
   }
 }

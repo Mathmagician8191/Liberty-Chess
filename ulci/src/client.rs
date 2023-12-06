@@ -23,6 +23,8 @@ pub enum Message {
   Stop,
   /// The server wants a static evaluation of the position
   Eval,
+  /// The server wants the standardised bench results
+  Bench(i8),
 }
 
 fn print_uci(out: &mut impl Write, info: &ClientInfo) {
@@ -416,6 +418,13 @@ pub fn startup(
       Some("go") => go(&mut out, client, &board, words, debug)?,
       Some("stop") => client.send(Message::Stop).ok()?,
       Some("eval") => client.send(Message::Eval).ok()?,
+      Some("bench") => {
+        let depth = words
+          .next()
+          .and_then(|w| w.parse().ok())
+          .unwrap_or(info.depth);
+        client.send(Message::Bench(depth)).ok()?;
+      }
       // End the program, the channel being dropped will stop the other thread
       Some("quit") => break,
       // Commands that can be ignored or blank line

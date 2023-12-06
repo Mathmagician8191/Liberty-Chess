@@ -35,6 +35,8 @@ pub struct ClientInfo {
   pub options: HashMap<String, UlciOption>,
   /// Pieces supported by the client
   pub pieces: Vec<Piece>,
+  /// Default bench depth
+  pub depth: i8,
 }
 
 /// Settings for a search

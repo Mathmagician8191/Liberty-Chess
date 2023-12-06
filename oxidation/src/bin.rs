@@ -1,19 +1,44 @@
+use liberty_chess::clock::format_time;
 use liberty_chess::parsing::from_chars;
-use liberty_chess::positions::get_startpos;
-use liberty_chess::ALL_PIECES;
+use liberty_chess::positions::{
+  get_startpos, AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, ELIMINATION, HORDE,
+  LIBERTY_CHESS, LOADED_BOARD, MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
+};
+use liberty_chess::{Board, ALL_PIECES};
 use oxidation::parameters::{
   ENDGAME_EDGE_AVOIDANCE, ENDGAME_PIECE_VALUES, MIDDLEGAME_EDGE_AVOIDANCE, MIDDLEGAME_PIECE_VALUES,
 };
 use oxidation::{
-  evaluate, get_move_order, search, Output, SearchConfig, State, HASH_NAME, HASH_SIZE, QDEPTH,
-  QDEPTH_NAME, VERSION_NUMBER,
+  bench, evaluate, get_move_order, search, Output, SearchConfig, State, HASH_NAME, HASH_SIZE,
+  QDEPTH, QDEPTH_NAME, VERSION_NUMBER,
 };
 use std::collections::HashMap;
 use std::io::{stdin, stdout, BufReader};
 use std::sync::mpsc::channel;
 use std::thread::spawn;
+use std::time::Instant;
 use ulci::client::{startup, Message};
 use ulci::{ClientInfo, IntOption, OptionValue, UlciOption};
+
+const BENCH_DEPTH: i8 = 5;
+
+// i8 is an offset for bench depth
+const BENCH_POSITIONS: &[(&str, i8)] = &[
+  (STARTPOS, 0),
+  (CAPABLANCA_RECTANGLE, 0),
+  (CAPABLANCA, 0),
+  (LIBERTY_CHESS, -1),
+  (MINI, 1),
+  (MONGOL, 0),
+  (AFRICAN, 0),
+  (NARNIA, 0),
+  (TRUMP, -1),
+  (LOADED_BOARD, -1),
+  (DOUBLE_CHESS, 0),
+  (HORDE, 0),
+  (ELIMINATION, 0),
+  ("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1", 1),
+];
 
 fn main() {
   let (tx, rx) = channel();
@@ -40,6 +65,7 @@ fn main() {
     author: "Mathmagician".to_owned(),
     options,
     pieces: from_chars(ALL_PIECES),
+    depth: BENCH_DEPTH,
   };
   let mut qdepth = QDEPTH;
   let mut hash_size = HASH_SIZE;
@@ -132,6 +158,41 @@ fn main() {
           )
           .show_uci(position.moves(), position.to_move()),
         );
+      }
+      Message::Bench(depth) => {
+        if depth < 2 {
+          println!("info string servererror minimum bench depth 2")
+        } else {
+          let start = Instant::now();
+          let mut nodes = 0;
+          for (position, depth_offset) in BENCH_POSITIONS {
+            let depth = (depth + depth_offset) as u8;
+            let mut board = Board::new(position).expect("Loading bench position {position} failed");
+            nodes += bench(
+              &board,
+              depth,
+              &mut qdepth,
+              &mut debug,
+              hash_size,
+              &rx,
+              Output::String(stdout()),
+            );
+            board.friendly_fire = true;
+            nodes += bench(
+              &board,
+              depth,
+              &mut qdepth,
+              &mut debug,
+              hash_size,
+              &rx,
+              Output::String(stdout()),
+            );
+          }
+          println!(
+            "Total time: {} Nodes: {nodes}",
+            format_time(start.elapsed().as_millis()),
+          );
+        }
       }
     }
   }

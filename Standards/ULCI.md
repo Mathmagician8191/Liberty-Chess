@@ -129,6 +129,9 @@ These are all the command the client gets from the interface.
 * eval
   Returns the static evaluation of the current position, optional for debugging purposes
 
+* bench
+  Evaluates a series of test positions, optional for debugging purposes
+
 * quit
   quit the program as soon as possible
 

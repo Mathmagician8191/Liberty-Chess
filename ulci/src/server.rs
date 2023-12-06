@@ -347,6 +347,8 @@ pub fn startup(
         author,
         options,
         pieces,
+        // not relevant for the server
+        depth: 0,
       },
       version,
     ))
