@@ -2,6 +2,7 @@
 #![warn(missing_docs, unused)]
 //! A chess engine for Liberty Chess
 
+use history::History;
 use liberty_chess::moves::Move;
 use liberty_chess::{Board, Gamestate};
 use parameters::{
@@ -25,6 +26,7 @@ pub mod glue;
 /// Tunable parameters
 pub mod parameters;
 
+mod history;
 mod tt;
 
 /// The version number of the engine
@@ -55,14 +57,16 @@ pub enum Output<'a> {
 /// The state of the engine
 pub struct State {
   table: TranspositionTable,
+  history: History,
 }
 
 impl State {
   /// Initialise a new state, sets up a TT of the provided capacity
   #[must_use]
-  pub fn new(megabytes: usize) -> Self {
+  pub fn new(megabytes: usize, position: &Board) -> Self {
     Self {
       table: TranspositionTable::new(megabytes),
+      history: History::new(position.width(), position.height()),
     }
   }
 
@@ -70,7 +74,14 @@ impl State {
   ///
   /// Returns true if the hash was cleared
   pub fn new_position(&mut self, position: &Board) -> bool {
+    self.history.clear(position.width(), position.height());
     self.table.new_position(position)
+  }
+
+  /// Clears the hash
+  pub fn new_game(&mut self, position: &Board) {
+    self.history.clear(position.width(), position.height());
+    self.table.clear();
   }
 }
 
@@ -151,7 +162,7 @@ impl<'a> SearchConfig<'a> {
               println!("info string servererror search in progress");
             }
           }
-          Message::Go(_) | Message::Eval | Message::Bench(_) => {
+          Message::Go(_) | Message::Eval | Message::Bench(_) | Message::NewGame => {
             if *self.debug {
               println!("info string servererror already searching");
             }
@@ -197,7 +208,7 @@ pub fn random_move(board: &Board) -> Option<Move> {
 
 /// Sort the searchmoves from a position
 #[must_use]
-pub fn get_move_order(position: &Board, searchmoves: &Vec<Move>) -> Vec<Move> {
+pub fn get_move_order(state: &State, position: &Board, searchmoves: &Vec<Move>) -> Vec<Move> {
   let (captures, other) = position.generate_pseudolegal();
   let (mut captures, mut other): (Vec<(Move, u8, u8)>, Vec<Move>) = if searchmoves.is_empty() {
     (
@@ -228,6 +239,14 @@ pub fn get_move_order(position: &Board, searchmoves: &Vec<Move>) -> Vec<Move> {
       - MIDDLEGAME_PIECE_VALUES[usize::from(*capture - 1)]
   });
   other.shuffle(&mut thread_rng());
+  other.sort_by_key(|r#move| {
+    u32::MAX
+      - state.history.get(
+        position.to_move(),
+        position.get_piece(r#move.start()).unsigned_abs(),
+        r#move.end(),
+      )
+  });
   let mut moves: Vec<Move> = captures.into_iter().map(|(m, _, _)| m).collect();
   moves.append(&mut other);
   moves
@@ -412,37 +431,11 @@ fn alpha_beta(
   mut depth: u8,
   mut alpha: Score,
   beta: Score,
-  // not allowed to nullmove if 2 consecutive nullmoves previously
-  nullmovecount: u8,
+  // not allowed to nullmove if previous nullmove
+  nullmove: bool,
 ) -> (Vec<Move>, Score) {
   if board.in_check() {
     depth += 1;
-  } else if nullmovecount < 2
-    && depth > 2
-    && board.has_pieces()
-    && evaluate(
-      board,
-      &MIDDLEGAME_PIECE_VALUES,
-      &MIDDLEGAME_EDGE_AVOIDANCE,
-      &ENDGAME_PIECE_VALUES,
-      &ENDGAME_EDGE_AVOIDANCE,
-    ) >= beta
-  {
-    if let Some(nullmove) = board.nullmove() {
-      let (_, mut score) = alpha_beta(
-        state,
-        settings,
-        &nullmove,
-        depth - 2,
-        -beta,
-        -beta + Score::Centipawn(1),
-        nullmovecount + 1,
-      );
-      score = -score;
-      if score >= beta {
-        return (Vec::new(), beta);
-      }
-    }
   }
   if board.state() != Gamestate::InProgress {
     quiescence(
@@ -489,6 +482,34 @@ fn alpha_beta(
     });
     (pv, score)
   } else {
+    if !nullmove
+      && depth > 2
+      && board.has_pieces()
+      && evaluate(
+        board,
+        &MIDDLEGAME_PIECE_VALUES,
+        &MIDDLEGAME_EDGE_AVOIDANCE,
+        &ENDGAME_PIECE_VALUES,
+        &ENDGAME_EDGE_AVOIDANCE,
+      ) >= beta
+    {
+      if let Some(nullmove) = board.nullmove() {
+        let (_, mut score) = alpha_beta(
+          state,
+          settings,
+          &nullmove,
+          depth - 2,
+          -beta,
+          -beta + Score::Centipawn(1),
+          true,
+        );
+        score = -score;
+        if score >= beta {
+          // Null move reduction
+          depth -= 2;
+        }
+      }
+    }
     let hash = board.hash();
     let (score, ttmove) = state.table.get(hash, board.moves(), alpha, beta, depth);
     if let Some(score) = score {
@@ -503,9 +524,15 @@ fn alpha_beta(
     if let Some(ttmove) = ttmove {
       if let Some(position) = board.test_move_legality(ttmove) {
         let (mut pv, mut score) =
-          alpha_beta(state, settings, &position, depth - 1, -beta, -alpha, 0);
+          alpha_beta(state, settings, &position, depth - 1, -beta, -alpha, false);
         score = -score;
         if score >= beta {
+          state.history.store(
+            board.to_move(),
+            board.get_piece(ttmove.start()).unsigned_abs(),
+            ttmove.end(),
+            depth,
+          );
           state.table.store(Entry {
             hash,
             depth,
@@ -530,7 +557,7 @@ fn alpha_beta(
               movecount: board.moves(),
               scoretype: ScoreType::LowerBound,
               score: alpha,
-              bestmove: best_pv.get(0).copied(),
+              bestmove: Some(ttmove),
             });
           }
           return (best_pv, alpha);
@@ -543,14 +570,28 @@ fn alpha_beta(
         - MIDDLEGAME_PIECE_VALUES[usize::from(*capture - 1)]
     });
     let mut moves: Vec<Move> = moves.into_iter().map(|(m, _, _)| m).collect();
+    other.sort_by_key(|r#move| {
+      u32::MAX
+        - state.history.get(
+          board.to_move(),
+          board.get_piece(r#move.start()).unsigned_abs(),
+          r#move.end(),
+        )
+    });
     moves.append(&mut other);
     for bestmove in moves {
       if Some(bestmove) != ttmove {
         if let Some(position) = board.test_move_legality(bestmove) {
           let (mut pv, mut score) =
-            alpha_beta(state, settings, &position, depth - 1, -beta, -alpha, 0);
+            alpha_beta(state, settings, &position, depth - 1, -beta, -alpha, false);
           score = -score;
           if score >= beta {
+            state.history.store(
+              board.to_move(),
+              board.get_piece(bestmove.start()).unsigned_abs(),
+              bestmove.end(),
+              depth,
+            );
             state.table.store(Entry {
               hash,
               depth,
@@ -618,7 +659,7 @@ fn alpha_beta_root(
         depth - 1,
         Score::Loss(0),
         -alpha,
-        0,
+        false,
       );
       if settings.search_is_over() {
         return (best_pv, alpha);
@@ -701,7 +742,7 @@ pub fn search(
     let bestmove = best_pv[0];
     let mut sorted_moves = vec![bestmove];
     sorted_moves.append(
-      &mut moves
+      &mut get_move_order(state, position, &moves)
         .into_iter()
         .filter(|m| *m != bestmove)
         .collect::<Vec<Move>>(),
@@ -723,7 +764,7 @@ pub fn bench(
 ) -> usize {
   println!("Bench for position {}", board.to_string());
   let mut settings = SearchConfig::new(qdepth, depth, u128::MAX, usize::MAX, rx, debug);
-  let mut state = State::new(hash);
+  let mut state = State::new(hash, board);
   let (mut moves, mut other) = board.generate_pseudolegal();
   moves.sort_by_key(|(_, piece, capture)| {
     MIDDLEGAME_PIECE_VALUES[usize::from(*piece - 1)]
@@ -787,9 +828,24 @@ pub fn bench(
       break;
     }
     let bestmove = best_pv[0];
+    let (mut new_moves, mut other) = board.generate_pseudolegal();
+    new_moves.sort_by_key(|(_, piece, capture)| {
+      MIDDLEGAME_PIECE_VALUES[usize::from(*piece - 1)]
+        - MIDDLEGAME_PIECE_VALUES[usize::from(*capture - 1)]
+    });
+    let mut new_moves: Vec<Move> = new_moves.into_iter().map(|(m, _, _)| m).collect();
+    other.sort_by_key(|r#move| {
+      u32::MAX
+        - state.history.get(
+          board.to_move(),
+          board.get_piece(r#move.start()).unsigned_abs(),
+          r#move.end(),
+        )
+    });
+    new_moves.append(&mut other);
     let mut sorted_moves = vec![bestmove];
     sorted_moves.append(
-      &mut moves
+      &mut new_moves
         .into_iter()
         .filter(|m| *m != bestmove)
         .collect::<Vec<Move>>(),

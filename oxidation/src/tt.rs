@@ -106,7 +106,7 @@ impl TranspositionTable {
     false
   }
 
-  fn clear(&mut self) {
+  pub fn clear(&mut self) {
     for entry in self.entries.iter_mut() {
       *entry = None;
     }

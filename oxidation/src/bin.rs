@@ -69,10 +69,10 @@ fn main() {
   };
   let mut qdepth = QDEPTH;
   let mut hash_size = HASH_SIZE;
-  let mut state = State::new(hash_size);
+  let mut position = get_startpos();
+  let mut state = State::new(hash_size, &position);
   let input = BufReader::new(stdin());
   let output = stdout();
-  let mut position = get_startpos();
   let mut debug = false;
   spawn(move || startup(&tx, &info, input, output));
   while let Ok(message) = rx.recv() {
@@ -85,7 +85,7 @@ fn main() {
         }
       }
       Message::Go(settings) => {
-        let moves = get_move_order(&position, &settings.moves);
+        let moves = get_move_order(&state, &position, &settings.moves);
         if moves.is_empty() {
           if debug {
             if settings.moves.is_empty() {
@@ -132,7 +132,7 @@ fn main() {
           OptionValue::UpdateInt(value) => {
             if value != hash_size {
               hash_size = value;
-              state = State::new(hash_size);
+              state = State::new(hash_size, &position);
             }
           }
           OptionValue::SendTrigger
@@ -188,12 +188,15 @@ fn main() {
               Output::String(stdout()),
             );
           }
+          let millis = start.elapsed().as_millis();
           println!(
-            "Total time: {} Nodes: {nodes}",
-            format_time(start.elapsed().as_millis()),
+            "Total time: {} Nodes: {nodes} NPS: {}",
+            format_time(millis),
+            nodes * 1000 / millis as usize,
           );
         }
       }
+      Message::NewGame => state.new_game(&position),
     }
   }
 }

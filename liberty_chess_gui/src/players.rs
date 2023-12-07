@@ -3,6 +3,7 @@ use crate::MAX_TIME;
 use eframe::egui::Context;
 use enum_iterator::Sequence;
 use liberty_chess::moves::Move;
+use liberty_chess::positions::get_startpos;
 use liberty_chess::threading::CompressedBoard;
 use liberty_chess::{Board, Gamestate};
 use oxidation::glue::process_position;
@@ -241,7 +242,7 @@ impl PlayerData {
         let (send_message, receive_message) = channel();
         let ctx = ctx.clone();
         spawn(move || {
-          let mut state = State::new(hash_size);
+          let mut state = State::new(hash_size, &get_startpos());
           while let Ok((board, searchtime)) = recieve_request.recv() {
             process_position(
               &send_result,

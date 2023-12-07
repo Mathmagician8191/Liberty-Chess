@@ -19,6 +19,7 @@ name = "random"
 path = "src/random.rs"
 
 [dependencies]
+array2d = {workspace = true}
 liberty_chess = {workspace = true}
 rand = {workspace = true}
 ulci = {workspace = true}

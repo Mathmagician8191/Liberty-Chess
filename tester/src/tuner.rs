@@ -1,3 +1,4 @@
+use liberty_chess::positions::get_startpos;
 use liberty_chess::threading::CompressedBoard;
 use liberty_chess::Board;
 use oxidation::parameters::{
@@ -49,7 +50,7 @@ fn calculate_loss(
   eg_piece_values: &[i32; 18],
   eg_edge_avoidance: &[i32; 18],
 ) -> (f64, u32) {
-  let state = State::new(0);
+  let state = State::new(0, &get_startpos());
   let (loss, positions) = data
     .par_iter()
     .map(|(position, count, game_score)| {

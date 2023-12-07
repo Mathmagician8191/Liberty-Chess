@@ -25,6 +25,8 @@ pub enum Message {
   Eval,
   /// The server wants the standardised bench results
   Bench(i8),
+  /// Clear the TT
+  NewGame,
 }
 
 fn print_uci(out: &mut impl Write, info: &ClientInfo) {
@@ -418,6 +420,7 @@ pub fn startup(
       Some("go") => go(&mut out, client, &board, words, debug)?,
       Some("stop") => client.send(Message::Stop).ok()?,
       Some("eval") => client.send(Message::Eval).ok()?,
+      Some("ucinewgame") => client.send(Message::NewGame).ok()?,
       Some("bench") => {
         let depth = words
           .next()
@@ -428,7 +431,7 @@ pub fn startup(
       // End the program, the channel being dropped will stop the other thread
       Some("quit") => break,
       // Commands that can be ignored or blank line
-      Some("ucinewgame" | "info") | None => (),
+      Some("info") | None => (),
       // Unrecognised command, log when in debug mode
       Some(command) => {
         if debug {

@@ -25,7 +25,7 @@ const GAME_PAIR_COUNT: usize = 160;
 const RANDOM_MOVE_COUNT: usize = 4;
 
 const CHAMP_TIME: SearchTime = SearchTime::Increment(8000, 80);
-const CHALLENGE_TIME: SearchTime = SearchTime::Increment(8000, 80);
+const CHALLENGE_TIME: SearchTime = CHAMP_TIME;
 
 struct GameInfo {
   result: GameResult,
