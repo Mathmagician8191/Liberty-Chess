@@ -482,6 +482,15 @@ fn alpha_beta(
     });
     (pv, score)
   } else {
+    let hash = board.hash();
+    let (score, ttmove) = state.table.get(hash, board.moves(), alpha, beta, depth);
+    if let Some(score) = score {
+      let mut pv = Vec::new();
+      if let Some(bestmove) = ttmove {
+        pv.push(bestmove);
+      }
+      return (pv, score);
+    }
     if !nullmove
       && depth > 2
       && board.has_pieces()
@@ -509,15 +518,6 @@ fn alpha_beta(
           depth -= 2;
         }
       }
-    }
-    let hash = board.hash();
-    let (score, ttmove) = state.table.get(hash, board.moves(), alpha, beta, depth);
-    if let Some(score) = score {
-      let mut pv = Vec::new();
-      if let Some(bestmove) = ttmove {
-        pv.push(bestmove);
-      }
-      return (pv, score);
     }
     let mut best_pv = Vec::new();
     // Handle TTmove

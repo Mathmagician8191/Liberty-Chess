@@ -1229,13 +1229,15 @@ impl Board {
     }
   }
 
-  /// Returns whether any pieces other than kings and pawns are present
+  /// Returns whether the side to move has pieces other than kings or pawns
   #[must_use]
   pub fn has_pieces(&self) -> bool {
     for piece in self.pieces.elements_row_major_iter() {
-      match piece.abs() {
-        SQUARE | PAWN | KING => (),
-        _ => return true,
+      if *piece != 0 && ((*piece < 0) ^ self.to_move()) {
+        match piece.abs() {
+          PAWN | KING => (),
+          _ => return true,
+        }
       }
     }
     false
