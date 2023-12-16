@@ -5,9 +5,7 @@ use liberty_chess::positions::{
   LIBERTY_CHESS, LOADED_BOARD, MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
 };
 use liberty_chess::{Board, ALL_PIECES};
-use oxidation::parameters::{
-  ENDGAME_EDGE_AVOIDANCE, ENDGAME_PIECE_VALUES, MIDDLEGAME_EDGE_AVOIDANCE, MIDDLEGAME_PIECE_VALUES,
-};
+use oxidation::parameters::DEFAULT_PARAMETERS;
 use oxidation::{
   bench, evaluate, get_move_order, search, Output, SearchConfig, State, HASH_NAME, HASH_SIZE,
   QDEPTH, QDEPTH_NAME, VERSION_NUMBER,
@@ -18,7 +16,7 @@ use std::sync::mpsc::channel;
 use std::thread::spawn;
 use std::time::Instant;
 use ulci::client::{startup, Message};
-use ulci::{ClientInfo, IntOption, OptionValue, UlciOption};
+use ulci::{ClientInfo, IntOption, OptionValue, UlciOption, VERSION};
 
 const BENCH_DEPTH: i8 = 5;
 
@@ -60,6 +58,7 @@ fn main() {
     }),
   );
   let info = ClientInfo {
+    version: VERSION,
     name: format!("Oxidation v{VERSION_NUMBER}"),
     username: None,
     author: "Mathmagician".to_owned(),
@@ -149,19 +148,12 @@ fn main() {
       Message::Eval => {
         println!(
           "info string score {}",
-          evaluate(
-            &position,
-            &MIDDLEGAME_PIECE_VALUES,
-            &MIDDLEGAME_EDGE_AVOIDANCE,
-            &ENDGAME_PIECE_VALUES,
-            &ENDGAME_EDGE_AVOIDANCE,
-          )
-          .show_uci(position.moves(), position.to_move()),
+          evaluate(&position, &DEFAULT_PARAMETERS).show_uci(position.moves(), position.to_move()),
         );
       }
       Message::Bench(depth) => {
         if depth < 2 {
-          println!("info string servererror minimum bench depth 2")
+          println!("info string servererror minimum bench depth 2");
         } else {
           let start = Instant::now();
           let mut nodes = 0;

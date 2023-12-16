@@ -1,9 +1,7 @@
 use liberty_chess::positions::get_startpos;
 use liberty_chess::threading::CompressedBoard;
 use liberty_chess::Board;
-use oxidation::parameters::{
-  ENDGAME_EDGE_AVOIDANCE, ENDGAME_PIECE_VALUES, MIDDLEGAME_EDGE_AVOIDANCE, MIDDLEGAME_PIECE_VALUES,
-};
+use oxidation::parameters::{Parameters, DEFAULT_PARAMETERS};
 use oxidation::{quiescence, SearchConfig, State, QDEPTH};
 use rand::{seq::SliceRandom, thread_rng};
 use rayon::prelude::*;
@@ -18,38 +16,18 @@ const MAX_ITERATIONS: usize = 10;
 
 type GameData = Vec<(CompressedBoard, u32, f64)>;
 
-fn calculate_loss_batch(
-  data: &Vec<(f64, GameData)>,
-  mg_piece_values: &[i32; 18],
-  mg_edge_avoidance: &[i32; 18],
-  eg_piece_values: &[i32; 18],
-  eg_edge_avoidance: &[i32; 18],
-) -> f64 {
+fn calculate_loss_batch(data: &Vec<(f64, GameData)>, parameters: &Parameters) -> f64 {
   let mut loss_total = 0.0;
   let mut position_total = 0;
   for (k, data) in data {
-    let (loss, positions) = calculate_loss(
-      *k,
-      data,
-      mg_piece_values,
-      mg_edge_avoidance,
-      eg_piece_values,
-      eg_edge_avoidance,
-    );
+    let (loss, positions) = calculate_loss(*k, data, parameters);
     loss_total += loss;
     position_total += positions;
   }
   loss_total / f64::from(position_total)
 }
 
-fn calculate_loss(
-  k: f64,
-  data: &GameData,
-  mg_piece_values: &[i32; 18],
-  mg_edge_avoidance: &[i32; 18],
-  eg_piece_values: &[i32; 18],
-  eg_edge_avoidance: &[i32; 18],
-) -> (f64, u32) {
+fn calculate_loss(k: f64, data: &GameData, parameters: &Parameters) -> (f64, u32) {
   let state = State::new(0, &get_startpos());
   let (loss, positions) = data
     .par_iter()
@@ -66,10 +44,7 @@ fn calculate_loss(
         3,
         Score::Loss(0),
         Score::Win(0),
-        mg_piece_values,
-        mg_edge_avoidance,
-        eg_piece_values,
-        eg_edge_avoidance,
+        parameters,
       );
       if !position.to_move() {
         score = -score;
@@ -95,10 +70,7 @@ fn calculate_loss(
 }
 
 fn main() {
-  let mut mg_piece_values = MIDDLEGAME_PIECE_VALUES;
-  let mut mg_edge_avoidance = MIDDLEGAME_EDGE_AVOIDANCE;
-  let mut eg_piece_values = ENDGAME_PIECE_VALUES;
-  let mut eg_edge_avoidance = ENDGAME_EDGE_AVOIDANCE;
+  let mut parameters = DEFAULT_PARAMETERS;
   let mut data = Vec::new();
   for (file, _, _, k) in POSITIONS {
     let fens = read_to_string(format!("datagen/{file}.txt")).expect("Unable to read file");
@@ -125,28 +97,14 @@ fn main() {
     // Calculate K
     if TUNE_K {
       let mut best_k = *k;
-      let (loss, positions) = calculate_loss(
-        best_k,
-        &processed_data,
-        &mg_piece_values,
-        &mg_edge_avoidance,
-        &eg_piece_values,
-        &eg_edge_avoidance,
-      );
+      let (loss, positions) = calculate_loss(best_k, &processed_data, &parameters);
       let mut best_loss = loss / f64::from(positions);
       let mut delta = 0.01;
       println!("Position {file} k {k} loss {best_loss:.4}");
       while delta > 0.0001 {
         let mut changed = false;
         let k = best_k + delta;
-        let (loss, positions) = calculate_loss(
-          k,
-          &processed_data,
-          &mg_piece_values,
-          &mg_edge_avoidance,
-          &eg_piece_values,
-          &eg_edge_avoidance,
-        );
+        let (loss, positions) = calculate_loss(k, &processed_data, &parameters);
         let average_loss = loss / f64::from(positions);
         println!("Position {file} k {k} loss {average_loss:.4}");
         if average_loss < best_loss {
@@ -155,14 +113,7 @@ fn main() {
           changed = true;
         } else {
           let k = best_k - delta;
-          let (loss, positions) = calculate_loss(
-            k,
-            &processed_data,
-            &mg_piece_values,
-            &mg_edge_avoidance,
-            &eg_piece_values,
-            &eg_edge_avoidance,
-          );
+          let (loss, positions) = calculate_loss(k, &processed_data, &parameters);
           let average_loss = loss / f64::from(positions);
           println!("Position {file} k {k} loss {average_loss:.4}");
           if average_loss < best_loss {
@@ -180,56 +131,42 @@ fn main() {
     }
   }
   let start = Instant::now();
-  let mut best_loss = calculate_loss_batch(
-    &data,
-    &mg_piece_values,
-    &mg_edge_avoidance,
-    &eg_piece_values,
-    &eg_edge_avoidance,
-  );
+  let mut best_loss = calculate_loss_batch(&data, &parameters);
   println!("{}ms to calculate loss", start.elapsed().as_millis());
   // Tune parameters
-  let mut parameters: Vec<usize> = (0..72).collect();
+  let mut parameter_indices: Vec<usize> = (0..108).collect();
   let mut iteration_count = 0;
   let mut changed = true;
   while changed {
     let start = Instant::now();
     iteration_count += 1;
     println!("Starting iteration {iteration_count}, Loss {best_loss:.5}");
-    parameters.shuffle(&mut thread_rng());
+    parameter_indices.shuffle(&mut thread_rng());
     changed = false;
-    for parameter in &parameters {
+    for parameter in &parameter_indices {
       let parameter = *parameter;
       // try increasing the parameter
       let mut updated = false;
       for _ in 0..MAX_ITERATIONS {
-        let mut new_piece_mg = mg_piece_values;
-        let mut new_edge_mg = mg_edge_avoidance;
-        let mut new_piece_eg = eg_piece_values;
-        let mut new_edge_eg = eg_edge_avoidance;
+        let mut new_parameters = parameters;
         let index = parameter % 18;
-        if parameter >= 54 {
-          new_piece_mg[index] += 1;
+        if parameter >= 90 {
+          new_parameters.middlegame_pieces[index] += 1;
+        } else if parameter >= 72 {
+          new_parameters.middlegame_edge[index][0] += 1;
+        } else if parameter >= 54 {
+          new_parameters.middlegame_edge[index][1] += 1;
         } else if parameter >= 36 {
-          new_edge_mg[index] += 1;
+          new_parameters.endgame_pieces[index] += 1;
         } else if parameter >= 18 {
-          new_piece_eg[index] += 1;
+          new_parameters.endgame_edge[index][0] += 1;
         } else {
-          new_edge_eg[index] += 1;
+          new_parameters.endgame_edge[index][1] += 1;
         }
-        let new_loss = calculate_loss_batch(
-          &data,
-          &new_piece_mg,
-          &new_edge_mg,
-          &new_piece_eg,
-          &new_edge_eg,
-        );
+        let new_loss = calculate_loss_batch(&data, &new_parameters);
         if new_loss < best_loss {
           best_loss = new_loss;
-          mg_piece_values = new_piece_mg;
-          mg_edge_avoidance = new_edge_mg;
-          eg_piece_values = new_piece_eg;
-          eg_edge_avoidance = new_edge_eg;
+          parameters = new_parameters;
           changed = true;
           updated = true;
         } else {
@@ -238,33 +175,25 @@ fn main() {
       }
       if !updated {
         for _ in 0..MAX_ITERATIONS {
-          let mut new_piece_mg = mg_piece_values;
-          let mut new_edge_mg = mg_edge_avoidance;
-          let mut new_piece_eg = eg_piece_values;
-          let mut new_edge_eg = eg_edge_avoidance;
+          let mut new_parameters = parameters;
           let index = parameter % 18;
-          if parameter >= 54 {
-            new_piece_mg[index] -= 1;
+          if parameter >= 90 {
+            new_parameters.middlegame_pieces[index] -= 1;
+          } else if parameter >= 72 {
+            new_parameters.middlegame_edge[index][0] -= 1;
+          } else if parameter >= 54 {
+            new_parameters.middlegame_edge[index][1] -= 1;
           } else if parameter >= 36 {
-            new_edge_mg[index] -= 1;
+            new_parameters.endgame_pieces[index] -= 1;
           } else if parameter >= 18 {
-            new_piece_eg[index] -= 1;
+            new_parameters.endgame_edge[index][0] -= 1;
           } else {
-            new_edge_eg[index] -= 1;
+            new_parameters.endgame_edge[index][1] -= 1;
           }
-          let new_loss = calculate_loss_batch(
-            &data,
-            &new_piece_mg,
-            &new_edge_mg,
-            &new_piece_eg,
-            &new_edge_eg,
-          );
+          let new_loss = calculate_loss_batch(&data, &new_parameters);
           if new_loss < best_loss {
             best_loss = new_loss;
-            mg_piece_values = new_piece_mg;
-            mg_edge_avoidance = new_edge_mg;
-            eg_piece_values = new_piece_eg;
-            eg_edge_avoidance = new_edge_eg;
+            parameters = new_parameters;
             changed = true;
           } else {
             break;
@@ -273,9 +202,6 @@ fn main() {
       }
     }
     println!("Iteration took {}s", start.elapsed().as_secs());
-    println!("{mg_piece_values:?}");
-    println!("{mg_edge_avoidance:?}");
-    println!("{eg_piece_values:?}");
-    println!("{eg_edge_avoidance:?}");
+    println!("{parameters:?}");
   }
 }

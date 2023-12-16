@@ -9,6 +9,7 @@ use crate::help_page::{draw_help, HelpPage};
 use crate::helpers::{
   char_text_edit, checkbox, colour_edit, get_fen, label_text_edit, menu_button,
 };
+use crate::players::{PlayerColour, PlayerData, PlayerType, SearchType, UciState};
 use crate::render::draw_game;
 use crate::themes::{Colours, Theme};
 use eframe::epaint::{pos2, Color32, Pos2, Rect, Rounding, TextureId};
@@ -21,7 +22,7 @@ use enum_iterator::all;
 use helpers::{populate_dropdown, populate_dropdown_transform, raw_text_edit};
 use liberty_chess::parsing::to_name;
 use liberty_chess::{Board, Gamestate, Piece};
-use players::{PlayerColour, PlayerData, PlayerType, SearchType};
+use resvg::render;
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{FitTo, Tree};
 use themes::CustomTheme;
@@ -86,11 +87,6 @@ pub(crate) struct LibertyChessGUI {
   // global settings
   config: Configuration,
 
-  // fields for board rendering
-  selected: Option<(usize, usize)>,
-  drag: Option<((usize, usize), Pos2)>,
-  flipped: bool,
-
   // fields for main menu
   fen: String,
   gamemode: GameMode,
@@ -105,12 +101,15 @@ pub(crate) struct LibertyChessGUI {
   alternate_player_colour: PlayerColour,
 
   // fields for game screen
+  selected: Option<(usize, usize)>,
+  drag: Option<((usize, usize), Pos2)>,
   undo: Vec<Board>,
   #[cfg(feature = "clock")]
   clock: Option<Clock>,
   promotion: Piece,
   player: Option<(PlayerData, bool)>,
   searchtime: SearchTime,
+  flipped: bool,
   eval: Option<Score>,
 
   // fields for other screens
@@ -160,10 +159,6 @@ impl LibertyChessGUI {
 
       config,
 
-      selected: None,
-      drag: None,
-      flipped: false,
-
       gamemode: GameMode::Preset(Presets::Standard),
       fen: Presets::Standard.value(),
       friendly: false,
@@ -176,12 +171,15 @@ impl LibertyChessGUI {
       searchsettings: SearchType::default(),
       alternate_player_colour: PlayerColour::Random,
 
+      selected: None,
+      drag: None,
       undo: Vec::new(),
       #[cfg(feature = "clock")]
       clock: None,
       promotion: liberty_chess::QUEEN,
       player: None,
       searchtime: SearchTime::Infinite,
+      flipped: false,
       eval: None,
 
       help_page: HelpPage::PawnForward,
@@ -213,7 +211,7 @@ impl LibertyChessGUI {
       }
     }
     let mut pixmap = Pixmap::new(size, size).expect("SVG is 0x0");
-    resvg::render(
+    render(
       &self.images[index],
       FitTo::Size(size, size),
       Transform::default(),
@@ -324,7 +322,7 @@ impl App for LibertyChessGUI {
     CentralPanel::default().show(ctx, |ui| {
       match &self.screen {
         Screen::Menu => draw_menu(self, ctx, ui),
-        Screen::Game(board) => draw_game(self, ctx, *board.clone()),
+        Screen::Game(board) => draw_game(self, ctx, &board.clone()),
         Screen::Help => draw_help(self, ctx),
         Screen::Credits => credits::draw(self, ctx, ui),
         Screen::Settings => {
@@ -388,8 +386,10 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
   match &gui.screen {
     Screen::Menu => gui.message = None,
     Screen::Game(_) => {
+      gui.message = None;
       gui.selected = None;
-      gui.undo = Vec::new();
+      gui.drag = None;
+      gui.undo.clear();
       gui.player = None;
       gui.eval = None;
       #[cfg(feature = "clock")]
@@ -431,6 +431,21 @@ fn draw_nav_buttons(gui: &mut LibertyChessGUI, ui: &mut Ui) {
 
 // draw main areas for each screen
 fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
+  // handle loading engine
+  if let Some((PlayerData::Uci(ref mut interface), _)) = gui.player {
+    interface.poll();
+    match interface.state {
+      UciState::Pending => (),
+      UciState::Waiting | UciState::Analysing | UciState::AwaitStop => {
+        let board = interface.board.clone();
+        switch_screen(gui, Screen::Game(board));
+      }
+      UciState::Unsupported => {
+        gui.message = Some("Engine does not support position".to_owned());
+        gui.player = None;
+      }
+    }
+  }
   draw_nav_buttons(gui, ui);
   ComboBox::from_id_source("Gamemode")
     .selected_text("Gamemode: ".to_owned() + &gui.gamemode.to_string())
@@ -521,12 +536,22 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
               (None, Some("Must limit depth, nodes or time".to_owned()))
             } else {
               gui.searchtime = searchtime;
-              (Some((PlayerData::new(player, ctx), colour)), None)
+              let player_data = PlayerData::new(player, &board, ctx);
+              match player_data {
+                Ok(player_data) => {
+                  let message = if let PlayerData::Uci(_) = player_data {
+                    Some("Loading engine".to_owned())
+                  } else {
+                    None
+                  };
+                  (Some((player_data, colour)), message)
+                }
+                Err(error) => (None, Some(error)),
+              }
             }
           });
 
         gui.player = player;
-
         if message.is_none() {
           switch_screen(gui, Screen::Game(Box::new(board)));
         }
@@ -542,10 +567,17 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
   }
 
   #[cfg(feature = "clock")]
-  if let Some(PlayerType::BuiltIn(_, _)) = gui.alternate_player {
-    gui.clock_type = Type::None;
-  } else {
-    draw_edit(gui, ui, size * 2.0);
+  {
+    let thinking_engine = if let Some(player) = &gui.alternate_player {
+      player.is_thinking()
+    } else {
+      false
+    };
+    if thinking_engine {
+      gui.clock_type = Type::None;
+    } else {
+      draw_edit(gui, ui, size * 2.0);
+    }
   }
 
   let player_name = gui
@@ -557,7 +589,11 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
     .selected_text(format!("Opponent: {player_name}"))
     .show_ui(ui, |ui| {
       ui.selectable_value(&mut gui.alternate_player, None, "Local Opponent");
-      let values = [PlayerType::RandomEngine, PlayerType::built_in()];
+      let values = [
+        PlayerType::RandomEngine,
+        PlayerType::built_in(),
+        PlayerType::External(String::new()),
+      ];
       for value in values {
         let string = value.to_string();
         ui.selectable_value(&mut gui.alternate_player, Some(value), string);
@@ -574,120 +610,131 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
         populate_dropdown(ui, &mut gui.alternate_player_colour);
       });
   }
-  if let Some(PlayerType::BuiltIn(ref mut qdepth, ref mut hash_size)) = gui.alternate_player {
-    ComboBox::from_id_source("Searchtime")
-      .selected_text(format!("Searchtime: {}", gui.searchsettings.to_string()))
-      .show_ui(ui, |ui| {
-        let values = [
-          SearchType::default(),
-          #[cfg(feature = "clock")]
-          SearchType::increment(1, 2),
-          #[cfg(feature = "clock")]
-          SearchType::handicap(10, 10, 1, 2),
-        ];
-        for value in values {
-          let string = value.to_string();
-          ui.selectable_value(&mut gui.searchsettings, value, string);
-        }
-      });
-    match gui.searchsettings {
-      #[cfg(feature = "clock")]
-      SearchType::Increment(ref mut time, ref mut inc) => {
-        ui.horizontal_top(|ui| {
-          ui.label("Initial time (minutes)");
-          raw_text_edit(ui, size * 3.0, time);
-        });
-        ui.horizontal_top(|ui| {
-          ui.label("Increment (seconds)");
-          raw_text_edit(ui, size * 3.0, inc);
-        });
-      }
-      #[cfg(feature = "clock")]
-      SearchType::Handicap(
-        ref mut human_time,
-        ref mut human_inc,
-        ref mut engine_time,
-        ref mut engine_inc,
-      ) => {
-        ui.horizontal_top(|ui| {
-          ui.label("Human time (minutes)");
-          raw_text_edit(ui, size * 3.0, human_time);
-          ui.label("Human increment (seconds)");
-          raw_text_edit(ui, size * 3.0, human_inc);
-        });
-        ui.horizontal_top(|ui| {
-          ui.label("Engine time (minutes)");
-          raw_text_edit(ui, size * 3.0, engine_time);
-          ui.label("Engine increment (seconds)");
-          raw_text_edit(ui, size * 3.0, engine_inc);
-        });
-      }
-      SearchType::Other(ref mut limits) => {
-        ui.horizontal_top(|ui| {
-          if checkbox(
-            ui,
-            &mut limits.depth.is_some(),
-            "Limit search by depth",
-            #[cfg(feature = "sound")]
-            gui.audio_engine.as_mut(),
-          ) {
-            if limits.depth.is_some() {
-              limits.depth = None;
-            } else {
-              limits.depth = Some(SearchType::depth());
-            }
-          }
-          if let Some(ref mut depth) = limits.depth {
-            raw_text_edit(ui, size * 2.0, depth);
+  if let Some(ref mut player) = gui.alternate_player {
+    if player.is_thinking() {
+      ComboBox::from_id_source("Searchtime")
+        .selected_text(format!("Searchtime: {}", gui.searchsettings.to_string()))
+        .show_ui(ui, |ui| {
+          let values = [
+            SearchType::default(),
+            #[cfg(feature = "clock")]
+            SearchType::increment(1, 2),
+            #[cfg(feature = "clock")]
+            SearchType::handicap(10, 10, 1, 2),
+          ];
+          for value in values {
+            let string = value.to_string();
+            ui.selectable_value(&mut gui.searchsettings, value, string);
           }
         });
-        ui.horizontal_top(|ui| {
-          if checkbox(
-            ui,
-            &mut limits.nodes.is_some(),
-            "Limit search by nodes",
-            #[cfg(feature = "sound")]
-            gui.audio_engine.as_mut(),
-          ) {
-            if limits.nodes.is_some() {
-              limits.nodes = None;
-            } else {
-              limits.nodes = Some(SearchType::nodes());
-            }
-          }
-          if let Some(ref mut nodes) = limits.nodes {
-            raw_text_edit(ui, size * 5.0, nodes);
-          }
-        });
-        ui.horizontal_top(|ui| {
-          if checkbox(
-            ui,
-            &mut limits.time.is_some(),
-            "Limit search by time (ms)",
-            #[cfg(feature = "sound")]
-            gui.audio_engine.as_mut(),
-          ) {
-            if limits.time.is_some() {
-              limits.time = None;
-            } else {
-              limits.time = Some(SearchType::time());
-            }
-          }
-          if let Some(ref mut time) = limits.time {
+      match gui.searchsettings {
+        #[cfg(feature = "clock")]
+        SearchType::Increment(ref mut time, ref mut inc) => {
+          ui.horizontal_top(|ui| {
+            ui.label("Initial time (minutes)");
             raw_text_edit(ui, size * 3.0, time);
-          }
-        });
+          });
+          ui.horizontal_top(|ui| {
+            ui.label("Increment (seconds)");
+            raw_text_edit(ui, size * 3.0, inc);
+          });
+        }
+        #[cfg(feature = "clock")]
+        SearchType::Handicap(
+          ref mut human_time,
+          ref mut human_inc,
+          ref mut engine_time,
+          ref mut engine_inc,
+        ) => {
+          ui.horizontal_top(|ui| {
+            ui.label("Human time (minutes)");
+            raw_text_edit(ui, size * 3.0, human_time);
+            ui.label("Human increment (seconds)");
+            raw_text_edit(ui, size * 3.0, human_inc);
+          });
+          ui.horizontal_top(|ui| {
+            ui.label("Engine time (minutes)");
+            raw_text_edit(ui, size * 3.0, engine_time);
+            ui.label("Engine increment (seconds)");
+            raw_text_edit(ui, size * 3.0, engine_inc);
+          });
+        }
+        SearchType::Other(ref mut limits) => {
+          ui.horizontal_top(|ui| {
+            if checkbox(
+              ui,
+              &mut limits.depth.is_some(),
+              "Limit search by depth",
+              #[cfg(feature = "sound")]
+              gui.audio_engine.as_mut(),
+            ) {
+              if limits.depth.is_some() {
+                limits.depth = None;
+              } else {
+                limits.depth = Some(SearchType::depth());
+              }
+            }
+            if let Some(ref mut depth) = limits.depth {
+              raw_text_edit(ui, size * 2.0, depth);
+            }
+          });
+          ui.horizontal_top(|ui| {
+            if checkbox(
+              ui,
+              &mut limits.nodes.is_some(),
+              "Limit search by nodes",
+              #[cfg(feature = "sound")]
+              gui.audio_engine.as_mut(),
+            ) {
+              if limits.nodes.is_some() {
+                limits.nodes = None;
+              } else {
+                limits.nodes = Some(SearchType::nodes());
+              }
+            }
+            if let Some(ref mut nodes) = limits.nodes {
+              raw_text_edit(ui, size * 5.0, nodes);
+            }
+          });
+          ui.horizontal_top(|ui| {
+            if checkbox(
+              ui,
+              &mut limits.time.is_some(),
+              "Limit search by time (ms)",
+              #[cfg(feature = "sound")]
+              gui.audio_engine.as_mut(),
+            ) {
+              if limits.time.is_some() {
+                limits.time = None;
+              } else {
+                limits.time = Some(SearchType::time());
+              }
+            }
+            if let Some(ref mut time) = limits.time {
+              raw_text_edit(ui, size * 3.0, time);
+            }
+          });
+        }
       }
     }
-    if gui.config.get_advanced() {
-      ui.horizontal_top(|ui| {
-        ui.label("Quiescence depth");
-        raw_text_edit(ui, size * 2.0, qdepth);
-      });
-      ui.horizontal_top(|ui| {
-        ui.label("Hash size (MB)");
-        raw_text_edit(ui, size * 4.0, hash_size);
-      });
+    match player {
+      PlayerType::BuiltIn(ref mut qdepth, ref mut hash_size) => {
+        if gui.config.get_advanced() {
+          ui.horizontal_top(|ui| {
+            ui.label("Quiescence depth");
+            raw_text_edit(ui, size * 2.0, qdepth);
+          });
+          ui.horizontal_top(|ui| {
+            ui.label("Hash size (MB)");
+            raw_text_edit(ui, size * 4.0, hash_size);
+          });
+        }
+      }
+      PlayerType::External(path) => {
+        ui.label("Engine path:");
+        char_text_edit(ui, size, path);
+      }
+      PlayerType::RandomEngine => (),
     }
   }
 }
@@ -831,6 +878,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
       match player {
         PlayerData::RandomEngine => (),
         PlayerData::BuiltIn(interface) => interface.cancel_move(),
+        PlayerData::Uci(interface) => interface.cancel_move(),
       }
     }
     #[cfg(feature = "clock")]
@@ -921,6 +969,9 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
       }
     }
   });
+  if let Some(message) = &gui.message {
+    ui.label(message);
+  }
 }
 
 // general helper functions
@@ -973,7 +1024,7 @@ fn main() {
 fn main() {
   let size = helpers::ICON_SIZE;
   let mut pixmap = Pixmap::new(size, size).unwrap();
-  resvg::render(
+  render(
     &images::get()[11],
     FitTo::Size(size, size),
     Transform::default(),

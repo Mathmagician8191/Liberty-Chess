@@ -226,7 +226,6 @@ Client to server:
     this is the current line the client is calculating. <cpunr> is the number of the cpu if the client is running on more than one cpu. <cpunr> = 1,2,3....
     if the client is just using one cpu, <cpunr> can be omitted.
     If <cpunr> is greater than 1, always send all k lines in k strings together.
-    The client should only send this if the option "UCI_ShowCurrLine" is set to true.
 
 * option
   This command tells the server which parameters can be changed in the client.
@@ -251,8 +250,6 @@ Client to server:
       So the client should use a very small hash first as default.
     * <id> = MultiPV, type spin
       the client supports multi best line or k-best mode. the default value is 1
-    * <id> = UCI_ShowCurrLine, type check, should be false by default,
-      the client can show the current line it is calculating. see "info currline" above.
     * <id> = UCI_Opponent, type string
       With this command the server can send the name, title, elo and if the client is playing a human
       or computer to the client.

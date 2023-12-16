@@ -9,10 +9,12 @@ use liberty_chess::{Board, Gamestate};
 use oxidation::glue::process_position;
 use oxidation::{random_move, State, HASH_SIZE, QDEPTH, VERSION_NUMBER};
 use rand::{thread_rng, Rng};
+use std::io::BufReader;
+use std::process::{Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::spawn;
 use ulci::client::Message;
-use ulci::server::UlciResult;
+use ulci::server::{startup, AnalysisRequest, Request, UlciResult};
 use ulci::{Limits as OtherLimits, Score, SearchTime};
 
 #[cfg(feature = "clock")]
@@ -177,6 +179,7 @@ pub enum PlayerType {
   RandomEngine,
   // parameters are qdepth and hash size
   BuiltIn(NumericalInput<u16>, NumericalInput<usize>),
+  External(String),
 }
 
 impl ToString for PlayerType {
@@ -184,6 +187,7 @@ impl ToString for PlayerType {
     match self {
       Self::RandomEngine => "Random Mover".to_owned(),
       Self::BuiltIn(_, _) => format!("Oxidation v{VERSION_NUMBER}"),
+      Self::External(_) => "External engine (beta)".to_owned(),
     }
   }
 }
@@ -194,6 +198,13 @@ impl PlayerType {
       NumericalInput::new(u16::from(QDEPTH), 0, u16::from(u8::MAX)),
       NumericalInput::new(HASH_SIZE, 0, 1 << 32),
     )
+  }
+
+  pub const fn is_thinking(&self) -> bool {
+    match self {
+      Self::RandomEngine => false,
+      Self::BuiltIn(_, _) | Self::External(_) => true,
+    }
   }
 }
 
@@ -228,12 +239,13 @@ impl PlayerColour {
 pub enum PlayerData {
   RandomEngine,
   BuiltIn(EngineInterface),
+  Uci(UciInterface),
 }
 
 impl PlayerData {
-  pub fn new(player: &PlayerType, ctx: &Context) -> Self {
+  pub fn new(player: &PlayerType, board: &Board, ctx: &Context) -> Result<Self, String> {
     match player {
-      PlayerType::RandomEngine => Self::RandomEngine,
+      PlayerType::RandomEngine => Ok(Self::RandomEngine),
       PlayerType::BuiltIn(qdepth, hash_size) => {
         let (send_request, recieve_request) = channel();
         let (send_result, recieve_result) = channel();
@@ -255,24 +267,58 @@ impl PlayerData {
             ctx.request_repaint();
           }
         });
-        Self::BuiltIn(EngineInterface {
+        Ok(Self::BuiltIn(EngineInterface {
           tx: send_request,
           rx: recieve_result,
           send_message,
           status: false,
-        })
+        }))
+      }
+      PlayerType::External(path) => {
+        let (send_request, recieve_request) = channel();
+        let (send_result, recieve_result) = channel();
+        let mut engine = Command::new(path)
+          .stdin(Stdio::piped())
+          .stdout(Stdio::piped())
+          .spawn()
+          .map_err(|_| "Invalid path".to_owned())?;
+        let stdin = engine
+          .stdin
+          .take()
+          .ok_or_else(|| "Could not load stdin".to_owned())?;
+        let stdout = BufReader::new(
+          engine
+            .stdout
+            .take()
+            .ok_or_else(|| "Could not load stdout".to_owned())?,
+        );
+        let ctx = ctx.clone();
+        spawn(move || {
+          startup(
+            recieve_request,
+            &send_result,
+            stdout,
+            stdin,
+            false,
+            move || ctx.request_repaint(),
+          );
+        });
+        Ok(Self::Uci(UciInterface {
+          tx: send_request,
+          rx: recieve_result,
+          state: UciState::Pending,
+          board: Box::new(board.clone()),
+        }))
       }
     }
   }
 
-  pub fn get_bestmove(
-    &mut self,
-    board: &Board,
-    searchtime: SearchTime,
-  ) -> (Option<Move>, Option<Score>) {
+  // Update and check for bestmove/score update
+  pub fn poll(&mut self, board: &Board, searchtime: SearchTime) -> (Option<Move>, Option<Score>) {
     match self {
       Self::RandomEngine => (random_move(board), None),
       Self::BuiltIn(interface) => interface.get_move(board, searchtime),
+      Self::Uci(interface) => interface.get_move(board, searchtime),
     }
   }
 }
@@ -293,7 +339,7 @@ impl EngineInterface {
     let (mut result, mut score) = (None, None);
     if self.status {
       // request sent, poll for results
-      while let Ok(message) = self.rx.try_recv() {
+      for message in self.rx.try_iter() {
         match message {
           UlciResult::AnalysisStopped(bestmove) => {
             result = Some(bestmove);
@@ -306,7 +352,7 @@ impl EngineInterface {
             }
             score = Some(result);
           }
-          UlciResult::Startup(_, _) | UlciResult::Info(_, _) => (),
+          UlciResult::Startup(_) | UlciResult::Info(_, _) => (),
         }
       }
     } else if board.state() == Gamestate::InProgress && !board.promotion_available() {
@@ -324,7 +370,7 @@ impl EngineInterface {
       while let Ok(message) = self.rx.recv() {
         match message {
           UlciResult::AnalysisStopped(_) => self.status = false,
-          UlciResult::Analysis(_) | UlciResult::Startup(_, _) | UlciResult::Info(_, _) => (),
+          UlciResult::Analysis(_) | UlciResult::Startup(_) | UlciResult::Info(_, _) => (),
         }
       }
     }
@@ -335,4 +381,125 @@ impl Drop for EngineInterface {
   fn drop(&mut self) {
     self.send_message.send(Message::Stop).ok();
   }
+}
+
+pub struct UciInterface {
+  tx: Sender<Request>,
+  rx: Receiver<UlciResult>,
+  pub state: UciState,
+  // Hacky solution to preserve the board until the engine has loaded
+  pub board: Box<Board>,
+}
+
+impl UciInterface {
+  pub fn poll(&mut self) {
+    match self.state {
+      UciState::Pending => {
+        for message in self.rx.try_iter() {
+          match message {
+            UlciResult::Startup(info) => {
+              self.state = if info.supports(&self.board) {
+                UciState::Waiting
+              } else {
+                UciState::Unsupported
+              };
+            }
+            UlciResult::Analysis(_) | UlciResult::AnalysisStopped(_) | UlciResult::Info(_, _) => (),
+          }
+        }
+      }
+      UciState::Waiting | UciState::Analysing | UciState::AwaitStop | UciState::Unsupported => (),
+    }
+  }
+
+  pub fn get_move(
+    &mut self,
+    board: &Board,
+    searchtime: SearchTime,
+  ) -> (Option<Move>, Option<Score>) {
+    let (mut result, mut score) = (None, None);
+    match self.state {
+      UciState::Pending => {
+        for message in self.rx.try_iter() {
+          match message {
+            UlciResult::Startup(info) => {
+              self.state = if info.supports(board) {
+                UciState::Waiting
+              } else {
+                UciState::Unsupported
+              };
+            }
+            UlciResult::Analysis(_) | UlciResult::AnalysisStopped(_) | UlciResult::Info(_, _) => (),
+          }
+        }
+      }
+      UciState::Waiting => {
+        if board.state() == Gamestate::InProgress && !board.promotion_available() {
+          // send request
+          // TODO: send board history properly
+          self
+            .tx
+            .send(Request::Analysis(AnalysisRequest {
+              fen: board.to_string(),
+              moves: Vec::new(),
+              time: searchtime,
+              searchmoves: Vec::new(),
+            }))
+            .ok();
+          self.state = UciState::Analysing;
+        }
+      }
+      UciState::Analysing => {
+        // request sent, poll for results
+        for message in self.rx.try_iter() {
+          match message {
+            UlciResult::AnalysisStopped(bestmove) => {
+              result = Some(bestmove);
+              self.state = UciState::Waiting;
+            }
+            UlciResult::Analysis(result) => {
+              let mut result = result.score;
+              if board.to_move() {
+                result = -result;
+              }
+              score = Some(result);
+            }
+            UlciResult::Startup(_) | UlciResult::Info(_, _) => (),
+          }
+        }
+      }
+      UciState::AwaitStop => {
+        for message in self.rx.try_iter() {
+          match message {
+            UlciResult::AnalysisStopped(_) => self.state = UciState::Waiting,
+            UlciResult::Analysis(_) | UlciResult::Startup(_) | UlciResult::Info(_, _) => (),
+          }
+        }
+      }
+      UciState::Unsupported => (),
+    }
+    (result, score)
+  }
+
+  pub fn cancel_move(&mut self) {
+    if self.state == UciState::Analysing {
+      self.tx.send(Request::StopAnalysis).ok();
+      self.state = UciState::AwaitStop;
+    }
+  }
+}
+
+impl Drop for UciInterface {
+  fn drop(&mut self) {
+    self.tx.send(Request::StopAnalysis).ok();
+  }
+}
+
+#[derive(Eq, PartialEq)]
+pub enum UciState {
+  Pending,
+  Waiting,
+  Analysing,
+  AwaitStop,
+  Unsupported,
 }

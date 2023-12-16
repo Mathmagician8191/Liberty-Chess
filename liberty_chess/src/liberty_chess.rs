@@ -179,10 +179,11 @@ impl Board {
       }
     }
 
-    let mut en_passant = None;
-    if fields.len() > 3 {
-      en_passant = get_indices(fields[3]);
-    }
+    let en_passant = if fields.len() > 3 {
+      get_indices(fields[3])
+    } else {
+      None
+    };
 
     let mut halfmoves = 0;
     if let Some(value) = fields.get(4).and_then(|x| x.parse::<u8>().ok()) {
@@ -232,14 +233,11 @@ impl Board {
       }
     }
 
-    let pawn_checkmates = Board::can_checkmate(&promotion_options);
+    let pawn_checkmates = Self::can_checkmate(&promotion_options);
 
-    let mut friendly_fire = false;
-    if fields.len() > 8 && fields[8] == "ff" {
-      friendly_fire = true;
-    }
+    let friendly_fire = fields.len() > 8 && fields[8] == "ff";
 
-    let mut board = Board {
+    let mut board = Self {
       pieces,
       to_move,
       castling,
@@ -376,6 +374,21 @@ impl Board {
   #[must_use]
   pub const fn state(&self) -> Gamestate {
     self.state
+  }
+
+  /// Whether any settings have been changed from their normal chess defaults
+  pub fn non_default_flags(&self) -> bool {
+    self.height() != 8
+      || self.width() != 8
+      || self.friendly_fire
+      || self.castle_row != 0
+      || self.king_column != 7
+      || self.queen_column != 0
+      || self.pawn_row != 2
+      || self.pawn_moves != 2
+      || self.white_kings.len() != 1
+      || self.black_kings.len() != 1
+      || self.shared_data.1 != vec![QUEEN, ROOK, BISHOP, KNIGHT]
   }
 
   /// Checks if a move is psuedo-legal.

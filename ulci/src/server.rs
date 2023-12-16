@@ -41,8 +41,8 @@ pub enum UlciResult {
   Analysis(AnalysisResult),
   /// Analysis is over, return bestmove
   AnalysisStopped(Move),
-  /// The client is ready, send client info and version
-  Startup(ClientInfo, usize),
+  /// The client is ready, send client info
+  Startup(ClientInfo),
   /// Information for the server
   Info(InfoType, String),
 }
@@ -201,16 +201,35 @@ pub fn startup(
   mut input: impl BufRead,
   mut out: impl Write + Send + 'static,
   debug: bool,
+  // To make the GUI work without polling or creating more threads
+  completion: impl Fn(),
 ) -> Option<()> {
-  write(&mut out, "uci");
+  let mut buffer = String::new();
+  let client_info = setup(results, &mut input, &mut out, debug, &mut buffer)?;
+  results.send(UlciResult::Startup(client_info)).ok();
+  completion();
+  let (tx, rx) = channel();
+  let out = Arc::new(Mutex::new(out));
+  let new_out = out.clone();
+  spawn(move || process_server(&requests, &tx, &new_out));
+  process_analysis(&rx, results, input, &out, buffer, completion)
+}
+
+fn setup(
+  results: &Sender<UlciResult>,
+  input: &mut impl BufRead,
+  out: &mut (impl Write + Send + 'static),
+  debug: bool,
+  buffer: &mut String,
+) -> Option<ClientInfo> {
+  write(out, "uci");
   let mut version = 0;
   let mut pieces = vec![PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING];
   let mut name = String::new();
   let mut username = None;
   let mut author = String::new();
   let mut options = HashMap::new();
-  let mut buffer = String::new();
-  while let Ok(chars) = input.read_line(&mut buffer) {
+  while let Ok(chars) = input.read_line(buffer) {
     if chars == 0 {
       return None;
     }
@@ -224,7 +243,7 @@ pub fn startup(
         }
         Some("pieces") => {
           if let Some(word) = words.next() {
-            pieces = word.chars().flat_map(to_piece).collect();
+            pieces = word.chars().flat_map(to_piece).map(i8::abs).collect();
           }
         }
         Some("name") => name = convert_words(words),
@@ -337,27 +356,18 @@ pub fn startup(
   }
   buffer.clear();
   if debug {
-    write(&mut out, "debug on");
+    write(out, "debug on");
   }
-  results
-    .send(UlciResult::Startup(
-      ClientInfo {
-        name,
-        username,
-        author,
-        options,
-        pieces,
-        // not relevant for the server
-        depth: 0,
-      },
-      version,
-    ))
-    .ok();
-  let (tx, rx) = channel();
-  let out = Arc::new(Mutex::new(out));
-  let new_out = out.clone();
-  spawn(move || process_server(&requests, &tx, &new_out));
-  process_analysis(&rx, results, input, &out, buffer)
+  Some(ClientInfo {
+    version,
+    name,
+    username,
+    author,
+    options,
+    pieces,
+    // not relevant for the server
+    depth: 0,
+  })
 }
 
 fn process_server(
@@ -396,6 +406,7 @@ fn process_analysis(
   mut input: impl BufRead,
   out: &Arc<Mutex<impl Write>>,
   mut buffer: String,
+  completion: impl Fn(),
 ) -> Option<()> {
   while let Ok(request) = rx.recv() {
     let moves = if request.moves.is_empty() {
@@ -448,6 +459,7 @@ fn process_analysis(
           "bestmove" => {
             if let Some(bestmove) = words.next().and_then(|m| m.parse().ok()) {
               tx.send(UlciResult::AnalysisStopped(bestmove)).ok();
+              completion();
               buffer.clear();
               break;
             }

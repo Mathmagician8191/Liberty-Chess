@@ -18,7 +18,6 @@ use ulci::server::{startup, AnalysisRequest, Request, UlciResult};
 use ulci::SearchTime;
 
 const CHAMPION: &str = "./target/release/oxidation";
-
 const CHALLENGER: &str = "./target/release/oxidation";
 
 const GAME_PAIR_COUNT: usize = 160;
@@ -64,7 +63,14 @@ fn spawn_engine(path: &'static str, requests: Receiver<Request>, results: &Sende
     .expect("Loading engine failed");
   let stdin = engine.stdin.take().expect("Loading engine stdin failed");
   let stdout = engine.stdout.take().expect("Loading engine stdout failed");
-  startup(requests, results, BufReader::new(stdout), stdin, false);
+  startup(
+    requests,
+    results,
+    BufReader::new(stdout),
+    stdin,
+    false,
+    || (),
+  );
   // To avoid your computer being infected by thousands of zombies
   engine.wait().expect("Waiting failed");
 }
@@ -74,7 +80,7 @@ fn load_engine(path: &'static str) -> (Sender<Request>, Receiver<UlciResult>) {
   let (tx, rx) = channel();
   spawn(move || spawn_engine(path, rx, &send_results));
   while let Ok(result) = results.recv() {
-    if let UlciResult::Startup(_, _) = result {
+    if let UlciResult::Startup(_) = result {
       break;
     }
   }
@@ -167,7 +173,7 @@ fn process_move(
         }
         break;
       }
-      UlciResult::Startup(_, _) | UlciResult::Info(_, _) => (),
+      UlciResult::Startup(_) | UlciResult::Info(_, _) => (),
     }
   }
 }

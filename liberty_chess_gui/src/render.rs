@@ -23,7 +23,7 @@ use crate::get_dramatic;
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 const NUMBER_SCALE: f32 = 5.0;
 
-pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: Board) {
+pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board) {
   let mut clickable;
   clickable = !board.promotion_available() && board.state() == Gamestate::InProgress;
   #[cfg(feature = "clock")]
@@ -44,7 +44,7 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: Board) 
           *time = new_time.as_millis();
         }
       }
-      let (bestmove, score) = player.get_bestmove(&board, gui.searchtime);
+      let (bestmove, score) = player.poll(board, gui.searchtime);
       if let Some(score) = score {
         gui.eval = Some(score);
       }
@@ -70,6 +70,8 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: Board) 
           gui.screen = Screen::Game(Box::new(position));
           // It needs 1 more frame to update for some reason
           ctx.request_repaint();
+        } else {
+          gui.message = Some(format!("Engine made illegal move {}", bestmove.to_string()));
         }
       }
     }
@@ -77,7 +79,7 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: Board) 
   Area::new("Board")
     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
-      draw_board(gui, ctx, ui, &board, clickable, gui.flipped);
+      draw_board(gui, ctx, ui, board, clickable, gui.flipped);
     });
 }
 

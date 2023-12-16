@@ -4,13 +4,12 @@
 
 use core::ops::Neg;
 use liberty_chess::moves::Move;
-use liberty_chess::Piece;
+use liberty_chess::{Board, Piece};
 use parking_lot::Mutex;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::io::Write;
-use std::ops::Add;
 use std::sync::Arc;
 
 /// The functionality for a ULCI client
@@ -21,10 +20,13 @@ pub mod server;
 #[cfg(test)]
 mod tests;
 
-const VERSION: usize = 1;
+/// ULCI version
+pub const VERSION: usize = 1;
 
 /// The information required for the client
 pub struct ClientInfo {
+  /// Version of the protocol
+  pub version: usize,
   /// The name of the client
   pub name: String,
   /// The username of a human player, `None` if computer
@@ -37,6 +39,26 @@ pub struct ClientInfo {
   pub pieces: Vec<Piece>,
   /// Default bench depth
   pub depth: i8,
+}
+
+impl ClientInfo {
+  /// Whether the client supports the given board
+  #[must_use]
+  pub fn supports(&self, board: &Board) -> bool {
+    let mut version = 0;
+    let mut pieces = board.promotion_options().clone();
+    if board.non_default_flags() {
+      version = 1;
+    }
+    for piece in board.board().elements_row_major_iter() {
+      let piece = piece.abs();
+      if piece != 0 && !pieces.contains(&piece) {
+        pieces.push(piece);
+      }
+    }
+    let pieces_valid = !pieces.into_iter().any(|p| !self.pieces.contains(&p));
+    self.version >= version && pieces_valid
+  }
 }
 
 /// Settings for a search
@@ -236,25 +258,13 @@ impl Neg for Score {
   }
 }
 
-impl Add for Score {
-  type Output = Self;
-
-  // Only adds centipawn scores, otherwise does nothing
-  fn add(self, rhs: Self) -> Self::Output {
-    match (self, rhs) {
-      (Self::Centipawn(lhs), Self::Centipawn(rhs)) => Self::Centipawn(lhs + rhs),
-      _ => self,
-    }
-  }
-}
-
 impl Score {
   /// Uci output for the score
   #[must_use]
   pub fn show_uci(&self, move_count: u32, to_move: bool) -> String {
     match self {
       Self::Win(moves) => {
-        let to_move_bonus = if to_move { 1 } else { 0 };
+        let to_move_bonus = u32::from(to_move);
         format!("mate {}", moves + to_move_bonus - move_count)
       }
       Self::Loss(moves) => format!("mate -{}", moves - move_count),

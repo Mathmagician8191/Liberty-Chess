@@ -13,8 +13,8 @@ fn get_data(width: usize, height: usize) -> Array2D<u32> {
 
 impl History {
   pub fn new(width: usize, height: usize) -> Self {
-    let white_data = [(); 18].map(|_| get_data(width, height));
-    let black_data = [(); 18].map(|_| get_data(width, height));
+    let white_data = [(); 18].map(|()| get_data(width, height));
+    let black_data = [(); 18].map(|()| get_data(width, height));
     Self {
       white_data,
       black_data,

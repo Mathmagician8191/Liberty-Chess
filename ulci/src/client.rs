@@ -1,4 +1,4 @@
-use crate::{write, OptionValue, SearchSettings, SearchTime, UlciOption, VERSION};
+use crate::{write, OptionValue, SearchSettings, SearchTime, UlciOption};
 use crate::{ClientInfo, Limits};
 use liberty_chess::parsing::to_char;
 use liberty_chess::positions::get_startpos;
@@ -30,7 +30,7 @@ pub enum Message {
 }
 
 fn print_uci(out: &mut impl Write, info: &ClientInfo) {
-  write(out, &format!("id version {VERSION}"));
+  write(out, &format!("id version {}", info.version));
   write(
     out,
     &format!(
