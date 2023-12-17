@@ -1,6 +1,6 @@
 use crate::{
   write, write_mutex, ClientInfo, IntOption, OptionValue, RangeOption, Score, SearchTime,
-  UlciOption, WDL,
+  SupportedFeatures, UlciOption, V1Features, WDL,
 };
 use liberty_chess::moves::Move;
 use liberty_chess::parsing::to_piece;
@@ -223,7 +223,7 @@ fn setup(
   buffer: &mut String,
 ) -> Option<ClientInfo> {
   write(out, "uci");
-  let mut version = 0;
+  let mut features = SupportedFeatures::default();
   let mut pieces = vec![PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING];
   let mut name = String::new();
   let mut username = None;
@@ -237,8 +237,23 @@ fn setup(
     match words.next() {
       Some("id") => match words.next() {
         Some("version") => {
-          if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-            version = value;
+          if let Some(version) = words.next().and_then(|w| w.parse::<u32>().ok()) {
+            if version >= 1 {
+              features.v1 = V1Features::all();
+            }
+          }
+        }
+        Some("feature") => {
+          if let Some(word) = words.next() {
+            match word {
+              "boardsize" => features.v1.board_sizes = true,
+              "pawnconfig" => features.v1.pawn_moves = true,
+              "castling" => features.v1.castling = true,
+              "multiplekings" => features.v1.multiple_kings = true,
+              "promotion" => features.v1.promotion_options = true,
+              "friendlyfire" => features.v1.friendly_fire = true,
+              _ => (),
+            }
           }
         }
         Some("pieces") => {
@@ -359,7 +374,7 @@ fn setup(
     write(out, "debug on");
   }
   Some(ClientInfo {
-    version,
+    features,
     name,
     username,
     author,

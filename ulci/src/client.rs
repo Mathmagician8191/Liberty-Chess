@@ -1,4 +1,4 @@
-use crate::{write, OptionValue, SearchSettings, SearchTime, UlciOption};
+use crate::{write, OptionValue, SearchSettings, SearchTime, UlciOption, V1Features};
 use crate::{ClientInfo, Limits};
 use liberty_chess::parsing::to_char;
 use liberty_chess::positions::get_startpos;
@@ -30,7 +30,29 @@ pub enum Message {
 }
 
 fn print_uci(out: &mut impl Write, info: &ClientInfo) {
-  write(out, &format!("id version {}", info.version));
+  let v1_features = info.features.v1;
+  if v1_features == V1Features::all() {
+    write(out, "id version 1");
+  } else {
+    if v1_features.board_sizes {
+      write(out, "id feature boardsize");
+    }
+    if v1_features.pawn_moves {
+      write(out, "id feature pawnmoves");
+    }
+    if v1_features.castling {
+      write(out, "id feature castling");
+    }
+    if v1_features.multiple_kings {
+      write(out, "id feature multplekings");
+    }
+    if v1_features.promotion_options {
+      write(out, "id feature promotion");
+    }
+    if v1_features.friendly_fire {
+      write(out, "id feature friendlyfire");
+    }
+  }
   write(
     out,
     &format!(

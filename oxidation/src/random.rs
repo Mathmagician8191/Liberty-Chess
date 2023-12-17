@@ -9,12 +9,14 @@ use std::io::{stdin, stdout, BufReader};
 use std::sync::mpsc::channel;
 use std::thread::spawn;
 use ulci::client::{startup, Message};
-use ulci::{ClientInfo, SearchTime, VERSION};
+use ulci::{ClientInfo, SearchTime, SupportedFeatures, V1Features};
 
 fn main() {
   let (tx, rx) = channel();
   let info = ClientInfo {
-    version: VERSION,
+    features: SupportedFeatures {
+      v1: V1Features::all(),
+    },
     name: "Random mover".to_owned(),
     username: None,
     author: "Mathmagician".to_owned(),

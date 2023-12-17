@@ -376,19 +376,29 @@ impl Board {
     self.state
   }
 
+  /// Whether the size has been changed from the normal chess default
+  pub fn non_default_size(&self) -> bool {
+    self.height() != 8 || self.width() != 8
+  }
+
+  /// Whether pawn move settings have been changed from their normal chess defaults
+  pub fn pawn_moves_changed(&self) -> bool {
+    self.pawn_row != 2 || self.pawn_moves != 2
+  }
+
+  /// Whether castling settings have been changed from their normal chess defaults
+  pub fn non_default_castling(&self) -> bool {
+    self.castle_row != 0 || self.king_column != 7 || self.queen_column != 0
+  }
+
+  /// Whether there are multiple or 0 kings
+  pub fn king_count_changed(&self) -> bool {
+    self.white_kings.len() != 1 || self.black_kings.len() != 1 || self.shared_data.1.contains(&KING)
+  }
+
   /// Whether any settings have been changed from their normal chess defaults
-  pub fn non_default_flags(&self) -> bool {
-    self.height() != 8
-      || self.width() != 8
-      || self.friendly_fire
-      || self.castle_row != 0
-      || self.king_column != 7
-      || self.queen_column != 0
-      || self.pawn_row != 2
-      || self.pawn_moves != 2
-      || self.white_kings.len() != 1
-      || self.black_kings.len() != 1
-      || self.shared_data.1 != vec![QUEEN, ROOK, BISHOP, KNIGHT]
+  pub fn non_default_promotions(&self) -> bool {
+    self.shared_data.1 != vec![QUEEN, ROOK, BISHOP, KNIGHT]
   }
 
   /// Checks if a move is psuedo-legal.

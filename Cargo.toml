@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
-version = "0.16.1"
+version = "0.16.2"
 repository = "https://github.com/Mathmagician8191/Liberty-Chess"
 license = "GPL-3.0"
 edition = "2021"

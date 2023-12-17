@@ -16,7 +16,7 @@ use std::sync::mpsc::channel;
 use std::thread::spawn;
 use std::time::Instant;
 use ulci::client::{startup, Message};
-use ulci::{ClientInfo, IntOption, OptionValue, UlciOption, VERSION};
+use ulci::{ClientInfo, IntOption, OptionValue, UlciOption, SupportedFeatures, V1Features};
 
 const BENCH_DEPTH: i8 = 5;
 
@@ -58,7 +58,9 @@ fn main() {
     }),
   );
   let info = ClientInfo {
-    version: VERSION,
+    features: SupportedFeatures {
+      v1: V1Features::all(),
+    },
     name: format!("Oxidation v{VERSION_NUMBER}"),
     username: None,
     author: "Mathmagician".to_owned(),

@@ -1,5 +1,5 @@
 Version 1 beta
-This is a modified version of the UCI interface for standard chess, but some things have been removed for ease of implementation purposes. The goal is for common UCI operations to be implemented, so ULCI clients can be used with regular UCI GUIs
+This is a modified version of the UCI interface for standard chess. Some things have been removed for ease of implementation purposes. The goal is for common UCI operations to be implemented, so ULCI clients can be used with regular UCI GUIs
 
 ULCI (Universal Liberty Chess Interface) is the standard method for server-client communication, such as with a server communicating with an client, or a multiplayer server and client.
 
@@ -139,6 +139,21 @@ Client to server:
 --------------
 
 * id
+  * feature <x>
+    Indicates that the given feature is supported by the client.
+    Features available:
+    * boardsize
+      Indicates that the client supports board sizes other than 8x8
+    * pawnmoves
+      Supports configuring pawn settings (see L-FEN.md for more details)
+    * castling
+      Supports configuring castling (see L-FEN.md for more details)
+    * multiplekings
+      Supports sides having more than 1 (or 0) kings
+    * promotion
+      Supports configuring the pieces available for promotion (see L-FEN.md for more details)
+    * friendlyfire
+      Supports friendly fire mode (see L-FEN.md for more details)
   * version <x>
     This must be sent to indicate to the server the version of ULCI supported.
     If the server does not receive this, it should assume the client is a regular UCI client.

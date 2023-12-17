@@ -20,13 +20,10 @@ pub mod server;
 #[cfg(test)]
 mod tests;
 
-/// ULCI version
-pub const VERSION: usize = 1;
-
 /// The information required for the client
 pub struct ClientInfo {
-  /// Version of the protocol
-  pub version: usize,
+  /// Variant features supported by the client
+  pub features: SupportedFeatures,
   /// The name of the client
   pub name: String,
   /// The username of a human player, `None` if computer
@@ -45,19 +42,52 @@ impl ClientInfo {
   /// Whether the client supports the given board
   #[must_use]
   pub fn supports(&self, board: &Board) -> bool {
-    let mut version = 0;
     let mut pieces = board.promotion_options().clone();
-    if board.non_default_flags() {
-      version = 1;
-    }
     for piece in board.board().elements_row_major_iter() {
       let piece = piece.abs();
       if piece != 0 && !pieces.contains(&piece) {
         pieces.push(piece);
       }
     }
-    let pieces_valid = !pieces.into_iter().any(|p| !self.pieces.contains(&p));
-    self.version >= version && pieces_valid
+    (self.features.v1.board_sizes || !board.non_default_size())
+      && (self.features.v1.pawn_moves || !board.pawn_moves_changed())
+      && (self.features.v1.castling || !board.non_default_castling())
+      && (self.features.v1.multiple_kings || !board.king_count_changed())
+      && (self.features.v1.promotion_options || !board.non_default_promotions())
+      && (self.features.v1.friendly_fire || !board.friendly_fire)
+      && !pieces.into_iter().any(|p| !self.pieces.contains(&p))
+  }
+}
+
+/// The features supported by the client
+#[derive(Default)]
+pub struct SupportedFeatures {
+  /// Features from version 1
+  pub v1: V1Features,
+}
+
+/// The ULCI extensions available in version 1 of the protocol
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
+pub struct V1Features {
+  board_sizes: bool,
+  pawn_moves: bool,
+  castling: bool,
+  multiple_kings: bool,
+  promotion_options: bool,
+  friendly_fire: bool,
+}
+
+impl V1Features {
+  /// All features from version 1 are supported
+  pub fn all() -> Self {
+    Self {
+      board_sizes: true,
+      pawn_moves: true,
+      castling: true,
+      multiple_kings: true,
+      promotion_options: true,
+      friendly_fire: true,
+    }
   }
 }
 
