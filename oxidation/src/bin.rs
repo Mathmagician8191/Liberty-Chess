@@ -16,7 +16,7 @@ use std::sync::mpsc::channel;
 use std::thread::spawn;
 use std::time::Instant;
 use ulci::client::{startup, Message};
-use ulci::{ClientInfo, IntOption, OptionValue, UlciOption, SupportedFeatures, V1Features};
+use ulci::{ClientInfo, IntOption, OptionValue, SupportedFeatures, UlciOption, V1Features};
 
 const BENCH_DEPTH: i8 = 5;
 
