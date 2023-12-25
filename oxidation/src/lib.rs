@@ -503,11 +503,8 @@ fn alpha_beta(
       if let Some(nullmove) = board.nullmove() {
         let score = -null_move_search(state, settings, &nullmove, depth - 2, -beta);
         if score >= beta {
-          // Verification search
-          let score = zero_window_search(state, settings, &board, depth - 2, beta, true);
-          if score >= beta {
-            return (Vec::new(), beta);
-          }
+          // Null move reduction
+          depth -= 2;
         }
       }
     }
