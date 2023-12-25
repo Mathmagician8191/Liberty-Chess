@@ -20,7 +20,7 @@ use ulci::SearchTime;
 const CHAMPION: &str = "./target/release/oxidation";
 const CHALLENGER: &str = "./target/release/oxidation";
 
-const GAME_PAIR_COUNT: usize = 160;
+const GAME_PAIR_COUNT: usize = 180;
 const RANDOM_MOVE_COUNT: usize = 4;
 
 const CHAMP_TIME: SearchTime = SearchTime::Increment(8000, 80);
@@ -158,7 +158,7 @@ fn process_move(
               );
             }
           }
-          SearchTime::Infinite => (),
+          SearchTime::Infinite | SearchTime::Mate(_) => (),
         }
         let moves = board.moves();
         if moves > 2 * move_threshold {
@@ -202,6 +202,7 @@ fn play_game(
           moves: moves.clone(),
           time: challenge_tc,
           searchmoves: Vec::new(),
+          new_game: false,
         }))
         .ok();
       process_move(
@@ -222,6 +223,7 @@ fn play_game(
           moves: moves.clone(),
           time: champ_tc,
           searchmoves: Vec::new(),
+          new_game: false,
         }))
         .ok();
       process_move(
@@ -295,6 +297,7 @@ fn test_position(
   // to make sure it actually finishes
   drop(tx);
   let (mut win, mut draw, mut loss) = (0, 0, 0);
+  let (mut white_win, mut black_win) = (0, 0);
   let (mut champ_moves, mut challenge_moves) = ((0, 0, 0), (0, 0, 0));
   let (mut champ_depth, mut challenge_depth) = ((0, 0, 0), (0, 0, 0));
   for result in &rx {
@@ -304,6 +307,11 @@ fn test_position(
       GameResult::ChallengeWin => loss += 1,
     };
     let game_score = result.points;
+    match game_score {
+      0 => black_win += 1,
+      2 => white_win += 1,
+      _ => (),
+    }
     for position in result.positions {
       if let Some(result) = positions.get_mut(&position) {
         result.0 += 1;
@@ -320,7 +328,8 @@ fn test_position(
   assert_eq!(win + draw + loss, GAME_PAIR_COUNT * 2);
   let move_count = total_tuple(champ_moves) + total_tuple(challenge_moves);
   let average_move_count = move_count as usize / GAME_PAIR_COUNT / 2;
-  println!("+{win} ={draw} -{loss}, {average_move_count} moves per game");
+  println!("Champion vs Challenger: +{win} ={draw} -{loss}, {average_move_count} moves per game");
+  println!("White vs Black: +{white_win} ={draw} -{black_win}");
   println!(
     "Average opening depth: Champion: {:.2}, Challenger: {:.2}",
     champ_depth.0 as f32 / champ_moves.0 as f32,

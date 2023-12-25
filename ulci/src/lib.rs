@@ -4,7 +4,7 @@
 
 use core::ops::Neg;
 use liberty_chess::moves::Move;
-use liberty_chess::{Board, Piece};
+use liberty_chess::{Board, Piece, PAWN};
 use parking_lot::Mutex;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -42,11 +42,18 @@ impl ClientInfo {
   /// Whether the client supports the given board
   #[must_use]
   pub fn supports(&self, board: &Board) -> bool {
-    let mut pieces = board.promotion_options().clone();
+    let mut piece_types = Vec::new();
     for piece in board.board().elements_row_major_iter() {
       let piece = piece.abs();
-      if piece != 0 && !pieces.contains(&piece) {
-        pieces.push(piece);
+      if piece != 0 && !piece_types.contains(&piece) {
+        piece_types.push(piece);
+      }
+    }
+    if piece_types.contains(&PAWN) {
+      for promotion in board.promotion_options().iter() {
+        if !piece_types.contains(promotion) {
+          piece_types.push(*promotion);
+        }
       }
     }
     (self.features.v1.board_sizes || !board.non_default_size())
@@ -55,7 +62,7 @@ impl ClientInfo {
       && (self.features.v1.multiple_kings || !board.king_count_changed())
       && (self.features.v1.promotion_options || !board.non_default_promotions())
       && (self.features.v1.friendly_fire || !board.friendly_fire)
-      && !pieces.into_iter().any(|p| !self.pieces.contains(&p))
+      && !piece_types.into_iter().any(|p| !self.pieces.contains(&p))
   }
 }
 
@@ -108,6 +115,8 @@ pub enum SearchTime {
   Infinite,
   /// Depth/Nodes/Movetime
   Other(Limits),
+  /// Look for checkmate
+  Mate(u32),
 }
 
 impl ToString for SearchTime {
@@ -137,6 +146,7 @@ impl ToString for SearchTime {
         }
         result
       }
+      Self::Mate(moves) => format!("go mate {moves}"),
     }
   }
 }

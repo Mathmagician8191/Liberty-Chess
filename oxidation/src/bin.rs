@@ -103,7 +103,8 @@ fn main() {
           }
           println!("bestmove 0000");
         } else {
-          let settings = SearchConfig::new_time(&mut qdepth, settings.time, &rx, &mut debug);
+          let settings =
+            SearchConfig::new_time(&position, &mut qdepth, settings.time, &rx, &mut debug);
           let pv = search(
             &mut state,
             settings,

@@ -92,6 +92,7 @@ pub struct SearchConfig<'a> {
   max_depth: u8,
   max_time: u128,
   max_nodes: usize,
+  initial_alpha: Score,
   hard_tm: bool,
   rx: &'a Receiver<Message>,
   stopped: bool,
@@ -109,6 +110,7 @@ impl<'a> SearchConfig<'a> {
     max_depth: u8,
     max_time: u128,
     max_nodes: usize,
+    initial_alpha: Score,
     hard_tm: bool,
     rx: &'a Receiver<Message>,
     debug: &'a mut bool,
@@ -119,6 +121,7 @@ impl<'a> SearchConfig<'a> {
       max_depth,
       max_time,
       max_nodes,
+      initial_alpha,
       hard_tm,
       rx,
       stopped: false,
@@ -131,6 +134,7 @@ impl<'a> SearchConfig<'a> {
 
   /// Initialise the search config based on the search time
   pub fn new_time(
+    board: &Board,
     qdepth: &'a mut u8,
     time: SearchTime,
     rx: &'a Receiver<Message>,
@@ -141,14 +145,43 @@ impl<'a> SearchConfig<'a> {
         let time = time.saturating_sub(100);
         let time = time.min(time / 20 + inc / 2);
         let time = 1.max(time);
-        Self::new(qdepth, u8::MAX, time, usize::MAX, false, rx, debug)
+        Self::new(
+          qdepth,
+          u8::MAX,
+          time,
+          usize::MAX,
+          Score::Loss(0),
+          false,
+          rx,
+          debug,
+        )
       }
-      SearchTime::Infinite => Self::new(qdepth, u8::MAX, u128::MAX, usize::MAX, true, rx, debug),
+      SearchTime::Infinite => Self::new(
+        qdepth,
+        u8::MAX,
+        u128::MAX,
+        usize::MAX,
+        Score::Loss(0),
+        true,
+        rx,
+        debug,
+      ),
       SearchTime::Other(limits) => Self::new(
         qdepth,
         limits.depth,
         limits.time,
         limits.nodes,
+        Score::Loss(0),
+        true,
+        rx,
+        debug,
+      ),
+      SearchTime::Mate(moves) => Self::new(
+        qdepth,
+        u8::MAX,
+        u128::MAX,
+        usize::MAX,
+        Score::Win(moves + board.moves() + 1),
         true,
         rx,
         debug,
@@ -276,94 +309,51 @@ fn ply_count(board: &Board) -> u32 {
 pub fn evaluate(board: &Board, parameters: &Parameters) -> Score {
   match board.state() {
     Gamestate::InProgress => {
-      let middlegame = evaluate_middlegame(
-        board,
-        &parameters.middlegame_pieces,
-        &parameters.middlegame_edge,
-      );
-      let endgame = evaluate_endgame(board, &parameters.endgame_pieces, &parameters.endgame_edge);
+      let mut middlegame = 0;
+      let mut endgame = 0;
       let mut material = 0;
-      for piece in board.board().as_row_major() {
-        if piece != 0 {
-          let piece_type = piece.unsigned_abs() as usize - 1;
-          material += ENDGAME_FACTOR[piece_type];
+      let pieces = board.board();
+      for i in 0..board.height() {
+        for j in 0..board.width() {
+          let piece = pieces[(i, j)];
+          if piece != 0 {
+            let multiplier = if piece > 0 { 1 } else { -1 };
+            let piece_type = piece.unsigned_abs() as usize - 1;
+            material += ENDGAME_FACTOR[piece_type];
+            let mut mg_value = parameters.middlegame_pieces[piece_type];
+            let mut eg_value = parameters.endgame_pieces[piece_type];
+            let horizontal_distance = min(i, board.height() - 1 - i);
+            if horizontal_distance < EDGE_DISTANCE {
+              mg_value -= parameters.middlegame_edge[piece_type][horizontal_distance];
+              eg_value -= parameters.endgame_edge[piece_type][horizontal_distance];
+            }
+            let vertical_distance = min(j, board.width() - 1 - j);
+            if vertical_distance < EDGE_DISTANCE {
+              mg_value -= parameters.middlegame_edge[piece_type][vertical_distance];
+              eg_value -= parameters.endgame_edge[piece_type][vertical_distance];
+            }
+            middlegame += mg_value * multiplier;
+            endgame += eg_value * multiplier;
+          }
         }
       }
       material = min(material, ENDGAME_THRESHOLD);
       let score = material * middlegame + (ENDGAME_THRESHOLD - material) * endgame;
-      Score::Centipawn(score / ENDGAME_THRESHOLD)
+      let mut score = score / ENDGAME_THRESHOLD;
+      if !board.to_move() {
+        score *= -1;
+      }
+      if board.halfmoves() > parameters.min_halfmoves {
+        score = score * i32::from(parameters.halfmove_scaling + parameters.min_halfmoves)
+          / i32::from(board.halfmoves() + parameters.halfmove_scaling);
+      }
+      Score::Centipawn(score)
     }
     Gamestate::Material | Gamestate::Move50 | Gamestate::Repetition | Gamestate::Stalemate => {
       Score::Centipawn(0)
     }
     Gamestate::Checkmate(_) | Gamestate::Elimination(_) => Score::Loss(board.moves()),
   }
-}
-
-#[must_use]
-fn evaluate_middlegame(
-  board: &Board,
-  piece_values: &[i32; 18],
-  edge_avoidance: &[[i32; EDGE_DISTANCE]; 18],
-) -> i32 {
-  let mut score = 0;
-  let pieces = board.board();
-  for i in 0..board.height() {
-    for j in 0..board.width() {
-      let piece = pieces[(i, j)];
-      if piece != 0 {
-        let multiplier = if piece > 0 { 1 } else { -1 };
-        let piece_type = piece.unsigned_abs() as usize - 1;
-        let mut value = piece_values[piece_type];
-        let horizontal_distance = min(i, board.height() - 1 - i);
-        if horizontal_distance < EDGE_DISTANCE {
-          value -= edge_avoidance[piece_type][horizontal_distance];
-        }
-        let vertical_distance = min(j, board.width() - 1 - j);
-        if vertical_distance < EDGE_DISTANCE {
-          value -= edge_avoidance[piece_type][vertical_distance];
-        }
-        score += value * multiplier;
-      }
-    }
-  }
-  if !board.to_move() {
-    score *= -1;
-  }
-  score
-}
-
-#[must_use]
-fn evaluate_endgame(
-  board: &Board,
-  piece_values: &[i32; 18],
-  edge_avoidance: &[[i32; EDGE_DISTANCE]; 18],
-) -> i32 {
-  let mut score = 0;
-  let pieces = board.board();
-  for i in 0..board.height() {
-    for j in 0..board.width() {
-      let piece = pieces[(i, j)];
-      if piece != 0 {
-        let multiplier = if piece > 0 { 1 } else { -1 };
-        let piece_type = piece.unsigned_abs() as usize - 1;
-        let mut value = piece_values[piece_type];
-        let horizontal_distance = min(i, board.height() - 1 - i);
-        if horizontal_distance < EDGE_DISTANCE {
-          value -= edge_avoidance[piece_type][horizontal_distance];
-        }
-        let vertical_distance = min(j, board.width() - 1 - j);
-        if vertical_distance < EDGE_DISTANCE {
-          value -= edge_avoidance[piece_type][vertical_distance];
-        }
-        score += value * multiplier;
-      }
-    }
-  }
-  if !board.to_move() {
-    score *= -1;
-  }
-  score
 }
 
 /// Run a quiescence search of the given position
@@ -388,7 +378,6 @@ pub fn quiescence(
     }
   }
   let score = evaluate(board, parameters);
-  settings.nodes += 1;
   settings.seldepth = max(settings.seldepth, ply_count(board));
   if score >= beta {
     return (Vec::new(), beta);
@@ -405,6 +394,7 @@ pub fn quiescence(
     });
     for (bestmove, _, _) in moves {
       if let Some(position) = board.test_move_legality(bestmove) {
+        settings.nodes += 1;
         let (mut pv, mut score) = quiescence(
           state,
           settings,
@@ -502,21 +492,32 @@ fn alpha_beta(
       }
       return (pv, score);
     }
+    let pv_node = match (alpha, beta) {
+      (Score::Centipawn(alpha), Score::Centipawn(beta)) => alpha + 1 != beta,
+      (Score::Loss(alpha), Score::Loss(beta)) => alpha + 1 != beta,
+      (Score::Win(alpha), Score::Win(beta)) => alpha - 1 != beta,
+      _ => true,
+    };
     if !nullmove && depth > 2 && board.has_pieces() && evaluate(board, &DEFAULT_PARAMETERS) >= beta
     {
       if let Some(nullmove) = board.nullmove() {
-        let mut score = zero_window_search(state, settings, &nullmove, depth - 2, -beta, true);
-        score = -score;
+        let score = -null_move_search(state, settings, &nullmove, depth - 2, -beta);
         if score >= beta {
-          // Null move reduction
-          depth -= 2;
+          // Verification search
+          let score = zero_window_search(state, settings, &board, depth - 2, beta, true);
+          if score >= beta {
+            return (Vec::new(), beta);
+          }
         }
       }
     }
     let mut best_pv = Vec::new();
+    let mut move_count = 0;
     // Handle TTmove
     if let Some(ttmove) = ttmove {
       if let Some(position) = board.test_move_legality(ttmove) {
+        settings.nodes += 1;
+        move_count += 1;
         let (mut pv, mut score) =
           alpha_beta(state, settings, &position, depth - 1, -beta, -alpha, false);
         score = -score;
@@ -576,9 +577,23 @@ fn alpha_beta(
     for bestmove in moves {
       if Some(bestmove) != ttmove {
         if let Some(position) = board.test_move_legality(bestmove) {
-          let (mut pv, mut score) =
-            alpha_beta(state, settings, &position, depth - 1, -beta, -alpha, false);
-          score = -score;
+          settings.nodes += 1;
+          move_count += 1;
+          let (mut pv, score) = if pv_node && move_count > 1 {
+            // Zero window search to see if raises alpha
+            let score = -zero_window_search(state, settings, &position, depth - 1, -alpha, false);
+            if score > alpha {
+              let (pv, score) =
+                alpha_beta(state, settings, &position, depth - 1, -beta, -alpha, false);
+              (pv, -score)
+            } else {
+              (Vec::new(), score)
+            }
+          } else {
+            let (pv, score) =
+              alpha_beta(state, settings, &position, depth - 1, -beta, -alpha, false);
+            (pv, -score)
+          };
           if score >= beta {
             state.history.store(
               board.to_move(),
@@ -635,22 +650,82 @@ fn alpha_beta(
   }
 }
 
-fn zero_window_search(
+fn null_move_search(
   state: &mut State,
   settings: &mut SearchConfig,
   board: &Board,
   depth: u8,
   alpha: Score,
-  // not allowed to nullmove if previous nullmove
-  nullmove: bool,
 ) -> Score {
   let beta = match alpha {
     Score::Centipawn(cp) => Score::Centipawn(cp + 1),
     Score::Win(moves) => Score::Win(moves - 1),
     Score::Loss(moves) => Score::Loss(moves + 1),
   };
+  let (_, score) = alpha_beta(state, settings, board, depth, alpha, beta, true);
+  score
+}
+
+fn zero_window_search(
+  state: &mut State,
+  settings: &mut SearchConfig,
+  board: &Board,
+  depth: u8,
+  beta: Score,
+  // not allowed to nullmove if previous nullmove
+  nullmove: bool,
+) -> Score {
+  let alpha = match beta {
+    Score::Centipawn(cp) => Score::Centipawn(cp - 1),
+    Score::Win(moves) => Score::Win(moves + 1),
+    Score::Loss(moves) => Score::Loss(moves - 1),
+  };
   let (_, score) = alpha_beta(state, settings, board, depth, alpha, beta, nullmove);
   score
+}
+
+fn print_info(
+  out: &mut Output,
+  position: &Board,
+  score: Score,
+  depth: u8,
+  settings: &SearchConfig,
+  pv: &[Move],
+  hashfull: usize,
+) {
+  let time = settings.start.elapsed().as_millis();
+  let nps = (1000 * settings.nodes) / max(time as usize, 1);
+  match out {
+    Output::String(ref mut out) => {
+      out
+        .write(
+          format!(
+            "info depth {depth} seldepth {} score {} time {time} nodes {} nps {nps} hashfull {hashfull} pv {}\n",
+            settings.seldepth - ply_count(position),
+            score.show_uci(position.moves(), position.to_move()),
+            settings.nodes,
+            pv
+              .iter()
+              .map(Move::to_string)
+              .collect::<Vec<String>>()
+              .join(" ")
+          )
+          .as_bytes(),
+        )
+        .ok();
+    }
+    Output::Channel(tx) => {
+      tx.send(UlciResult::Analysis(AnalysisResult {
+        pv: pv.to_vec(),
+        score,
+        depth: u16::from(depth),
+        nodes: settings.nodes,
+        time,
+        wdl: None,
+      }))
+      .ok();
+    }
+  }
 }
 
 fn alpha_beta_root(
@@ -659,29 +734,74 @@ fn alpha_beta_root(
   board: &Board,
   moves: &Vec<Move>,
   depth: u8,
+  out: &mut Output,
 ) -> (Vec<Move>, Score) {
-  let mut alpha = Score::Loss(0);
+  let mut alpha = settings.initial_alpha;
   let mut best_pv = Vec::new();
+  let mut move_count = 0;
   for candidate in moves {
     if let Some(position) = board.move_if_legal(*candidate) {
-      let (mut pv, mut score) = alpha_beta(
-        state,
-        settings,
-        &position,
-        depth - 1,
-        Score::Loss(0),
-        -alpha,
-        false,
-      );
+      settings.nodes += 1;
+      move_count += 1;
+      let (mut pv, score) = if move_count > 1 {
+        // Zero window search to see if raises alpha
+        let score = -zero_window_search(state, settings, &position, depth - 1, -alpha, false);
+        if score > alpha {
+          if settings.search_is_over() {
+            return (best_pv, alpha);
+          }
+          best_pv = vec![*candidate];
+          print_info(
+            out,
+            board,
+            alpha,
+            depth,
+            settings,
+            &best_pv,
+            state.table.capacity(),
+          );
+          let (pv, score) = alpha_beta(
+            state,
+            settings,
+            &position,
+            depth - 1,
+            Score::Loss(0),
+            -alpha,
+            false,
+          );
+          (pv, -score)
+        } else {
+          (Vec::new(), score)
+        }
+      } else {
+        let (pv, score) = alpha_beta(
+          state,
+          settings,
+          &position,
+          depth - 1,
+          Score::Loss(0),
+          -alpha,
+          false,
+        );
+        (pv, -score)
+      };
       if settings.search_is_over() {
         return (best_pv, alpha);
       }
-      score = -score;
       if score > alpha {
         alpha = score;
         let mut new_pv = vec![*candidate];
         new_pv.append(&mut pv);
         best_pv = new_pv;
+        print_info(
+          out,
+          board,
+          alpha,
+          depth,
+          settings,
+          &best_pv,
+          state.table.capacity(),
+        );
       }
     }
   }
@@ -699,49 +819,28 @@ pub fn search(
   let mut best_pv = vec![moves[0]];
   let mut current_score = evaluate(position, &DEFAULT_PARAMETERS);
   let mut depth = 0;
+  let mut display_depth = 0;
   while depth < settings.max_depth
     && (settings.hard_tm || settings.start.elapsed().as_millis() * 2 <= settings.max_time)
   {
     depth += 1;
-    let (pv, score) = alpha_beta_root(state, &mut settings, position, &moves, depth);
-    let time = settings.start.elapsed().as_millis();
-    let nps = (1000 * settings.nodes) / max(time as usize, 1);
+    let (pv, score) = alpha_beta_root(state, &mut settings, position, &moves, depth, &mut out);
     if !pv.is_empty() {
+      display_depth = depth;
       best_pv = pv;
       current_score = score;
+    } else if !settings.search_is_over() {
+      display_depth = depth;
     }
-    match out {
-      Output::String(ref mut out) => {
-        out
-          .write(
-            format!(
-              "info depth {depth} seldepth {} score {} time {time} nodes {} nps {nps} hashfull {} pv {}\n",
-              settings.seldepth - ply_count(position),
-              current_score.show_uci(position.moves(), position.to_move()),
-              settings.nodes,
-              state.table.capacity(),
-              best_pv
-                .iter()
-                .map(Move::to_string)
-                .collect::<Vec<String>>()
-                .join(" ")
-            )
-            .as_bytes(),
-          )
-          .ok();
-      }
-      Output::Channel(tx) => {
-        tx.send(UlciResult::Analysis(AnalysisResult {
-          pv: best_pv.clone(),
-          score: current_score,
-          depth: u16::from(depth),
-          nodes: settings.nodes,
-          time,
-          wdl: None,
-        }))
-        .ok();
-      }
-    }
+    print_info(
+      &mut out,
+      position,
+      current_score,
+      display_depth,
+      &settings,
+      &best_pv,
+      state.table.capacity(),
+    );
     if settings.search_is_over() {
       break;
     }
@@ -769,7 +868,16 @@ pub fn bench(
   mut out: Output,
 ) -> usize {
   println!("Bench for position {}", board.to_string());
-  let mut settings = SearchConfig::new(qdepth, depth, u128::MAX, usize::MAX, true, rx, debug);
+  let mut settings = SearchConfig::new(
+    qdepth,
+    depth,
+    u128::MAX,
+    usize::MAX,
+    Score::Loss(0),
+    true,
+    rx,
+    debug,
+  );
   let mut state = State::new(hash, board);
   let (mut moves, mut other) = board.generate_pseudolegal();
   moves.sort_by_key(|(_, piece, capture)| {
@@ -785,45 +893,20 @@ pub fn bench(
     && (settings.start.elapsed().as_millis() * 2 <= settings.max_time)
   {
     depth += 1;
-    let (pv, score) = alpha_beta_root(&mut state, &mut settings, board, &moves, depth);
-    let time = settings.start.elapsed().as_millis();
-    let nps = (1000 * settings.nodes) / max(time as usize, 1);
+    let (pv, score) = alpha_beta_root(&mut state, &mut settings, board, &moves, depth, &mut out);
     if !pv.is_empty() {
       best_pv = pv;
       current_score = score;
     }
-    match out {
-      Output::String(ref mut out) => {
-        out
-          .write(
-            format!(
-              "info depth {depth} seldepth {} score {} time {time} nodes {} nps {nps} hashfull {} pv {}\n",
-              settings.seldepth - ply_count(board),
-              current_score.show_uci(board.moves(), board.to_move()),
-              settings.nodes,
-              state.table.capacity(),
-              best_pv
-                .iter()
-                .map(Move::to_string)
-                .collect::<Vec<String>>()
-                .join(" ")
-            )
-            .as_bytes(),
-          )
-          .ok();
-      }
-      Output::Channel(tx) => {
-        tx.send(UlciResult::Analysis(AnalysisResult {
-          pv: best_pv.clone(),
-          score: current_score,
-          depth: u16::from(depth),
-          nodes: settings.nodes,
-          time,
-          wdl: None,
-        }))
-        .ok();
-      }
-    }
+    print_info(
+      &mut out,
+      board,
+      current_score,
+      depth,
+      &settings,
+      &best_pv,
+      state.table.capacity(),
+    );
     if settings.search_is_over() {
       break;
     }

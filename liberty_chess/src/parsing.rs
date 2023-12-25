@@ -107,12 +107,12 @@ impl ToString for Board {
     }
 
     let custom_promotion =
-      self.friendly_fire || self.shared_data.1 != [QUEEN, ROOK, BISHOP, KNIGHT];
+      self.friendly_fire || self.shared_data.promotion_options != [QUEEN, ROOK, BISHOP, KNIGHT];
 
     // save promotion options
     if custom_promotion {
       let mut promotion = String::new();
-      for piece in &self.shared_data.1 {
+      for piece in &self.shared_data.promotion_options {
         promotion.push(to_char(-1 * piece));
       }
       optional.push(promotion);

@@ -30,7 +30,7 @@ impl Board {
                   if self.check_pseudolegal((i, j), (k, l)) {
                     if let Some(mut board) = self.get_legal((i, j), (k, l)) {
                       if board.promotion_available() {
-                        for piece in &self.shared_data.1 {
+                        for piece in &self.shared_data.promotion_options {
                           let mut promotion = board.clone();
                           promotion.promote(*piece);
                           boards.push(promotion);
@@ -134,7 +134,7 @@ impl Board {
                   if self.check_pseudolegal((i, j), (k, l)) {
                     let r#move = Move::new((i, j), (k, l));
                     if k == (if self.to_move { self.height() - 1 } else { 0 }) {
-                      for piece in &self.shared_data.1 {
+                      for piece in &self.shared_data.promotion_options {
                         let mut promotion = r#move;
                         promotion.add_promotion(*piece);
                         enemy_captures.push((promotion, PAWN as u8, piece.unsigned_abs()));
@@ -232,7 +232,7 @@ impl Board {
                   if self.check_pseudolegal((i, j), (k, l)) {
                     let r#move = Move::new((i, j), (k, l));
                     if k == (if self.to_move { self.height() - 1 } else { 0 }) {
-                      for piece in &self.shared_data.1 {
+                      for piece in &self.shared_data.promotion_options {
                         let mut promotion = r#move;
                         promotion.add_promotion(*piece);
                         moves.push((promotion, PAWN as u8, piece.unsigned_abs()));

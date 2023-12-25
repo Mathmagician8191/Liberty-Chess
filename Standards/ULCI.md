@@ -201,7 +201,8 @@ Client to server:
   * nodes <x>
     x nodes searched, the client should send this info regularly
   * pv <move1> ... <movei>
-    the best line found
+    The best line found.
+    Must be specified as the last option.
   * multipv <num>
     For multi pv mode. For the best move/pv add "multipv 1" in the string when you send the pv.
     In k-best mode always send all k variants in k strings together.

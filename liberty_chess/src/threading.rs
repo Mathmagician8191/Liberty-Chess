@@ -1,8 +1,7 @@
-use std::rc::Rc;
-
-use crate::keys::{Hash, Zobrist};
-use crate::{Board, Gamestate, Piece};
+use crate::keys::Hash;
+use crate::{Board, Gamestate, Piece, SharedData, PAWN};
 use array2d::Array2D;
+use std::rc::Rc;
 
 /// A `Board`, compressed to be sent to another thread
 #[derive(Clone)]
@@ -43,6 +42,22 @@ impl CompressedBoard {
     let width = self.pieces.num_columns();
     let height = self.pieces.num_rows();
     let pawn_checkmates = Board::can_checkmate(&self.promotion_options);
+
+    let mut piece_types = Vec::new();
+    for piece in self.pieces.elements_row_major_iter() {
+      let piece = piece.abs();
+      if piece != 0 && !piece_types.contains(&piece) {
+        piece_types.push(piece);
+      }
+    }
+    if piece_types.contains(&PAWN) {
+      for promotion in self.promotion_options.iter() {
+        if !piece_types.contains(promotion) {
+          piece_types.push(*promotion);
+        }
+      }
+    }
+
     Board {
       pieces: self.pieces,
       to_move: self.to_move,
@@ -62,7 +77,12 @@ impl CompressedBoard {
       duplicates: self.duplicates,
       previous: self.previous,
       hash: self.hash,
-      shared_data: Rc::new((Zobrist::new(width, height), self.promotion_options)),
+      shared_data: Rc::new(SharedData::new(
+        width,
+        height,
+        self.promotion_options,
+        piece_types,
+      )),
       friendly_fire: self.friendly_fire,
       white_pieces: self.white_pieces,
       black_pieces: self.black_pieces,
@@ -90,7 +110,7 @@ impl Board {
       queen_column: self.queen_column,
       king_column: self.king_column,
       promotion_target: self.promotion_target,
-      promotion_options: self.shared_data.1.to_vec(),
+      promotion_options: self.shared_data.promotion_options.to_vec(),
       white_kings: self.white_kings.clone(),
       black_kings: self.black_kings.clone(),
       state: self.state,

@@ -45,7 +45,7 @@ fn main() {
         selected_move = moves.choose(&mut thread_rng()).copied();
         if let Some(chosen_move) = selected_move {
           match settings.time {
-            SearchTime::Increment(_, _) | SearchTime::Other(_) => {
+            SearchTime::Increment(_, _) | SearchTime::Other(_) | SearchTime::Mate(_) => {
               println!(
                 "info depth 1 score cp 0 time 0 nodes 1 nps 1 pv {}",
                 chosen_move.to_string()

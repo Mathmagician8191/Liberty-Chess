@@ -35,8 +35,14 @@ fn calculate_loss(k: f64, data: &GameData, parameters: &Parameters) -> (f64, u32
       let mut qdepth = QDEPTH;
       let mut debug = false;
       let (_tx, rx) = channel();
-      let mut settings = SearchConfig::new_time(&mut qdepth, SearchTime::Infinite, &rx, &mut debug);
       let position = position.clone().load_from_thread();
+      let mut settings = SearchConfig::new_time(
+        &position,
+        &mut qdepth,
+        SearchTime::Infinite,
+        &rx,
+        &mut debug,
+      );
       let (_pv, mut score) = quiescence(
         &state,
         &mut settings,
@@ -134,7 +140,7 @@ fn main() {
   let mut best_loss = calculate_loss_batch(&data, &parameters);
   println!("{}ms to calculate loss", start.elapsed().as_millis());
   // Tune parameters
-  let mut parameter_indices: Vec<usize> = (0..108).collect();
+  let mut parameter_indices: Vec<usize> = (0..Parameters::COUNT).collect();
   let mut iteration_count = 0;
   let mut changed = true;
   while changed {
@@ -149,20 +155,7 @@ fn main() {
       let mut updated = false;
       for _ in 0..MAX_ITERATIONS {
         let mut new_parameters = parameters;
-        let index = parameter % 18;
-        if parameter >= 90 {
-          new_parameters.middlegame_pieces[index] += 1;
-        } else if parameter >= 72 {
-          new_parameters.middlegame_edge[index][0] += 1;
-        } else if parameter >= 54 {
-          new_parameters.middlegame_edge[index][1] += 1;
-        } else if parameter >= 36 {
-          new_parameters.endgame_pieces[index] += 1;
-        } else if parameter >= 18 {
-          new_parameters.endgame_edge[index][0] += 1;
-        } else {
-          new_parameters.endgame_edge[index][1] += 1;
-        }
+        new_parameters.set_parameter(parameter, 1);
         let new_loss = calculate_loss_batch(&data, &new_parameters);
         if new_loss < best_loss {
           best_loss = new_loss;
@@ -176,32 +169,23 @@ fn main() {
       if !updated {
         for _ in 0..MAX_ITERATIONS {
           let mut new_parameters = parameters;
-          let index = parameter % 18;
-          if parameter >= 90 {
-            new_parameters.middlegame_pieces[index] -= 1;
-          } else if parameter >= 72 {
-            new_parameters.middlegame_edge[index][0] -= 1;
-          } else if parameter >= 54 {
-            new_parameters.middlegame_edge[index][1] -= 1;
-          } else if parameter >= 36 {
-            new_parameters.endgame_pieces[index] -= 1;
-          } else if parameter >= 18 {
-            new_parameters.endgame_edge[index][0] -= 1;
-          } else {
-            new_parameters.endgame_edge[index][1] -= 1;
-          }
+          new_parameters.set_parameter(parameter, -1);
           let new_loss = calculate_loss_batch(&data, &new_parameters);
           if new_loss < best_loss {
             best_loss = new_loss;
             parameters = new_parameters;
             changed = true;
+            updated = true;
           } else {
             break;
           }
         }
       }
+      if updated {
+        println!("Loss {best_loss:.5}");
+        println!("{parameters:?}");
+      }
     }
     println!("Iteration took {}s", start.elapsed().as_secs());
-    println!("{parameters:?}");
   }
 }

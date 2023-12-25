@@ -302,15 +302,9 @@ fn go(
         }
       }
       "mate" => {
-        if let Some(value) = words.next().and_then(|w| w.parse::<usize>().ok()) {
-          let depth = usize::from(u8::MAX).min(value * 2);
-          let mut limits = if let SearchTime::Other(limits) = time {
-            limits
-          } else {
-            Limits::default()
-          };
-          limits.depth = depth as u8;
-          time = SearchTime::Other(limits);
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          let moves = u32::from(u8::MAX).min(value);
+          time = SearchTime::Mate(moves);
         } else if debug {
           write(out, "info string servererror no move count specified");
         }

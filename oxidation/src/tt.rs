@@ -107,10 +107,12 @@ impl TranspositionTable {
   }
 
   pub fn clear(&mut self) {
-    for entry in self.entries.iter_mut() {
-      *entry = None;
+    if self.capacity > 0 {
+      for entry in self.entries.iter_mut() {
+        *entry = None;
+      }
+      self.capacity = 0;
     }
-    self.capacity = 0;
   }
 
   pub fn capacity(&self) -> usize {

@@ -444,6 +444,7 @@ impl UciInterface {
               moves: Vec::new(),
               time: searchtime,
               searchmoves: Vec::new(),
+              new_game: false,
             }))
             .ok();
           self.state = UciState::Analysing;

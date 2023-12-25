@@ -20,7 +20,13 @@ pub fn process_position(
   state.new_position(&position);
   let mut debug = false;
   while receive_message.try_recv().is_ok() {}
-  let config = SearchConfig::new_time(&mut qdepth, searchtime, receive_message, &mut debug);
+  let config = SearchConfig::new_time(
+    &position,
+    &mut qdepth,
+    searchtime,
+    receive_message,
+    &mut debug,
+  );
   let moves = get_move_order(state, &position, &Vec::new());
   let pv = search(state, config, &position, moves, Output::Channel(tx));
   tx.send(UlciResult::AnalysisStopped(pv[0])).ok()?;

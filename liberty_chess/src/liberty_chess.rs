@@ -99,6 +99,60 @@ pub enum Gamestate {
   Material,
 }
 
+struct SharedData {
+  keys: Zobrist,
+  promotion_options: Vec<Piece>,
+  // are there pieces which attack in this direction
+  horizontal: bool,
+  diagonal: bool,
+  knight: bool,
+  camel: bool,
+  zebra: bool,
+  champion: bool,
+  rook: bool,
+  bishop: bool,
+  nightrider: bool,
+}
+
+impl SharedData {
+  fn new(
+    width: usize,
+    height: usize,
+    promotion_options: Vec<Piece>,
+    piece_types: Vec<Piece>,
+  ) -> Self {
+    Self {
+      keys: Zobrist::new(width, height),
+      promotion_options,
+      horizontal: piece_types.iter().any(|p| {
+        [
+          ROOK, QUEEN, KING, CHANCELLOR, MANN, CHAMPION, CENTAUR, AMAZON, ELEPHANT,
+        ]
+        .contains(p)
+      }),
+      diagonal: piece_types.iter().any(|p| {
+        [
+          BISHOP, QUEEN, KING, ARCHBISHOP, MANN, CHAMPION, CENTAUR, AMAZON, ELEPHANT,
+        ]
+        .contains(p)
+      }),
+      knight: piece_types
+        .iter()
+        .any(|p| [KNIGHT, ARCHBISHOP, CHANCELLOR, NIGHTRIDER, CENTAUR, AMAZON].contains(p)),
+      camel: piece_types.contains(&CAMEL),
+      zebra: piece_types.contains(&ZEBRA),
+      champion: piece_types.contains(&CHAMPION),
+      rook: piece_types
+        .iter()
+        .any(|p| [ROOK, QUEEN, CHANCELLOR, AMAZON].contains(p)),
+      bishop: piece_types
+        .iter()
+        .any(|p| [BISHOP, QUEEN, ARCHBISHOP, AMAZON].contains(p)),
+      nightrider: piece_types.contains(&NIGHTRIDER),
+    }
+  }
+}
+
 /// Represents a Liberty chess position
 #[derive(Clone)]
 pub struct Board {
@@ -120,7 +174,7 @@ pub struct Board {
   duplicates: Vec<Hash>,
   previous: Vec<Hash>,
   hash: Hash,
-  shared_data: Rc<(Zobrist, Vec<Piece>)>,
+  shared_data: Rc<SharedData>,
   /// Whether friendly fire mode is enabled.
   /// Changing this value is only supported before moves are made.
   pub friendly_fire: bool,
@@ -237,6 +291,21 @@ impl Board {
 
     let friendly_fire = fields.len() > 8 && fields[8] == "ff";
 
+    let mut piece_types = Vec::new();
+    for piece in pieces.elements_row_major_iter() {
+      let piece = piece.abs();
+      if piece != 0 && !piece_types.contains(&piece) {
+        piece_types.push(piece);
+      }
+    }
+    if piece_types.contains(&PAWN) {
+      for promotion in promotion_options.iter() {
+        if !piece_types.contains(promotion) {
+          piece_types.push(*promotion);
+        }
+      }
+    }
+
     let mut board = Self {
       pieces,
       to_move,
@@ -256,7 +325,12 @@ impl Board {
       duplicates: Vec::new(),
       previous: Vec::new(),
       hash: 0,
-      shared_data: Rc::new((Zobrist::new(width, height), promotion_options)),
+      shared_data: Rc::new(SharedData::new(
+        width,
+        height,
+        promotion_options,
+        piece_types,
+      )),
       friendly_fire,
       white_pieces,
       black_pieces,
@@ -307,7 +381,7 @@ impl Board {
   /// Get the valid promotion possibilities
   #[must_use]
   pub fn promotion_options(&self) -> &Vec<Piece> {
-    &self.shared_data.1
+    &self.shared_data.promotion_options
   }
 
   /// Whether the board is waiting for a promotion
@@ -393,12 +467,14 @@ impl Board {
 
   /// Whether there are multiple or 0 kings
   pub fn king_count_changed(&self) -> bool {
-    self.white_kings.len() != 1 || self.black_kings.len() != 1 || self.shared_data.1.contains(&KING)
+    self.white_kings.len() != 1
+      || self.black_kings.len() != 1
+      || self.shared_data.promotion_options.contains(&KING)
   }
 
   /// Whether any settings have been changed from their normal chess defaults
   pub fn non_default_promotions(&self) -> bool {
-    self.shared_data.1 != vec![QUEEN, ROOK, BISHOP, KNIGHT]
+    self.shared_data.promotion_options != vec![QUEEN, ROOK, BISHOP, KNIGHT]
   }
 
   /// Checks if a move is psuedo-legal.
@@ -557,7 +633,7 @@ impl Board {
   /// This function assumes the move is legal.
   fn make_move(&mut self, start: (usize, usize), end: (usize, usize)) {
     self.last_move = Some(Move::new(start, end));
-    let keys = &self.shared_data.0;
+    let keys = &self.shared_data.keys;
     self.halfmoves += 1;
     self.to_move = !self.to_move;
     self.hash ^= keys.to_move;
@@ -793,7 +869,7 @@ impl Board {
   /// This function assumes the piece is a valid promotion option.
   pub fn promote(&mut self, piece: Piece) {
     if let Some(target) = self.promotion_target {
-      let keys = &self.shared_data.0;
+      let keys = &self.shared_data.keys;
       self.hash ^= keys.pieces[target][(PAWN - 1) as usize];
       self.hash ^= keys.pieces[target][(piece - 1) as usize];
       self.pieces[target] *= piece;
@@ -821,52 +897,64 @@ impl Board {
   #[inline(always)]
   fn is_attacked(&self, (row, column): (usize, usize), side: bool) -> bool {
     let multiplier = if side { 1 } else { -1 };
-    for piece in self.straight((row, column), 1) {
-      if let Some(piece) = piece {
-        match piece * multiplier {
-          ROOK | QUEEN | KING | CHANCELLOR | MANN | CHAMPION | CENTAUR | AMAZON | ELEPHANT => {
-            return true
+    if self.shared_data.horizontal {
+      for piece in self.straight((row, column), 1) {
+        if let Some(piece) = piece {
+          match piece * multiplier {
+            ROOK | QUEEN | KING | CHANCELLOR | MANN | CHAMPION | CENTAUR | AMAZON | ELEPHANT => {
+              return true
+            }
+            _ => (),
           }
-          _ => (),
         }
       }
     }
-    for piece in self.diagonal((row, column), 1) {
-      if let Some(piece) = piece {
-        match piece * multiplier {
-          BISHOP | QUEEN | KING | ARCHBISHOP | MANN | CHAMPION | CENTAUR | AMAZON | ELEPHANT => {
-            return true
+    if self.shared_data.diagonal {
+      for piece in self.diagonal((row, column), 1) {
+        if let Some(piece) = piece {
+          match piece * multiplier {
+            BISHOP | QUEEN | KING | ARCHBISHOP | MANN | CHAMPION | CENTAUR | AMAZON | ELEPHANT => {
+              return true
+            }
+            _ => (),
           }
-          _ => (),
         }
       }
     }
-    for piece in self.jumps((row, column), 2, 1) {
-      if let Some(piece) = piece {
-        match piece * multiplier {
-          KNIGHT | ARCHBISHOP | CHANCELLOR | NIGHTRIDER | CENTAUR | AMAZON => return true,
-          _ => (),
+    if self.shared_data.knight {
+      for piece in self.jumps((row, column), 2, 1) {
+        if let Some(piece) = piece {
+          match piece * multiplier {
+            KNIGHT | ARCHBISHOP | CHANCELLOR | NIGHTRIDER | CENTAUR | AMAZON => return true,
+            _ => (),
+          }
         }
       }
     }
-    for piece in self.jumps((row, column), 3, 1) {
-      if piece == Some(&(CAMEL * multiplier)) {
-        return true;
+    if self.shared_data.camel {
+      for piece in self.jumps((row, column), 3, 1) {
+        if piece == Some(&(CAMEL * multiplier)) {
+          return true;
+        }
       }
     }
-    for piece in self.jumps((row, column), 3, 2) {
-      if piece == Some(&(ZEBRA * multiplier)) {
-        return true;
+    if self.shared_data.zebra {
+      for piece in self.jumps((row, column), 3, 2) {
+        if piece == Some(&(ZEBRA * multiplier)) {
+          return true;
+        }
       }
     }
-    for piece in self.straight((row, column), 2) {
-      if piece == Some(&(CHAMPION * multiplier)) {
-        return true;
+    if self.shared_data.champion {
+      for piece in self.straight((row, column), 2) {
+        if piece == Some(&(CHAMPION * multiplier)) {
+          return true;
+        }
       }
-    }
-    for piece in self.diagonal((row, column), 2) {
-      if piece == Some(&(CHAMPION * multiplier)) {
-        return true;
+      for piece in self.diagonal((row, column), 2) {
+        if piece == Some(&(CHAMPION * multiplier)) {
+          return true;
+        }
       }
     }
 
@@ -879,27 +967,33 @@ impl Board {
       return true;
     }
 
-    for piece in self.straight_rays((row as isize, column as isize), 1) {
-      if let Some(piece) = piece {
-        match piece * multiplier {
-          ROOK | QUEEN | CHANCELLOR | AMAZON => return true,
-          _ => (),
+    if self.shared_data.rook {
+      for piece in self.straight_rays((row as isize, column as isize), 1) {
+        if let Some(piece) = piece {
+          match piece * multiplier {
+            ROOK | QUEEN | CHANCELLOR | AMAZON => return true,
+            _ => (),
+          }
         }
       }
     }
 
-    for piece in self.diagonal_rays((row as isize, column as isize), 1) {
-      if let Some(piece) = piece {
-        match piece * multiplier {
-          BISHOP | QUEEN | ARCHBISHOP | AMAZON => return true,
-          _ => (),
+    if self.shared_data.bishop {
+      for piece in self.diagonal_rays((row as isize, column as isize), 1) {
+        if let Some(piece) = piece {
+          match piece * multiplier {
+            BISHOP | QUEEN | ARCHBISHOP | AMAZON => return true,
+            _ => (),
+          }
         }
       }
     }
 
-    for piece in self.all_rays((row as isize, column as isize), 2, 1) {
-      if piece == Some(&(NIGHTRIDER * multiplier)) {
-        return true;
+    if self.shared_data.nightrider {
+      for piece in self.all_rays((row as isize, column as isize), 2, 1) {
+        if piece == Some(&(NIGHTRIDER * multiplier)) {
+          return true;
+        }
       }
     }
 
@@ -1100,7 +1194,7 @@ impl Board {
   #[must_use]
   fn get_hash(&self) -> Hash {
     let mut result = 0;
-    let keys = &self.shared_data.0;
+    let keys = &self.shared_data.keys;
 
     if self.to_move {
       result ^= keys.to_move;
@@ -1242,12 +1336,12 @@ impl Board {
       if let Some(en_passant) = new_board.en_passant {
         new_board
           .shared_data
-          .0
+          .keys
           .update_en_passant(&mut new_board.hash, en_passant);
         new_board.en_passant = None;
       }
       new_board.to_move = !new_board.to_move;
-      new_board.hash ^= new_board.shared_data.0.to_move;
+      new_board.hash ^= new_board.shared_data.keys.to_move;
       Some(new_board)
     }
   }

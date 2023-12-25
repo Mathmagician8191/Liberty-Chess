@@ -33,6 +33,8 @@ pub struct AnalysisRequest {
   pub time: SearchTime,
   /// Which moves to analyse (empty Vec = analyse all)
   pub searchmoves: Vec<Move>,
+  /// Should ucinewgame be sent
+  pub new_game: bool,
 }
 
 /// The results from the client
@@ -437,17 +439,20 @@ fn process_analysis(
           .join(" ")
       )
     };
-    write_mutex(out, format!("position fen {}{moves}", request.fen));
-    write_mutex(out, "isready");
-    while let Ok(chars) = input.read_line(&mut buffer) {
-      if chars == 0 {
-        return None;
+    if request.new_game {
+      write_mutex(out, "ucinewgame");
+      write_mutex(out, "isready");
+      while let Ok(chars) = input.read_line(&mut buffer) {
+        if chars == 0 {
+          return None;
+        }
+        if buffer.eq("readyok\n") {
+          break;
+        }
+        buffer.clear();
       }
-      if buffer.eq("readyok\n") {
-        break;
-      }
-      buffer.clear();
     }
+    write_mutex(out, format!("position fen {}{moves}", request.fen));
     buffer.clear();
     let moves = if request.searchmoves.is_empty() {
       String::new()
