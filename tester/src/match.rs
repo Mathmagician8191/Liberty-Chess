@@ -306,7 +306,6 @@ fn test_position(
       if score > alpha && score < beta {
         break board;
       }
-      println!("{} is busted", board.to_string());
     };
     let compressed_board = board.send_to_thread();
     let compressed_board_2 = compressed_board.clone();
