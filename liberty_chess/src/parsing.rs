@@ -379,8 +379,7 @@ pub(crate) fn process_board(
 
     for c in string.chars() {
       if c.is_ascii_digit() {
-        squares *= 10;
-        squares += c as usize - '0' as usize;
+        update_row(&mut squares, c);
       } else {
         if squares > 0 {
           vec.append(&mut vec![0; squares]);

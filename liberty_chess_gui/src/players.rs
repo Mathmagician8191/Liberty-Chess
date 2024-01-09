@@ -3,24 +3,26 @@ use crate::MAX_TIME;
 use eframe::egui::Context;
 use enum_iterator::Sequence;
 use liberty_chess::moves::Move;
+use liberty_chess::parsing::from_chars;
 use liberty_chess::positions::get_startpos;
 use liberty_chess::threading::CompressedBoard;
-use liberty_chess::{Board, Gamestate};
+use liberty_chess::{Board, Gamestate, ALL_PIECES};
 use oxidation::glue::process_position;
 use oxidation::{random_move, State, HASH_SIZE, QDEPTH, VERSION_NUMBER};
 use rand::{thread_rng, Rng};
-use std::io::BufReader;
+use std::collections::HashMap;
+use std::io::{BufReader, ErrorKind, Write};
+use std::net::{SocketAddr, TcpStream};
 use std::process::{Command, Stdio};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::thread::spawn;
-use ulci::client::Message;
-use ulci::server::{startup, AnalysisRequest, Request, UlciResult};
-use ulci::{Limits as OtherLimits, Score, SearchTime};
+use std::time::Duration;
+use ulci::client::{startup, Message};
+use ulci::server::{startup_server, AnalysisRequest, Request, UlciResult};
+use ulci::{ClientInfo, Limits as OtherLimits, Score, SearchTime, SupportedFeatures, V1Features};
 
 #[cfg(feature = "clock")]
 use crate::clock::convert;
-#[cfg(feature = "clock")]
-use std::time::Duration;
 
 #[derive(Eq, PartialEq)]
 pub enum SearchType {
@@ -40,9 +42,9 @@ impl ToString for SearchType {
   fn to_string(&self) -> String {
     match self {
       #[cfg(feature = "clock")]
-      Self::Increment(_, _) => "Limit both players by clock",
+      Self::Increment(..) => "Limit both players by clock",
       #[cfg(feature = "clock")]
-      Self::Handicap(_, _, _, _) => "Limit players by different amounts of time",
+      Self::Handicap(..) => "Limit players by different amounts of time",
       Self::Other(_) => "Limit by depth, nodes and/or time",
     }
     .to_owned()
@@ -180,14 +182,16 @@ pub enum PlayerType {
   // parameters are qdepth and hash size
   BuiltIn(NumericalInput<u16>, NumericalInput<usize>),
   External(String),
+  Multiplayer(String, NumericalInput<u16>, String),
 }
 
 impl ToString for PlayerType {
   fn to_string(&self) -> String {
     match self {
       Self::RandomEngine => "Random Mover".to_owned(),
-      Self::BuiltIn(_, _) => format!("Oxidation v{VERSION_NUMBER}"),
+      Self::BuiltIn(..) => format!("Oxidation v{VERSION_NUMBER}"),
       Self::External(_) => "External engine (beta)".to_owned(),
+      Self::Multiplayer(..) => "Connect to server (beta)".to_owned(),
     }
   }
 }
@@ -200,10 +204,18 @@ impl PlayerType {
     )
   }
 
+  #[cfg(feature = "clock")]
   pub const fn is_thinking(&self) -> bool {
     match self {
       Self::RandomEngine => false,
-      Self::BuiltIn(_, _) | Self::External(_) => true,
+      Self::BuiltIn(..) | Self::External(_) | Self::Multiplayer(..) => true,
+    }
+  }
+
+  pub const fn custom_thinking_time(&self) -> bool {
+    match self {
+      Self::RandomEngine | Self::Multiplayer(..) => false,
+      Self::BuiltIn(..) | Self::External(_) => true,
     }
   }
 }
@@ -240,6 +252,7 @@ pub enum PlayerData {
   RandomEngine,
   BuiltIn(EngineInterface),
   Uci(UciInterface),
+  Multiplayer(Connection),
 }
 
 impl PlayerData {
@@ -294,7 +307,7 @@ impl PlayerData {
         );
         let ctx = ctx.clone();
         spawn(move || {
-          startup(
+          startup_server(
             recieve_request,
             &send_result,
             stdout,
@@ -310,6 +323,20 @@ impl PlayerData {
           board: Box::new(board.clone()),
         }))
       }
+      PlayerType::Multiplayer(ip, port, name) => {
+        let address = format!("{ip}:{}", port.get_value())
+          .parse()
+          .map_err(|_| "Invalid IP address".to_owned())?;
+        let name = name.to_owned();
+        let (tx, rx) = channel();
+        spawn(move || {
+          process_connection(address, tx, name);
+        });
+        Ok(Self::Multiplayer(Connection {
+          connection: rx,
+          output: None,
+        }))
+      }
     }
   }
 
@@ -319,6 +346,15 @@ impl PlayerData {
       Self::RandomEngine => (random_move(board), None),
       Self::BuiltIn(interface) => interface.get_move(board, searchtime),
       Self::Uci(interface) => interface.get_move(board, searchtime),
+      Self::Multiplayer(_) => (None, None),
+    }
+  }
+
+  pub fn cancel_move(&mut self) {
+    match self {
+      Self::BuiltIn(interface) => interface.cancel_move(),
+      Self::Uci(interface) => interface.cancel_move(),
+      Self::RandomEngine | Self::Multiplayer(_) => (),
     }
   }
 }
@@ -352,7 +388,7 @@ impl EngineInterface {
             }
             score = Some(result);
           }
-          UlciResult::Startup(_) | UlciResult::Info(_, _) => (),
+          UlciResult::Startup(_) | UlciResult::Info(..) => (),
         }
       }
     } else if board.state() == Gamestate::InProgress && !board.promotion_available() {
@@ -363,14 +399,14 @@ impl EngineInterface {
     (result, score)
   }
 
-  pub fn cancel_move(&mut self) {
+  fn cancel_move(&mut self) {
     if self.status {
       self.send_message.send(Message::Stop).ok();
       // wait for results
       while let Ok(message) = self.rx.recv() {
         match message {
           UlciResult::AnalysisStopped(_) => self.status = false,
-          UlciResult::Analysis(_) | UlciResult::Startup(_) | UlciResult::Info(_, _) => (),
+          UlciResult::Analysis(_) | UlciResult::Startup(_) | UlciResult::Info(..) => (),
         }
       }
     }
@@ -394,9 +430,9 @@ pub struct UciInterface {
 impl UciInterface {
   pub fn poll(&mut self) {
     match self.state {
-      UciState::Pending => {
-        for message in self.rx.try_iter() {
-          match message {
+      UciState::Pending => loop {
+        match self.rx.try_recv() {
+          Ok(message) => match message {
             UlciResult::Startup(info) => {
               self.state = if info.supports(&self.board) {
                 UciState::Waiting
@@ -404,11 +440,20 @@ impl UciInterface {
                 UciState::Unsupported
               };
             }
-            UlciResult::Analysis(_) | UlciResult::AnalysisStopped(_) | UlciResult::Info(_, _) => (),
+            UlciResult::Analysis(_) | UlciResult::AnalysisStopped(_) | UlciResult::Info(..) => (),
+          },
+          Err(TryRecvError::Disconnected) => {
+            self.state = UciState::Crashed;
+            break;
           }
+          Err(TryRecvError::Empty) => break,
         }
-      }
-      UciState::Waiting | UciState::Analysing | UciState::AwaitStop | UciState::Unsupported => (),
+      },
+      UciState::Waiting
+      | UciState::Analysing
+      | UciState::AwaitStop
+      | UciState::Unsupported
+      | UciState::Crashed => (),
     }
   }
 
@@ -419,9 +464,9 @@ impl UciInterface {
   ) -> (Option<Move>, Option<Score>) {
     let (mut result, mut score) = (None, None);
     match self.state {
-      UciState::Pending => {
-        for message in self.rx.try_iter() {
-          match message {
+      UciState::Pending => loop {
+        match self.rx.try_recv() {
+          Ok(message) => match message {
             UlciResult::Startup(info) => {
               self.state = if info.supports(board) {
                 UciState::Waiting
@@ -429,10 +474,15 @@ impl UciInterface {
                 UciState::Unsupported
               };
             }
-            UlciResult::Analysis(_) | UlciResult::AnalysisStopped(_) | UlciResult::Info(_, _) => (),
+            UlciResult::Analysis(_) | UlciResult::AnalysisStopped(_) | UlciResult::Info(..) => (),
+          },
+          Err(TryRecvError::Disconnected) => {
+            self.state = UciState::Crashed;
+            break;
           }
+          Err(TryRecvError::Empty) => break,
         }
-      }
+      },
       UciState::Waiting => {
         if board.state() == Gamestate::InProgress && !board.promotion_available() {
           // send request
@@ -452,37 +502,49 @@ impl UciInterface {
       }
       UciState::Analysing => {
         // request sent, poll for results
-        for message in self.rx.try_iter() {
-          match message {
-            UlciResult::AnalysisStopped(bestmove) => {
-              result = Some(bestmove);
-              self.state = UciState::Waiting;
-            }
-            UlciResult::Analysis(result) => {
-              let mut result = result.score;
-              if board.to_move() {
-                result = -result;
+        loop {
+          match self.rx.try_recv() {
+            Ok(message) => match message {
+              UlciResult::AnalysisStopped(bestmove) => {
+                result = Some(bestmove);
+                self.state = UciState::Waiting;
               }
-              score = Some(result);
+              UlciResult::Analysis(result) => {
+                let mut result = result.score;
+                if board.to_move() {
+                  result = -result;
+                }
+                score = Some(result);
+              }
+              UlciResult::Startup(_) | UlciResult::Info(..) => (),
+            },
+            Err(TryRecvError::Disconnected) => {
+              self.state = UciState::Crashed;
+              break;
             }
-            UlciResult::Startup(_) | UlciResult::Info(_, _) => (),
+            Err(TryRecvError::Empty) => break,
           }
         }
       }
-      UciState::AwaitStop => {
-        for message in self.rx.try_iter() {
-          match message {
+      UciState::AwaitStop => loop {
+        match self.rx.try_recv() {
+          Ok(message) => match message {
             UlciResult::AnalysisStopped(_) => self.state = UciState::Waiting,
-            UlciResult::Analysis(_) | UlciResult::Startup(_) | UlciResult::Info(_, _) => (),
+            UlciResult::Analysis(_) | UlciResult::Startup(_) | UlciResult::Info(..) => (),
+          },
+          Err(TryRecvError::Disconnected) => {
+            self.state = UciState::Crashed;
+            break;
           }
+          Err(TryRecvError::Empty) => break,
         }
-      }
-      UciState::Unsupported => (),
+      },
+      UciState::Unsupported | UciState::Crashed => (),
     }
     (result, score)
   }
 
-  pub fn cancel_move(&mut self) {
+  fn cancel_move(&mut self) {
     if self.state == UciState::Analysing {
       self.tx.send(Request::StopAnalysis).ok();
       self.state = UciState::AwaitStop;
@@ -503,4 +565,79 @@ pub enum UciState {
   Analysing,
   AwaitStop,
   Unsupported,
+  Crashed,
+}
+
+pub struct Connection {
+  pub connection: Receiver<ConnectionMessage>,
+  pub output: Option<TcpStream>,
+}
+
+impl Connection {
+  pub fn play_move(&self, r#move: Move) {
+    self
+      .output
+      .as_ref()
+      .expect("Connection is missing a stream")
+      .write_all(format!("bestmove {}\n", r#move.to_string()).as_bytes())
+      .ok();
+  }
+}
+
+pub enum ConnectionMessage {
+  Connected(TcpStream),
+  Timeout,
+  Uci(Message),
+}
+
+fn process_connection(
+  address: SocketAddr,
+  tx: Sender<ConnectionMessage>,
+  name: String,
+) -> Option<()> {
+  match TcpStream::connect_timeout(&address, Duration::from_secs(10)) {
+    Ok(connection) => {
+      let connection_2 = match connection.try_clone() {
+        Ok(connection) => connection,
+        Err(_) => {
+          return None;
+        }
+      };
+      let connection_3 = match connection.try_clone() {
+        Ok(connection) => connection,
+        Err(_) => {
+          return None;
+        }
+      };
+      tx.send(ConnectionMessage::Connected(connection_3)).ok()?;
+      let (uci_tx, rx) = channel();
+      spawn(move || {
+        startup(
+          &uci_tx,
+          &ClientInfo {
+            features: SupportedFeatures {
+              v1: V1Features::all(),
+            },
+            name: format!("Liberty Chess v{}", env!("CARGO_PKG_VERSION")),
+            username: Some(name),
+            author: "Mathmagician".to_owned(),
+            options: HashMap::new(),
+            pieces: from_chars(ALL_PIECES),
+            depth: 0,
+          },
+          BufReader::new(connection),
+          connection_2,
+        )
+      });
+      while let Ok(message) = rx.recv() {
+        tx.send(ConnectionMessage::Uci(message)).ok()?;
+      }
+    }
+    Err(error) => {
+      if error.kind() == ErrorKind::TimedOut {
+        tx.send(ConnectionMessage::Timeout).ok()?;
+      }
+    }
+  }
+  None
 }

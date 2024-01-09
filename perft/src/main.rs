@@ -7,7 +7,7 @@ use liberty_chess::positions::{
   AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, HORDE, LIBERTY_CHESS, LOADED_BOARD,
   MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
 };
-use liberty_chess::Board;
+use liberty_chess::{perft, Board};
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
 
@@ -37,25 +37,13 @@ use threadpool::ThreadPool;
 // 100 million = 97s
 // 200 million = 380s
 // max = 26 1/2 mins
-const LIMIT: usize = 5_000_000;
+const LIMIT: usize = usize::MAX;
 
 fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
   let millis = time.as_millis();
   let kilonodes = nodes / usize::max(millis as usize, 1);
   let time = format_time(millis);
   println!("{time} for depth {depth} ({kilonodes} knodes/s) {fen}");
-}
-
-fn perft(board: &Board, depth: usize) -> usize {
-  if depth > 0 {
-    let mut result = 0;
-    for position in board.generate_legal() {
-      result += perft(&position, depth - 1);
-    }
-    result
-  } else {
-    1
-  }
 }
 
 #[cfg(feature = "parallel")]

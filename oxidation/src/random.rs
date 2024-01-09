@@ -2,6 +2,7 @@ use liberty_chess::moves::Move;
 use liberty_chess::parsing::from_chars;
 use liberty_chess::positions::get_startpos;
 use liberty_chess::ALL_PIECES;
+use oxidation::divide;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::collections::HashMap;
@@ -45,7 +46,10 @@ fn main() {
         selected_move = moves.choose(&mut thread_rng()).copied();
         if let Some(chosen_move) = selected_move {
           match settings.time {
-            SearchTime::Increment(_, _) | SearchTime::Other(_) | SearchTime::Mate(_) => {
+            SearchTime::Increment(..)
+            | SearchTime::Asymmetric(..)
+            | SearchTime::Other(_)
+            | SearchTime::Mate(_) => {
               println!(
                 "info depth 1 score cp 0 time 0 nodes 1 nps 1 pv {}",
                 chosen_move.to_string()
@@ -81,7 +85,12 @@ fn main() {
           println!("info string servererror not currently searching");
         }
       }
-      Message::UpdateOption(_, _) | Message::Eval | Message::Bench(_) | Message::NewGame => (),
+      Message::Perft(depth) => divide(&position, depth),
+      Message::UpdateOption(..)
+      | Message::Eval
+      | Message::Bench(_)
+      | Message::NewGame
+      | Message::Prune => (),
     }
   }
 }

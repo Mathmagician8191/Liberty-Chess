@@ -2,15 +2,20 @@
 #![warn(missing_docs, unused)]
 //! The infrastructure for the ULCI interface, both client and server
 
+use crate::server::{startup_server, Request, UlciResult};
 use core::ops::Neg;
+use liberty_chess::clock::Clock;
 use liberty_chess::moves::Move;
 use liberty_chess::{Board, Piece, PAWN};
 use parking_lot::Mutex;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
-use std::io::Write;
+use std::io::{BufReader, Write};
+use std::process::{Command, Stdio};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
+use std::thread::spawn;
 
 /// The functionality for a ULCI client
 pub mod client;
@@ -86,7 +91,7 @@ pub struct V1Features {
 
 impl V1Features {
   /// All features from version 1 are supported
-  pub fn all() -> Self {
+  pub const fn all() -> Self {
     Self {
       board_sizes: true,
       pawn_moves: true,
@@ -111,6 +116,8 @@ pub struct SearchSettings {
 pub enum SearchTime {
   /// Time and increment
   Increment(u128, u128),
+  /// Time and increment for both players
+  Asymmetric(u128, u128, u128, u128),
   /// Infinite search
   Infinite,
   /// Depth/Nodes/Movetime
@@ -124,6 +131,9 @@ impl ToString for SearchTime {
     match self {
       Self::Increment(time, inc) => {
         format!("go wtime {time} winc {inc} btime {time} binc {inc}")
+      }
+      Self::Asymmetric(wtime, winc, btime, binc) => {
+        format!("go wtime {wtime} winc {winc} btime {btime} binc {binc}")
       }
       Self::Infinite => "go infinite".to_owned(),
       Self::Other(limits) => {
@@ -148,6 +158,20 @@ impl ToString for SearchTime {
       }
       Self::Mate(moves) => format!("go mate {moves}"),
     }
+  }
+}
+
+impl SearchTime {
+  /// Convert a clock to a search time
+  pub fn from_clock(clock: &mut Clock) -> Self {
+    let (wtime, btime) = clock.get_clocks();
+    let (winc, binc) = clock.get_increment();
+    Self::Asymmetric(
+      wtime.as_millis(),
+      winc.as_millis(),
+      btime.as_millis(),
+      binc.as_millis(),
+    )
   }
 }
 
@@ -326,10 +350,45 @@ impl ToString for WDL {
   }
 }
 
-fn write(writer: &mut impl Write, output: impl Display) {
-  writer.write(format!("{output}\n").as_bytes()).ok();
+#[must_use]
+fn write(writer: &mut impl Write, output: impl Display) -> Option<usize> {
+  writer.write(format!("{output}\n").as_bytes()).ok()
 }
 
-fn write_mutex(writer: &Arc<Mutex<impl Write>>, output: impl Display) {
-  writer.lock().write(format!("{output}\n").as_bytes()).ok();
+#[must_use]
+fn write_mutex(writer: &Arc<Mutex<impl Write>>, output: impl Display) -> Option<usize> {
+  writer.lock().write(format!("{output}\n").as_bytes()).ok()
+}
+
+fn spawn_engine(path: &'static str, requests: Receiver<Request>, results: &Sender<UlciResult>) {
+  let mut engine = Command::new(path)
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .spawn()
+    .expect("Loading engine failed");
+  let stdin = engine.stdin.take().expect("Loading engine stdin failed");
+  let stdout = engine.stdout.take().expect("Loading engine stdout failed");
+  startup_server(
+    requests,
+    results,
+    BufReader::new(stdout),
+    stdin,
+    false,
+    || (),
+  );
+  // To avoid your computer being infected by thousands of zombies
+  engine.wait().expect("Waiting failed");
+}
+
+/// Load an engine from the provided path
+pub fn load_engine(path: &'static str) -> (Sender<Request>, Receiver<UlciResult>) {
+  let (send_results, results) = channel();
+  let (tx, rx) = channel();
+  spawn(move || spawn_engine(path, rx, &send_results));
+  while let Ok(result) = results.recv() {
+    if let UlciResult::Startup(_) = result {
+      break;
+    }
+  }
+  (tx, results)
 }

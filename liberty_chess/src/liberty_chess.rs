@@ -5,6 +5,7 @@
 
 pub use crate::keys::ExtraFlags;
 pub use crate::keys::Hash;
+pub use crate::perft::perft;
 
 use crate::keys::Zobrist;
 use crate::parsing::{from_chars, get_indices, process_board, FenError};
@@ -25,6 +26,7 @@ pub mod threading;
 
 mod keys;
 mod movegen;
+mod perft;
 
 /// A type used for pieces.
 /// Positive values indicate a white piece, negative values indicate a black piece and 0 indicates an empty square.
@@ -89,10 +91,10 @@ pub enum Gamestate {
   Checkmate(bool),
   /// The game is drawn by stalemate.
   Stalemate,
-  /// The game is drawn by the 50-move rule.
-  Repetition,
   /// The game is drawn by 3-fold repitition.
-  Move50,
+  Repetition,
+  /// The game is drawn by the 50-move rule.
+  FiftyMove,
   /// The game is over by elimination of 1 side. True = White win, False = Black win
   Elimination(bool),
   /// The game is drawn by insufficient material
@@ -186,6 +188,8 @@ pub struct Board {
 
   // Whether pawns promote to a piece that can checkmate
   pawn_checkmates: bool,
+  /// Skip testing for checkmate/stalemate except for 50-move rule precedence
+  pub skip_checkmate: bool,
 
   /// The last move the board has recorded
   pub last_move: Option<Move>,
@@ -336,6 +340,7 @@ impl Board {
       black_pieces,
 
       pawn_checkmates,
+      skip_checkmate: false,
 
       last_move: None,
     };
@@ -456,12 +461,12 @@ impl Board {
   }
 
   /// Whether pawn move settings have been changed from their normal chess defaults
-  pub fn pawn_moves_changed(&self) -> bool {
+  pub const fn pawn_moves_changed(&self) -> bool {
     self.pawn_row != 2 || self.pawn_moves != 2
   }
 
   /// Whether castling settings have been changed from their normal chess defaults
-  pub fn non_default_castling(&self) -> bool {
+  pub const fn non_default_castling(&self) -> bool {
     self.castle_row != 0 || self.king_column != 7 || self.queen_column != 0
   }
 
@@ -1174,14 +1179,18 @@ impl Board {
       }
       (false, false) => (),
     }
-    if !self.any_moves() {
+    if !self.skip_checkmate && !self.any_moves() {
       self.state = if self.in_check() {
         Gamestate::Checkmate(!self.to_move)
       } else {
         Gamestate::Stalemate
       }
     } else if self.halfmoves >= 100 {
-      self.state = Gamestate::Move50;
+      if self.skip_checkmate && self.in_check() && !self.any_moves() {
+        self.state = Gamestate::Checkmate(!self.to_move);
+      } else {
+        self.state = Gamestate::FiftyMove
+      }
     } else if self.duplicates.contains(&self.hash) {
       self.state = Gamestate::Repetition;
     } else if self.previous.contains(&self.hash) {
@@ -1228,7 +1237,7 @@ impl Board {
         if piece != 0 && self.to_move == (piece > 0) {
           match piece.abs() {
             PAWN => {
-              let left_column = usize::saturating_sub(j, 1);
+              let left_column = j.saturating_sub(1);
               let right_column = usize::min(j + 1, self.width() - 1);
               for k in 0..self.height() {
                 for l in left_column..=right_column {

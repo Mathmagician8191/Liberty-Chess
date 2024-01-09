@@ -1,13 +1,21 @@
 use crate::helpers::unwrap_tuple;
+use crate::players::{ConnectionMessage, PlayerData, UciState};
 use crate::themes::Colours;
 use crate::{LibertyChessGUI, Screen};
 use eframe::egui::{
   pos2, Align2, Area, Color32, Context, FontId, PointerButton, Pos2, Rect, Response, Rounding,
   Sense, Shape, Ui, Vec2,
 };
+use liberty_chess::moves::Move;
 use liberty_chess::parsing::to_letters;
 use liberty_chess::{Board, Gamestate, Piece};
+use std::sync::mpsc::TryRecvError;
+use ulci::client::Message;
 
+#[cfg(feature = "clock")]
+use liberty_chess::clock::Clock;
+#[cfg(feature = "clock")]
+use std::time::Duration;
 #[cfg(feature = "clock")]
 use ulci::SearchTime;
 
@@ -23,7 +31,7 @@ use crate::get_dramatic;
 const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
 const NUMBER_SCALE: f32 = 5.0;
 
-pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board) {
+pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Board) {
   let mut clickable;
   clickable = !board.promotion_available() && board.state() == Gamestate::InProgress;
   #[cfg(feature = "clock")]
@@ -44,7 +52,7 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board)
           *time = new_time.as_millis();
         }
       }
-      let (bestmove, score) = player.poll(board, gui.searchtime);
+      let (bestmove, score) = player.poll(&board, gui.searchtime);
       if let Some(score) = score {
         gui.eval = Some(score);
       }
@@ -54,8 +62,7 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board)
           let capture = board.get_piece(bestmove.end()) != 0;
           #[cfg(feature = "sound")]
           if let Some(engine) = &mut gui.audio_engine {
-            let mut effect = Effect::Illegal;
-            update_sound(&mut effect, &position, capture);
+            let effect = update_sound(&position, capture);
             engine.play(&effect);
             #[cfg(feature = "music")]
             {
@@ -75,11 +82,92 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, board: &Board)
         }
       }
     }
+    match player {
+      PlayerData::Multiplayer(interface) => {
+        let mut clear_player = false;
+        loop {
+          match interface.connection.try_recv() {
+            Ok(message) => match message {
+              ConnectionMessage::Uci(message) => match message {
+                Message::UpdatePosition(new_board) => {
+                  let new_board = new_board.load_from_thread();
+                  *side = board.to_move();
+                  #[cfg(feature = "sound")]
+                  if let Some(ref mut engine) = gui.audio_engine {
+                    let effect = update_sound(&new_board, false);
+                    engine.play(&effect);
+                  }
+                  board = new_board.clone();
+                  gui.screen = Screen::Game(Box::new(new_board));
+                  gui.selected = None;
+                  gui.drag = None;
+                }
+                #[cfg(feature = "clock")]
+                Message::Go(settings) => {
+                  *side = !board.to_move();
+                  match settings.time {
+                    SearchTime::Increment(time, inc) => {
+                      let mut clock = Clock::new_symmetric(
+                        Duration::from_millis(time as u64),
+                        Duration::from_millis(inc as u64),
+                        board.to_move(),
+                      );
+                      clock.toggle_pause();
+                      gui.clock = Some(clock);
+                    }
+                    SearchTime::Asymmetric(wtime, winc, btime, binc) => {
+                      let mut clock = Clock::new(
+                        [
+                          Duration::from_millis(wtime as u64),
+                          Duration::from_millis(btime as u64),
+                          Duration::from_millis(winc as u64),
+                          Duration::from_millis(binc as u64),
+                        ],
+                        board.to_move(),
+                      );
+                      clock.toggle_pause();
+                      gui.clock = Some(clock);
+                    }
+                    _ => (),
+                  }
+                }
+                #[cfg(not(feature = "clock"))]
+                Message::Go(_) => *side = board.to_move(),
+                Message::UpdateOption(..)
+                | Message::SetDebug(_)
+                | Message::Stop
+                | Message::Eval
+                | Message::Bench(_)
+                | Message::NewGame
+                | Message::Prune
+                | Message::Perft(_) => (),
+              },
+              ConnectionMessage::Connected(_) | ConnectionMessage::Timeout => (),
+            },
+            Err(TryRecvError::Disconnected) => {
+              clear_player = true;
+              gui.message = Some("Disconnected".to_owned());
+              break;
+            }
+            Err(TryRecvError::Empty) => break,
+          }
+        }
+        if clear_player {
+          gui.player = None;
+        }
+      }
+      PlayerData::Uci(uci) => {
+        if uci.state == UciState::Crashed {
+          gui.message = Some("Engine has crashed".to_owned());
+        }
+      }
+      _ => (),
+    }
   }
   Area::new("Board")
     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
-      draw_board(gui, ctx, ui, board, clickable, gui.flipped);
+      draw_board(gui, ctx, ui, &board, clickable, gui.flipped);
     });
 }
 
@@ -351,18 +439,29 @@ fn attempt_move(
           clock.update_status(&newstate);
         }
       }
-      gui.undo.push(gamestate.clone());
       if gui.player.is_none() && gui.config.get_autoflip() {
         gui.flipped = gamestate.to_move();
       }
       #[cfg(feature = "sound")]
-      update_sound(&mut effect, &newstate, capture);
+      {
+        effect = update_sound(&newstate, capture);
+      }
       #[cfg(feature = "music")]
       {
         let dramatic = get_dramatic(&newstate) + if capture { 0.5 } else { 0.0 };
         if let Some(ref mut player) = gui.audio_engine {
           player.set_dramatic(dramatic);
         }
+      }
+      let mut play_move = true;
+      if !newstate.promotion_available() {
+        if let Some((PlayerData::Multiplayer(ref mut interface), _)) = gui.player {
+          play_move = false;
+          interface.play_move(Move::new(selected, coords));
+        }
+      }
+      if play_move {
+        gui.undo.push(gamestate.clone());
       }
       gui.screen = Screen::Game(Box::new(newstate));
     }

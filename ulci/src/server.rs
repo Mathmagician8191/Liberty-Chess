@@ -19,6 +19,8 @@ pub enum Request {
   Analysis(AnalysisRequest),
   /// Stop the analysis
   StopAnalysis,
+  /// The server wants to show the client a new position
+  Position(String, Vec<Move>, bool),
   /// The server wants to update an option
   SetOption(String, OptionValue),
 }
@@ -197,7 +199,7 @@ fn process_info(mut words: SplitWhitespace, tx: &Sender<UlciResult>) {
 /// Has limited error handling
 ///
 /// Blocks the current thread
-pub fn startup(
+pub fn startup_server(
   requests: Receiver<Request>,
   results: &Sender<UlciResult>,
   mut input: impl BufRead,
@@ -224,7 +226,7 @@ fn setup(
   debug: bool,
   buffer: &mut String,
 ) -> Option<ClientInfo> {
-  write(out, "uci");
+  write(out, "uci")?;
   let mut features = SupportedFeatures::default();
   let mut pieces = vec![PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING];
   let mut name = String::new();
@@ -373,7 +375,7 @@ fn setup(
   }
   buffer.clear();
   if debug {
-    write(out, "debug on");
+    write(out, "debug on")?;
   }
   Some(ClientInfo {
     features,
@@ -397,7 +399,24 @@ fn process_server(
       Request::Analysis(request) => {
         tx.send(request).ok()?;
       }
-      Request::StopAnalysis => write_mutex(out, "stop"),
+      Request::StopAnalysis => {
+        write_mutex(out, "stop")?;
+      }
+      Request::Position(fen, moves, newgame) => {
+        if newgame {
+          write_mutex(out, "ucinewgame")?;
+        }
+        let mut output = format!("position fen {fen}");
+        if !moves.is_empty() {
+          output += " moves ";
+          output += &moves
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<String>>()
+            .join(" ");
+        }
+        write_mutex(out, output)?;
+      }
       Request::SetOption(name, option) => {
         write_mutex(
           out,
@@ -410,7 +429,7 @@ fn process_server(
             OptionValue::UpdateRange(value) => format!("setoption name {name} value {value}"),
             OptionValue::SendTrigger => format!("setoption name {name}"),
           },
-        );
+        )?;
       }
     }
   }
@@ -440,8 +459,8 @@ fn process_analysis(
       )
     };
     if request.new_game {
-      write_mutex(out, "ucinewgame");
-      write_mutex(out, "isready");
+      write_mutex(out, "ucinewgame")?;
+      write_mutex(out, "isready")?;
       while let Ok(chars) = input.read_line(&mut buffer) {
         if chars == 0 {
           return None;
@@ -452,7 +471,7 @@ fn process_analysis(
         buffer.clear();
       }
     }
-    write_mutex(out, format!("position fen {}{moves}", request.fen));
+    write_mutex(out, format!("position fen {}{moves}", request.fen))?;
     buffer.clear();
     let moves = if request.searchmoves.is_empty() {
       String::new()
@@ -467,7 +486,7 @@ fn process_analysis(
           .join(" ")
       )
     };
-    write_mutex(out, format!("{}{moves}", request.time.to_string()));
+    write_mutex(out, format!("{}{moves}", request.time.to_string()))?;
     while let Ok(chars) = input.read_line(&mut buffer) {
       if chars == 0 {
         return None;
@@ -478,7 +497,7 @@ fn process_analysis(
           "info" => process_info(words, tx),
           "bestmove" => {
             if let Some(bestmove) = words.next().and_then(|m| m.parse().ok()) {
-              tx.send(UlciResult::AnalysisStopped(bestmove)).ok();
+              tx.send(UlciResult::AnalysisStopped(bestmove)).ok()?;
               completion();
               buffer.clear();
               break;

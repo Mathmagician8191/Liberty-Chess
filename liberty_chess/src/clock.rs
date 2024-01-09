@@ -95,6 +95,12 @@ impl Clock {
     (self.white_clock, self.black_clock)
   }
 
+  /// Returns each player's increment
+  #[must_use]
+  pub const fn get_increment(&self) -> (Duration, Duration) {
+    (self.white_inc, self.black_inc)
+  }
+
   /// Update the clock and switch the clock that is running.
   pub fn switch_clocks(&mut self) {
     self.update();

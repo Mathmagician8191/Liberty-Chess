@@ -6,16 +6,13 @@ use oxidation::random_move;
 use rand::{thread_rng, Rng};
 use std::collections::{HashMap, HashSet};
 use std::fs::write;
-use std::io::BufReader;
 use std::ops::AddAssign;
-use std::process::{Command, Stdio};
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::thread::spawn;
 use std::time::Instant;
 use tester::POSITIONS;
 use threadpool::ThreadPool;
-use ulci::server::{startup, AnalysisRequest, Request, UlciResult};
-use ulci::SearchTime;
+use ulci::server::{AnalysisRequest, Request, UlciResult};
+use ulci::{load_engine, SearchTime};
 
 const CHAMPION: &str = "./target/release/oxidation";
 const CHALLENGER: &str = "./target/release/oxidation";
@@ -53,38 +50,6 @@ fn total_tuple<T: AddAssign>(tuple: (T, T, T)) -> T {
   result += tuple.1;
   result += tuple.2;
   result
-}
-
-fn spawn_engine(path: &'static str, requests: Receiver<Request>, results: &Sender<UlciResult>) {
-  let mut engine = Command::new(path)
-    .stdin(Stdio::piped())
-    .stdout(Stdio::piped())
-    .spawn()
-    .expect("Loading engine failed");
-  let stdin = engine.stdin.take().expect("Loading engine stdin failed");
-  let stdout = engine.stdout.take().expect("Loading engine stdout failed");
-  startup(
-    requests,
-    results,
-    BufReader::new(stdout),
-    stdin,
-    false,
-    || (),
-  );
-  // To avoid your computer being infected by thousands of zombies
-  engine.wait().expect("Waiting failed");
-}
-
-fn load_engine(path: &'static str) -> (Sender<Request>, Receiver<UlciResult>) {
-  let (send_results, results) = channel();
-  let (tx, rx) = channel();
-  spawn(move || spawn_engine(path, rx, &send_results));
-  while let Ok(result) = results.recv() {
-    if let UlciResult::Startup(_) = result {
-      break;
-    }
-  }
-  (tx, results)
 }
 
 fn process_move(
@@ -148,6 +113,22 @@ fn process_move(
             }
             *time = time.saturating_sub(millis) + *inc;
           }
+          SearchTime::Asymmetric(wtime, winc, btime, binc) => {
+            let (time, inc) = if board.to_move() {
+              (wtime, winc)
+            } else {
+              (btime, binc)
+            };
+            let excess = millis.saturating_sub(*time);
+            if excess > 0 {
+              println!(
+                "{name} took {} extra time in posiiton {}",
+                format_time(excess),
+                current_board.to_string()
+              );
+            }
+            *time = time.saturating_sub(millis) + *inc;
+          }
           SearchTime::Other(limits) => {
             let excess = millis.saturating_sub(limits.time);
             if excess >= 25 {
@@ -173,7 +154,7 @@ fn process_move(
         }
         break;
       }
-      UlciResult::Startup(_) | UlciResult::Info(_, _) => (),
+      UlciResult::Startup(_) | UlciResult::Info(..) => (),
     }
   }
 }
@@ -250,7 +231,7 @@ fn play_game(
       },
       if winner { 2 } else { 0 },
     ),
-    Gamestate::Material | Gamestate::Move50 | Gamestate::Repetition | Gamestate::Stalemate => {
+    Gamestate::Material | Gamestate::FiftyMove | Gamestate::Repetition | Gamestate::Stalemate => {
       (GameResult::Draw, 1)
     }
   };

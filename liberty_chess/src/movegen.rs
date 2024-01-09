@@ -1,5 +1,8 @@
 use crate::moves::Move;
-use crate::{Board, BISHOP, CAMEL, KING, KNIGHT, OBSTACLE, PAWN, ROOK, WALL, ZEBRA};
+use crate::{
+  Board, BISHOP, CAMEL, CENTAUR, CHAMPION, ELEPHANT, KING, KNIGHT, MANN, OBSTACLE, PAWN, ROOK,
+  WALL, ZEBRA,
+};
 
 impl Board {
   /// Generates all legal moves from a position.
@@ -23,9 +26,17 @@ impl Board {
           };
           match piece.abs() {
             PAWN => {
-              let left_column = usize::saturating_sub(j, 1);
+              let left_column = j.saturating_sub(1);
               let right_column = usize::min(j + 1, self.width() - 1);
-              for k in 0..self.height() {
+              let move_range = if self.to_move {
+                let max_row = usize::min(self.height() - 1, i + self.pawn_moves);
+                let min_row = usize::min(self.height(), i + 1);
+                min_row..=max_row
+              } else {
+                let min_row = i.saturating_sub(self.pawn_moves);
+                min_row..=(i.saturating_sub(1))
+              };
+              for k in move_range {
                 for l in left_column..=right_column {
                   if self.check_pseudolegal((i, j), (k, l)) {
                     if let Some(mut board) = self.get_legal((i, j), (k, l)) {
@@ -69,6 +80,17 @@ impl Board {
             ZEBRA => {
               for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 2) {
                 if k < self.height() && l < self.width() {
+                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
+                }
+              }
+            }
+            MANN | ELEPHANT => {
+              let left_column = j.saturating_sub(1);
+              let right_column = usize::min(j + 1, self.width() - 1);
+              let left_row = i.saturating_sub(1);
+              let right_row = usize::min(i + 1, self.height() - 1);
+              for k in left_row..=right_row {
+                for l in left_column..=right_column {
                   self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
                 }
               }
@@ -127,9 +149,17 @@ impl Board {
         if piece != 0 && self.to_move == (piece > 0) {
           match piece.abs() {
             PAWN => {
-              let left_column = usize::saturating_sub(j, 1);
+              let left_column = j.saturating_sub(1);
               let right_column = usize::min(j + 1, self.width() - 1);
-              for k in 0..self.height() {
+              let move_range = if self.to_move {
+                let max_row = usize::min(self.height() - 1, i + self.pawn_moves);
+                let min_row = usize::min(self.height(), i + 1);
+                min_row..=max_row
+              } else {
+                let min_row = i.saturating_sub(self.pawn_moves);
+                min_row..=(i.saturating_sub(1))
+              };
+              for k in move_range {
                 for l in left_column..=right_column {
                   if self.check_pseudolegal((i, j), (k, l)) {
                     let r#move = Move::new((i, j), (k, l));
@@ -180,6 +210,38 @@ impl Board {
                 }
               }
             }
+            MANN | ELEPHANT => {
+              let left_column = j.saturating_sub(1);
+              let right_column = usize::min(j + 1, self.width() - 1);
+              let left_row = i.saturating_sub(1);
+              let right_row = usize::min(i + 1, self.height() - 1);
+              for k in left_row..=right_row {
+                for l in left_column..=right_column {
+                  self.add_if_pseudolegal(&mut enemy_captures, &mut moves, (i, j), (k, l));
+                }
+              }
+            }
+            CHAMPION | CENTAUR => {
+              let left_column = j.saturating_sub(2);
+              let right_column = usize::min(j + 2, self.width() - 1);
+              let left_row = i.saturating_sub(2);
+              let right_row = usize::min(i + 2, self.height() - 1);
+              for k in left_row..=right_row {
+                for l in left_column..=right_column {
+                  self.add_if_pseudolegal(&mut enemy_captures, &mut moves, (i, j), (k, l));
+                }
+              }
+            }
+            OBSTACLE | WALL => {
+              for k in 0..self.height() {
+                for l in 0..self.width() {
+                  let target = self.pieces[(k, l)];
+                  if target == 0 {
+                    moves.push(Move::new((i, j), (k, l)));
+                  }
+                }
+              }
+            }
             _ => {
               for k in 0..self.height() {
                 for l in 0..self.width() {
@@ -225,7 +287,7 @@ impl Board {
         if piece != 0 && self.to_move == (piece > 0) {
           match piece.abs() {
             PAWN => {
-              let left_column = usize::saturating_sub(j, 1);
+              let left_column = j.saturating_sub(1);
               let right_column = usize::min(j + 1, self.width() - 1);
               for k in 0..self.height() {
                 for l in left_column..=right_column {
@@ -276,6 +338,28 @@ impl Board {
                 }
               }
             }
+            MANN | ELEPHANT => {
+              let left_column = j.saturating_sub(1);
+              let right_column = usize::min(j + 1, self.width() - 1);
+              let left_row = i.saturating_sub(1);
+              let right_row = usize::min(i + 1, self.height() - 1);
+              for k in left_row..=right_row {
+                for l in left_column..=right_column {
+                  self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, l));
+                }
+              }
+            }
+            CHAMPION | CENTAUR => {
+              let left_column = j.saturating_sub(2);
+              let right_column = usize::min(j + 2, self.width() - 1);
+              let left_row = i.saturating_sub(2);
+              let right_row = usize::min(i + 2, self.height() - 1);
+              for k in left_row..=right_row {
+                for l in left_column..=right_column {
+                  self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, l));
+                }
+              }
+            }
             OBSTACLE | WALL => (),
             _ => {
               for k in 0..self.height() {
@@ -299,13 +383,27 @@ impl Board {
     start: (usize, usize),
     end: (usize, usize),
   ) {
-    if self.check_pseudolegal(start, end) {
-      let piece = self.pieces[start];
-      let target = self.pieces[end];
+    let piece = self.pieces[start];
+    let target = self.pieces[end];
+    if target != 0 && (piece > 0) ^ (target > 0) && self.check_pseudolegal(start, end) {
       let r#move = Move::new(start, end);
-      if target != 0 && (piece > 0) ^ (target > 0) {
-        moves.push((r#move, piece.unsigned_abs(), target.unsigned_abs()));
+      moves.push((r#move, piece.unsigned_abs(), target.unsigned_abs()));
+    }
+  }
+
+  /// Generates all recaptures of enemy pieces from a position.
+  #[must_use]
+  pub fn generate_recaptures(&self, target: (usize, usize)) -> Vec<(Move, u8)> {
+    let mut moves = Vec::new();
+    for i in 0..self.height() {
+      for j in 0..self.width() {
+        let piece = self.pieces[(i, j)];
+        if piece != 0 && self.to_move == (piece > 0) && self.check_pseudolegal((i, j), target) {
+          let r#move = Move::new((i, j), target);
+          moves.push((r#move, piece.unsigned_abs()));
+        }
       }
     }
+    moves
   }
 }

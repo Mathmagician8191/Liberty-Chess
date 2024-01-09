@@ -31,6 +31,11 @@ impl History {
     }
   }
 
+  pub fn new_position(&mut self, width: usize, height: usize) {
+    // may change later
+    self.clear(width, height);
+  }
+
   pub fn store(&mut self, side: bool, piece: u8, square: (usize, usize), depth: u8) {
     let depth = u32::from(depth);
     let piece = usize::from(piece - 1);

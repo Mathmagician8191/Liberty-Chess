@@ -7,8 +7,8 @@ use liberty_chess::positions::{
 use liberty_chess::{Board, ALL_PIECES};
 use oxidation::parameters::DEFAULT_PARAMETERS;
 use oxidation::{
-  bench, evaluate, get_move_order, search, Output, SearchConfig, State, HASH_NAME, HASH_SIZE,
-  QDEPTH, QDEPTH_NAME, VERSION_NUMBER,
+  bench, divide, evaluate, get_move_order, search, Output, SearchConfig, State, HASH_NAME,
+  HASH_SIZE, QDEPTH, QDEPTH_NAME, VERSION_NUMBER,
 };
 use std::collections::HashMap;
 use std::io::{stdin, stdout, BufReader};
@@ -18,24 +18,24 @@ use std::time::Instant;
 use ulci::client::{startup, Message};
 use ulci::{ClientInfo, IntOption, OptionValue, SupportedFeatures, UlciOption, V1Features};
 
-const BENCH_DEPTH: i8 = 5;
+const BENCH_DEPTH: i8 = 7;
 
 // i8 is an offset for bench depth
 const BENCH_POSITIONS: &[(&str, i8)] = &[
   (STARTPOS, 0),
-  (CAPABLANCA_RECTANGLE, 0),
-  (CAPABLANCA, 0),
-  (LIBERTY_CHESS, -1),
+  (CAPABLANCA_RECTANGLE, -1),
+  (CAPABLANCA, -1),
+  (LIBERTY_CHESS, -2),
   (MINI, 1),
   (MONGOL, 0),
-  (AFRICAN, 0),
+  (AFRICAN, -1),
   (NARNIA, 0),
-  (TRUMP, -1),
-  (LOADED_BOARD, -1),
-  (DOUBLE_CHESS, 0),
+  (TRUMP, -3),
+  (LOADED_BOARD, -2),
+  (DOUBLE_CHESS, -2),
   (HORDE, 0),
   (ELIMINATION, 0),
-  ("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1", 1),
+  ("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1", 0),
 ];
 
 fn main() {
@@ -108,7 +108,7 @@ fn main() {
           let pv = search(
             &mut state,
             settings,
-            &position,
+            &mut position,
             moves,
             Output::String(stdout()),
           );
@@ -155,8 +155,8 @@ fn main() {
         );
       }
       Message::Bench(depth) => {
-        if depth < 2 {
-          println!("info string servererror minimum bench depth 2");
+        if depth < 4 {
+          println!("info string servererror minimum bench depth 4");
         } else {
           let start = Instant::now();
           let mut nodes = 0;
@@ -164,7 +164,7 @@ fn main() {
             let depth = (depth + depth_offset) as u8;
             let mut board = Board::new(position).expect("Loading bench position {position} failed");
             nodes += bench(
-              &board,
+              &mut board,
               depth,
               &mut qdepth,
               &mut debug,
@@ -174,7 +174,7 @@ fn main() {
             );
             board.friendly_fire = true;
             nodes += bench(
-              &board,
+              &mut board,
               depth,
               &mut qdepth,
               &mut debug,
@@ -192,6 +192,11 @@ fn main() {
         }
       }
       Message::NewGame => state.new_game(&position),
+      Message::Prune => {
+        state.table.prune(position.moves());
+        println!("info hashfull {}", state.table.capacity())
+      }
+      Message::Perft(depth) => divide(&position, depth),
     }
   }
 }

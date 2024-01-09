@@ -1,4 +1,5 @@
 use crate::keys::Hash;
+use crate::moves::Move;
 use crate::{Board, Gamestate, Piece, SharedData, PAWN};
 use array2d::Array2D;
 use std::rc::Rc;
@@ -33,6 +34,8 @@ pub struct CompressedBoard {
   // Piece counts ignore kings
   white_pieces: usize,
   black_pieces: usize,
+
+  last_move: Option<Move>,
 }
 
 impl CompressedBoard {
@@ -87,7 +90,8 @@ impl CompressedBoard {
       white_pieces: self.white_pieces,
       black_pieces: self.black_pieces,
       pawn_checkmates,
-      last_move: None,
+      skip_checkmate: false,
+      last_move: self.last_move,
     }
   }
 }
@@ -120,6 +124,7 @@ impl Board {
       friendly_fire: self.friendly_fire,
       white_pieces: self.white_pieces,
       black_pieces: self.black_pieces,
+      last_move: self.last_move,
     }
   }
 }

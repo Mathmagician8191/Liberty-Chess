@@ -7,7 +7,7 @@ use crate::credits::Credits;
 use crate::gamemodes::{GameMode, Presets, RandomConfig};
 use crate::help_page::{draw_help, HelpPage};
 use crate::helpers::{
-  char_text_edit, checkbox, colour_edit, get_fen, label_text_edit, menu_button,
+  char_text_edit, checkbox, colour_edit, get_fen, label_text_edit, menu_button, NumericalInput,
 };
 use crate::players::{PlayerColour, PlayerData, PlayerType, SearchType, UciState};
 use crate::render::draw_game;
@@ -22,21 +22,23 @@ use enum_iterator::all;
 use helpers::{populate_dropdown, populate_dropdown_transform, raw_text_edit};
 use liberty_chess::parsing::to_name;
 use liberty_chess::{Board, Gamestate, Piece};
+use players::ConnectionMessage;
 use resvg::render;
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{FitTo, Tree};
+use std::sync::mpsc::TryRecvError;
 use themes::CustomTheme;
+use ulci::client::Message;
 use ulci::{Limits, Score, SearchTime};
 
-#[cfg(all(not(feature = "benchmarking"), feature = "clock"))]
+#[cfg(any(not(feature = "benchmarking"), feature = "clock"))]
 use std::time::Duration;
+
 #[cfg(feature = "benchmarking")]
 use std::time::Instant;
 
 #[cfg(feature = "clock")]
 use crate::clock::{convert, draw, draw_edit, init_input};
-#[cfg(feature = "clock")]
-use crate::helpers::NumericalInput;
 #[cfg(feature = "clock")]
 use liberty_chess::clock::{Clock, Type};
 
@@ -322,7 +324,7 @@ impl App for LibertyChessGUI {
     CentralPanel::default().show(ctx, |ui| {
       match &self.screen {
         Screen::Menu => draw_menu(self, ctx, ui),
-        Screen::Game(board) => draw_game(self, ctx, &board.clone()),
+        Screen::Game(board) => draw_game(self, ctx, *board.clone()),
         Screen::Help => draw_help(self, ctx),
         Screen::Credits => credits::draw(self, ctx, ui),
         Screen::Settings => {
@@ -343,9 +345,16 @@ impl App for LibertyChessGUI {
     }
 
     // Re-render every 100 ms if clock is ticking or waiting for engine
-    #[cfg(all(not(feature = "benchmarking"), feature = "clock"))]
-    if let Some(clock) = &self.clock {
-      if !clock.is_paused() {
+    #[cfg(not(feature = "benchmarking"))]
+    {
+      let mut should_poll = matches!(self.player, Some((PlayerData::Multiplayer(_), _)));
+      #[cfg(feature = "clock")]
+      if let Some(clock) = &self.clock {
+        if !clock.is_paused() {
+          should_poll = true;
+        }
+      }
+      if should_poll {
         ctx.request_repaint_after(Duration::from_millis(100));
       }
     }
@@ -432,18 +441,110 @@ fn draw_nav_buttons(gui: &mut LibertyChessGUI, ui: &mut Ui) {
 // draw main areas for each screen
 fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
   // handle loading engine
-  if let Some((PlayerData::Uci(ref mut interface), _)) = gui.player {
-    interface.poll();
-    match interface.state {
-      UciState::Pending => (),
-      UciState::Waiting | UciState::Analysing | UciState::AwaitStop => {
-        let board = interface.board.clone();
-        switch_screen(gui, Screen::Game(board));
+  if let Some((ref mut player, ref mut side)) = gui.player {
+    match player {
+      PlayerData::Uci(interface) => {
+        interface.poll();
+        match interface.state {
+          UciState::Pending => (),
+          UciState::Waiting | UciState::Analysing | UciState::AwaitStop => {
+            let board = interface.board.clone();
+            switch_screen(gui, Screen::Game(board));
+          }
+          UciState::Unsupported => {
+            gui.message = Some("Engine does not support position".to_owned());
+            gui.player = None;
+          }
+          UciState::Crashed => {
+            gui.message = Some("Engine has crashed".to_owned());
+            gui.player = None;
+          }
+        }
       }
-      UciState::Unsupported => {
-        gui.message = Some("Engine does not support position".to_owned());
-        gui.player = None;
+      PlayerData::Multiplayer(interface) => {
+        let mut clear_player = false;
+        let mut position = None;
+        loop {
+          match interface.connection.try_recv() {
+            Ok(message) => match message {
+              ConnectionMessage::Connected(stream) => {
+                interface.output = Some(stream);
+                gui.message = Some("Waiting for server to send board".to_owned());
+              }
+              ConnectionMessage::Timeout => {
+                clear_player = true;
+                gui.message = Some("Connection timed out".to_owned());
+                break;
+              }
+              ConnectionMessage::Uci(message) => match message {
+                Message::UpdatePosition(board) => {
+                  let board = board.load_from_thread();
+                  *side = board.to_move();
+                  position = Some(board);
+                }
+                #[cfg(feature = "clock")]
+                Message::Go(settings) => {
+                  if let Some(ref board) = position {
+                    *side = !board.to_move();
+                    match settings.time {
+                      SearchTime::Increment(time, inc) => {
+                        let mut clock = Clock::new_symmetric(
+                          Duration::from_millis(time as u64),
+                          Duration::from_millis(inc as u64),
+                          board.to_move(),
+                        );
+                        clock.toggle_pause();
+                        gui.clock = Some(clock);
+                      }
+                      SearchTime::Asymmetric(wtime, winc, btime, binc) => {
+                        let mut clock = Clock::new(
+                          [
+                            Duration::from_millis(wtime as u64),
+                            Duration::from_millis(btime as u64),
+                            Duration::from_millis(winc as u64),
+                            Duration::from_millis(binc as u64),
+                          ],
+                          board.to_move(),
+                        );
+                        clock.toggle_pause();
+                        gui.clock = Some(clock);
+                      }
+                      _ => gui.clock = None,
+                    }
+                  }
+                }
+                #[cfg(not(feature = "clock"))]
+                Message::Go(_) => {
+                  if let Some(ref board) = position {
+                    *side = !board.to_move();
+                  }
+                }
+                Message::UpdateOption(..)
+                | Message::SetDebug(_)
+                | Message::Stop
+                | Message::Eval
+                | Message::Bench(_)
+                | Message::NewGame
+                | Message::Prune
+                | Message::Perft(_) => (),
+              },
+            },
+            Err(TryRecvError::Disconnected) => {
+              clear_player = true;
+              gui.message = Some("Disconnected".to_owned());
+              break;
+            }
+            Err(TryRecvError::Empty) => break,
+          }
+        }
+        if clear_player {
+          gui.player = None;
+        }
+        if let Some(position) = position {
+          switch_screen(gui, Screen::Game(Box::new(position)));
+        }
       }
+      _ => (),
     }
   }
   draw_nav_buttons(gui, ui);
@@ -539,10 +640,10 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
               let player_data = PlayerData::new(player, &board, ctx);
               match player_data {
                 Ok(player_data) => {
-                  let message = if let PlayerData::Uci(_) = player_data {
-                    Some("Loading engine".to_owned())
-                  } else {
-                    None
+                  let message = match player_data {
+                    PlayerData::Uci(_) => Some("Loading engine".to_owned()),
+                    PlayerData::Multiplayer(_) => Some("Connecting to server".to_owned()),
+                    _ => None,
                   };
                   (Some((player_data, colour)), message)
                 }
@@ -593,6 +694,11 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
         PlayerType::RandomEngine,
         PlayerType::built_in(),
         PlayerType::External(String::new()),
+        PlayerType::Multiplayer(
+          String::new(),
+          NumericalInput::new(0, 0, u16::MAX),
+          String::new(),
+        ),
       ];
       for value in values {
         let string = value.to_string();
@@ -600,18 +706,20 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       }
     });
 
-  if gui.alternate_player.is_some() {
-    ComboBox::from_id_source("Opponent Colour")
-      .selected_text(format!(
-        "Colour: {}",
-        gui.alternate_player_colour.to_string()
-      ))
-      .show_ui(ui, |ui| {
-        populate_dropdown(ui, &mut gui.alternate_player_colour);
-      });
+  if let Some(ref player) = gui.alternate_player {
+    if !matches!(player, PlayerType::Multiplayer(..)) {
+      ComboBox::from_id_source("Opponent Colour")
+        .selected_text(format!(
+          "Colour: {}",
+          gui.alternate_player_colour.to_string()
+        ))
+        .show_ui(ui, |ui| {
+          populate_dropdown(ui, &mut gui.alternate_player_colour);
+        });
+    }
   }
   if let Some(ref mut player) = gui.alternate_player {
-    if player.is_thinking() {
+    if player.custom_thinking_time() {
       ComboBox::from_id_source("Searchtime")
         .selected_text(format!("Searchtime: {}", gui.searchsettings.to_string()))
         .show_ui(ui, |ui| {
@@ -733,6 +841,20 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       PlayerType::External(path) => {
         ui.label("Engine path:");
         char_text_edit(ui, size, path);
+      }
+      PlayerType::Multiplayer(ip, port, name) => {
+        ui.horizontal_top(|ui| {
+          ui.label("Server IP address:");
+          raw_text_edit(ui, size * 6.0, ip);
+        });
+        ui.horizontal_top(|ui| {
+          ui.label("Port");
+          raw_text_edit(ui, size * 4.0, port);
+        });
+        ui.horizontal_top(|ui| {
+          ui.label("Username (optional):");
+          raw_text_edit(ui, size * 6.0, name);
+        });
       }
       PlayerType::RandomEngine => (),
     }
@@ -875,11 +997,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
     }
     gui.screen = Screen::Game(Box::new(gamestate));
     if let Some((player, _)) = &mut gui.player {
-      match player {
-        PlayerData::RandomEngine => (),
-        PlayerData::BuiltIn(interface) => interface.cancel_move(),
-        PlayerData::Uci(interface) => interface.cancel_move(),
-      }
+      player.cancel_move()
     }
     #[cfg(feature = "clock")]
     if let Some(clock) = &mut gui.clock {
@@ -920,11 +1038,14 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
       });
     if ui.button("Promote").clicked() {
       gamestate.promote(gui.promotion);
+      if let Some((PlayerData::Multiplayer(ref interface), _)) = gui.player {
+        interface.play_move(gamestate.last_move.expect("Missing last move"));
+        gui.undo.clear();
+      }
       gui.screen = Screen::Game(gamestate.clone());
       #[cfg(feature = "sound")]
       if let Some(engine) = &mut gui.audio_engine {
-        let mut effect = Effect::Illegal;
-        update_sound(&mut effect, &gamestate, false);
+        let effect = update_sound(&gamestate, false);
         engine.play(&effect);
       }
       #[cfg(feature = "clock")]
@@ -951,7 +1072,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
       }
     }
     Gamestate::Stalemate => "Draw by stalemate",
-    Gamestate::Move50 => "Draw by 50 move rule",
+    Gamestate::FiftyMove => "Draw by 50 move rule",
     Gamestate::Repetition => "Draw by 3-fold repetition",
     Gamestate::Elimination(winner) => {
       if winner {

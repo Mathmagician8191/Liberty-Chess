@@ -187,10 +187,10 @@ impl<T: Copy + Default + Ord + ToString + FromStr> TextBuffer for NumericalInput
 }
 
 #[cfg(feature = "sound")]
-pub fn update_sound(effect: &mut Effect, board: &Board, capture: bool) {
-  *effect = match board.state() {
+pub fn update_sound(board: &Board, capture: bool) -> Effect {
+  match board.state() {
     Gamestate::Checkmate(_) | Gamestate::Elimination(_) => Effect::Victory,
-    Gamestate::Stalemate | Gamestate::Repetition | Gamestate::Move50 | Gamestate::Material => {
+    Gamestate::Stalemate | Gamestate::Repetition | Gamestate::FiftyMove | Gamestate::Material => {
       Effect::Draw
     }
     Gamestate::InProgress => {
@@ -202,5 +202,5 @@ pub fn update_sound(effect: &mut Effect, board: &Board, capture: bool) {
         Effect::Move
       }
     }
-  };
+  }
 }

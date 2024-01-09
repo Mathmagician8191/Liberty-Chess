@@ -12,7 +12,6 @@ use tester::POSITIONS;
 use ulci::{Score, SearchTime};
 
 const TUNE_K: bool = true;
-const MAX_ITERATIONS: usize = 10;
 
 type GameData = Vec<(CompressedBoard, u32, f64)>;
 
@@ -106,13 +105,13 @@ fn main() {
       let (loss, positions) = calculate_loss(best_k, &processed_data, &parameters);
       let mut best_loss = loss / f64::from(positions);
       let mut delta = 0.01;
-      println!("Position {file} k {k} loss {best_loss:.4}");
+      println!("Position {file} k {k} loss {best_loss:.6}");
       while delta > 0.0001 {
         let mut changed = false;
         let k = best_k + delta;
         let (loss, positions) = calculate_loss(k, &processed_data, &parameters);
         let average_loss = loss / f64::from(positions);
-        println!("Position {file} k {k} loss {average_loss:.4}");
+        println!("Position {file} k {k} loss {average_loss:.6}");
         if average_loss < best_loss {
           best_loss = average_loss;
           best_k = k;
@@ -121,7 +120,7 @@ fn main() {
           let k = best_k - delta;
           let (loss, positions) = calculate_loss(k, &processed_data, &parameters);
           let average_loss = loss / f64::from(positions);
-          println!("Position {file} k {k} loss {average_loss:.4}");
+          println!("Position {file} k {k} loss {average_loss:.6}");
           if average_loss < best_loss {
             best_loss = average_loss;
             best_k = k;
@@ -146,16 +145,20 @@ fn main() {
   while changed {
     let start = Instant::now();
     iteration_count += 1;
-    println!("Starting iteration {iteration_count}, Loss {best_loss:.5}");
+    println!("Starting iteration {iteration_count}, Loss {best_loss:.6}");
     parameter_indices.shuffle(&mut thread_rng());
     changed = false;
     for parameter in &parameter_indices {
       let parameter = *parameter;
+      if !Parameters::valid_index(parameter) {
+        continue;
+      }
+      let iteration_count = Parameters::iteration_count(parameter);
       // try increasing the parameter
       let mut updated = false;
-      for _ in 0..MAX_ITERATIONS {
+      for x in 1..=iteration_count {
         let mut new_parameters = parameters;
-        new_parameters.set_parameter(parameter, 1);
+        new_parameters.set_parameter(parameter, x);
         let new_loss = calculate_loss_batch(&data, &new_parameters);
         if new_loss < best_loss {
           best_loss = new_loss;
@@ -167,9 +170,9 @@ fn main() {
         }
       }
       if !updated {
-        for _ in 0..MAX_ITERATIONS {
+        for x in 1..=iteration_count {
           let mut new_parameters = parameters;
-          new_parameters.set_parameter(parameter, -1);
+          new_parameters.set_parameter(parameter, -x);
           let new_loss = calculate_loss_batch(&data, &new_parameters);
           if new_loss < best_loss {
             best_loss = new_loss;
@@ -182,7 +185,7 @@ fn main() {
         }
       }
       if updated {
-        println!("Loss {best_loss:.5}");
+        println!("Loss {best_loss:.6}");
         println!("{parameters:?}");
       }
     }

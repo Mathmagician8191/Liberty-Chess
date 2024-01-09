@@ -118,4 +118,18 @@ impl TranspositionTable {
   pub fn capacity(&self) -> usize {
     self.capacity * 1000 / max(self.entries.len(), 1)
   }
+
+  /// Clear no longer relevant entries
+  pub fn prune(&mut self, movecount: u32) {
+    if self.capacity > 0 {
+      for entry in self.entries.iter_mut() {
+        if let Some(contents) = entry {
+          if contents.movecount < movecount {
+            *entry = None;
+            self.capacity -= 1;
+          }
+        }
+      }
+    }
+  }
 }

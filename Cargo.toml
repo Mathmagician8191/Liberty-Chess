@@ -1,5 +1,5 @@
 [workspace]
-members = ["liberty_chess_gui", "perft", "oxidation", "tester"]
+members = ["liberty_chess_gui", "perft", "oxidation", "tester", "server"]
 resolver = "2"
 
 [workspace.package]

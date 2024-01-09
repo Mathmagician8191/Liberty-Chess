@@ -27,30 +27,34 @@ pub enum Message {
   Bench(i8),
   /// Clear the TT
   NewGame,
+  /// Prune the TT
+  Prune,
+  /// Perft
+  Perft(usize),
 }
 
-fn print_uci(out: &mut impl Write, info: &ClientInfo) {
+fn print_uci(out: &mut impl Write, info: &ClientInfo) -> Option<()> {
   let v1_features = info.features.v1;
   if v1_features == V1Features::all() {
-    write(out, "id version 1");
+    write(out, "id version 1")?;
   } else {
     if v1_features.board_sizes {
-      write(out, "id feature boardsize");
+      write(out, "id feature boardsize")?;
     }
     if v1_features.pawn_moves {
-      write(out, "id feature pawnmoves");
+      write(out, "id feature pawnmoves")?;
     }
     if v1_features.castling {
-      write(out, "id feature castling");
+      write(out, "id feature castling")?;
     }
     if v1_features.multiple_kings {
-      write(out, "id feature multplekings");
+      write(out, "id feature multplekings")?;
     }
     if v1_features.promotion_options {
-      write(out, "id feature promotion");
+      write(out, "id feature promotion")?;
     }
     if v1_features.friendly_fire {
-      write(out, "id feature friendlyfire");
+      write(out, "id feature friendlyfire")?;
     }
   }
   write(
@@ -59,16 +63,17 @@ fn print_uci(out: &mut impl Write, info: &ClientInfo) {
       "id pieces {}",
       info.pieces.iter().map(|p| to_char(-*p)).collect::<String>()
     ),
-  );
-  write(out, &format!("id name {}", info.name));
+  )?;
+  write(out, &format!("id name {}", info.name))?;
   if let Some(ref name) = info.username {
-    write(out, &format!("id username {name}"));
+    write(out, &format!("id username {name}"))?;
   }
-  write(out, &format!("id author {}", info.author));
+  write(out, &format!("id author {}", info.author))?;
   for (name, option) in &info.options {
-    write(out, &format!("option name {name} {}", option.to_string()));
+    write(out, &format!("option name {name} {}", option.to_string()))?;
   }
-  write(out, "uciok");
+  write(out, "uciok")?;
+  Some(())
 }
 
 fn process_debug(
@@ -91,13 +96,13 @@ fn process_debug(
         write(
           out,
           &format!("info string servererror Unrecognised debug setting {value}"),
-        );
+        )?;
       }
       Some(())
     }
     None => {
       if *debug {
-        write(out, "info string servererror Missing debug setting");
+        write(out, "info string servererror Missing debug setting")?;
       }
       Some(())
     }
@@ -151,7 +156,7 @@ fn setoption(
               write(
                 out,
                 &format!("info string servererror {value} is not an integer"),
-              );
+              )?;
             }
           }
         },
@@ -166,7 +171,7 @@ fn setoption(
               write(
                 out,
                 &format!("info string servererror {value} is not a boolean"),
-              );
+              )?;
             }
           }
         },
@@ -179,7 +184,7 @@ fn setoption(
             write(
               out,
               &format!("info string servererror option {name} has no value {value}"),
-            );
+            )?;
           }
         }
         UlciOption::Trigger => {
@@ -193,12 +198,12 @@ fn setoption(
       write(
         out,
         &format!("info string servererror unrecognised option {name}"),
-      );
+      )?;
       malformed = false;
     }
   }
   if malformed && debug {
-    write(out, "info string servererror malformed setoption command");
+    write(out, "info string servererror malformed setoption command")?;
   }
   Some(())
 }
@@ -229,14 +234,14 @@ fn position(
         write(
           out,
           &format!("info string servererror invalid position {fen}"),
-        );
+        )?;
         // Fatal error, quit the program
         return None;
       }
     }
     Some(_) | None => {
       if debug {
-        write(out, "info string servererror malformed position command");
+        write(out, "info string servererror malformed position command")?;
       }
       return Some(());
     }
@@ -254,12 +259,12 @@ fn position(
               candidate_move.to_string(),
               board.to_string()
             ),
-          );
+          )?;
           // Fatal error, quit the program
           return None;
         }
       } else {
-        write(out, &format!("info string servererror invalid move {word}"));
+        write(out, &format!("info string servererror invalid move {word}"))?;
         // Fatal error, quit the program
         return None;
       }
@@ -269,7 +274,7 @@ fn position(
     write(
       out,
       &format!("info string position changed to {}", board.to_string()),
-    );
+    )?;
   }
   client
     .send(Message::UpdatePosition(Box::new(board.send_to_thread())))
@@ -279,7 +284,6 @@ fn position(
 fn go(
   out: &mut impl Write,
   client: &Sender<Message>,
-  board: &Board,
   mut words: SplitWhitespace,
   debug: bool,
 ) -> Option<()> {
@@ -298,7 +302,7 @@ fn go(
           limits.depth = depth as u8;
           time = SearchTime::Other(limits);
         } else if debug {
-          write(out, "info string servererror no depth specified");
+          write(out, "info string servererror no depth specified")?;
         }
       }
       "mate" => {
@@ -306,7 +310,7 @@ fn go(
           let moves = u32::from(u8::MAX).min(value);
           time = SearchTime::Mate(moves);
         } else if debug {
-          write(out, "info string servererror no move count specified");
+          write(out, "info string servererror no move count specified")?;
         }
       }
       "nodes" => {
@@ -319,7 +323,7 @@ fn go(
           limits.nodes = value;
           time = SearchTime::Other(limits);
         } else if debug {
-          write(out, "info string servererror no node count specified");
+          write(out, "info string servererror no node count specified")?;
         }
       }
       "movetime" => {
@@ -332,65 +336,57 @@ fn go(
           limits.time = value;
           time = SearchTime::Other(limits);
         } else if debug {
-          write(out, "info string servererror no time specified");
+          write(out, "info string servererror no time specified")?;
         }
       }
       "wtime" => {
-        if board.to_move() {
-          if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-            if let SearchTime::Increment(ref mut time, _) = time {
-              *time = value;
-            } else {
-              time = SearchTime::Increment(value, 0);
-            }
-          } else if debug {
-            write(out, "info string servererror no time specified");
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          if let SearchTime::Asymmetric(ref mut wtime, _, _, _) = time {
+            *wtime = value;
+          } else {
+            time = SearchTime::Asymmetric(value, 0, 1000, 0);
           }
+        } else if debug {
+          write(out, "info string servererror no time specified")?;
         }
       }
       "btime" => {
-        if !board.to_move() {
-          if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-            if let SearchTime::Increment(ref mut time, _) = time {
-              *time = value;
-            } else {
-              time = SearchTime::Increment(value, 0);
-            }
-          } else if debug {
-            write(out, "info string servererror no time specified");
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          if let SearchTime::Asymmetric(_, _, ref mut btime, _) = time {
+            *btime = value;
+          } else {
+            time = SearchTime::Asymmetric(1000, 0, value, 0);
           }
+        } else if debug {
+          write(out, "info string servererror no time specified")?;
         }
       }
       "winc" => {
-        if board.to_move() {
-          if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-            if let SearchTime::Increment(_, ref mut inc) = time {
-              *inc = value;
-            } else {
-              time = SearchTime::Increment(1000, value);
-            }
-          } else if debug {
-            write(out, "info string servererror no time specified");
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          if let SearchTime::Asymmetric(_, ref mut winc, _, _) = time {
+            *winc = value;
+          } else {
+            time = SearchTime::Asymmetric(1000, value, 1000, 0);
           }
+        } else if debug {
+          write(out, "info string servererror no time specified")?;
         }
       }
       "binc" => {
-        if !board.to_move() {
-          if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-            if let SearchTime::Increment(_, ref mut inc) = time {
-              *inc = value;
-            } else {
-              time = SearchTime::Increment(1000, value);
-            }
-          } else if debug {
-            write(out, "info string servererror no time specified");
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          if let SearchTime::Asymmetric(_, _, _, ref mut binc) = time {
+            *binc = value;
+          } else {
+            time = SearchTime::Asymmetric(1000, 0, 1000, value);
           }
+        } else if debug {
+          write(out, "info string servererror no time specified")?;
         }
       }
       "searchmoves" => break,
       _ => {
         if debug {
-          write(out, "info string servererror unknown go parameter");
+          write(out, "info string servererror unknown go parameter")?;
         }
       }
     }
@@ -400,7 +396,7 @@ fn go(
     if let Ok(r#move) = word.parse() {
       moves.push(r#move);
     } else {
-      write(out, "info string servererror invalid move specified");
+      write(out, "info string servererror invalid move specified")?;
       // Fatal error, quit the program
       return None;
     }
@@ -428,15 +424,26 @@ pub fn startup(
     }
     let mut words = buffer.split_whitespace();
     match words.next() {
-      Some("uci") => print_uci(&mut out, info),
+      Some("uci") => print_uci(&mut out, info)?,
       Some("debug") => process_debug(&mut out, client, words, &mut debug)?,
-      Some("isready") => write(&mut out, "readyok"),
+      Some("isready") => {
+        write(&mut out, "readyok")?;
+      }
       Some("setoption") => setoption(&mut out, client, words, debug, info)?,
       Some("position") => position(&mut out, client, &mut board, words, debug)?,
-      Some("go") => go(&mut out, client, &board, words, debug)?,
+      Some("go") => go(&mut out, client, words, debug)?,
       Some("stop") => client.send(Message::Stop).ok()?,
       Some("eval") => client.send(Message::Eval).ok()?,
       Some("ucinewgame") => client.send(Message::NewGame).ok()?,
+      Some("prune") => client.send(Message::Prune).ok()?,
+      Some("perft") => {
+        let depth = words
+          .next()
+          .and_then(|w| w.parse().ok())
+          .unwrap_or(1)
+          .max(1);
+        client.send(Message::Perft(depth)).ok()?;
+      }
       Some("bench") => {
         let depth = words
           .next()
@@ -454,7 +461,7 @@ pub fn startup(
           write(
             &mut out,
             &format!("info string servererror Unrecognised command {command}"),
-          );
+          )?;
         }
       }
     }

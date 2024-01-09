@@ -1,0 +1,16 @@
+[package]
+name = "server"
+authors.workspace = true
+version.workspace = true
+repository.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "arrangedmatch"
+path = "src/match.rs"
+
+[dependencies]
+liberty_chess = {workspace = true}
+parking_lot = {workspace = true}
+ulci = {workspace = true}
