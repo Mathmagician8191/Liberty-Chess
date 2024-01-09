@@ -2,7 +2,8 @@ use liberty_chess::clock::format_time;
 use liberty_chess::moves::Move;
 use liberty_chess::threading::CompressedBoard;
 use liberty_chess::{Board, Gamestate};
-use oxidation::random_move;
+use oxidation::parameters::DEFAULT_PARAMETERS;
+use oxidation::{evaluate, quiescence, random_move, SearchConfig, State, QDEPTH};
 use rand::{thread_rng, Rng};
 use std::collections::{HashMap, HashSet};
 use std::fs::write;
@@ -12,7 +13,7 @@ use std::time::Instant;
 use tester::POSITIONS;
 use threadpool::ThreadPool;
 use ulci::server::{AnalysisRequest, Request, UlciResult};
-use ulci::{load_engine, SearchTime};
+use ulci::{load_engine, Score, SearchTime};
 
 const CHAMPION: &str = "./target/release/oxidation";
 const CHALLENGER: &str = "./target/release/oxidation";
@@ -22,6 +23,8 @@ const RANDOM_MOVE_COUNT: usize = 4;
 
 const CHAMP_TIME: SearchTime = SearchTime::Increment(8000, 80);
 const CHALLENGE_TIME: SearchTime = CHAMP_TIME;
+
+const FILTER_THRESHOLD: i32 = 200;
 
 struct GameInfo {
   result: GameResult,
@@ -259,17 +262,52 @@ fn test_position(
   let pool = ThreadPool::new(cores - 1);
   let champion_side: bool = thread_rng().gen();
   let (tx, rx) = channel();
+  let state = State::new(0, board);
+  let mut debug = false;
+  let mut qdepth = QDEPTH;
+  let (_tx, rx_2) = channel();
+  let mut settings =
+    SearchConfig::new_time(board, &mut qdepth, SearchTime::Infinite, &rx_2, &mut debug);
+  let mut eval = evaluate(board, &DEFAULT_PARAMETERS);
+  if RANDOM_MOVE_COUNT % 2 == 1 {
+    // Final board is opposite stm, invert score
+    eval = -eval;
+  }
+  let alpha = match eval {
+    Score::Centipawn(value) => Score::Centipawn(value - FILTER_THRESHOLD),
+    _ => eval,
+  };
+  let beta = match eval {
+    Score::Centipawn(value) => Score::Centipawn(value + FILTER_THRESHOLD),
+    _ => eval,
+  };
   for _ in 0..GAME_PAIR_COUNT {
     let tx = tx.clone();
     let tx2 = tx.clone();
-    let mut board = board.clone();
-    for _ in 1..RANDOM_MOVE_COUNT {
-      if let Some(randommove) = random_move(&board) {
-        if let Some(new_board) = board.move_if_legal(randommove) {
-          board = new_board;
+    let board = loop {
+      let mut board = board.clone();
+      for _ in 0..RANDOM_MOVE_COUNT {
+        if let Some(randommove) = random_move(&board) {
+          if let Some(new_board) = board.move_if_legal(randommove) {
+            board = new_board;
+          }
         }
       }
-    }
+      // Filter out busted openings
+      let (_, score) = quiescence(
+        &state,
+        &mut settings,
+        &board,
+        QDEPTH,
+        alpha,
+        beta,
+        &DEFAULT_PARAMETERS,
+      );
+      if score > alpha && score < beta {
+        break board;
+      }
+      println!("{} is busted", board.to_string());
+    };
     let compressed_board = board.send_to_thread();
     let compressed_board_2 = compressed_board.clone();
     pool.execute(move || play_game(compressed_board, moves, champion_side, &tx));
