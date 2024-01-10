@@ -23,3 +23,7 @@ array2d = {workspace = true}
 liberty_chess = {workspace = true}
 rand = {workspace = true}
 ulci = {workspace = true}
+
+[features]
+default = []
+pesto = []

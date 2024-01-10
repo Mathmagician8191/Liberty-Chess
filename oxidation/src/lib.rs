@@ -20,6 +20,9 @@ use ulci::client::Message;
 use ulci::server::{AnalysisResult, UlciResult};
 use ulci::{OptionValue, Score, SearchTime};
 
+#[cfg(feature = "pesto")]
+use crate::pesto::{EG_PSQT, MG_PSQT};
+
 /// Interface for efficiently integrating into another application
 pub mod glue;
 /// Tunable parameters
@@ -27,6 +30,9 @@ pub mod parameters;
 
 mod history;
 mod tt;
+
+#[cfg(feature = "pesto")]
+mod pesto;
 
 /// The version number of the engine
 pub const VERSION_NUMBER: &str = env!("CARGO_PKG_VERSION");
@@ -355,15 +361,37 @@ pub fn evaluate(board: &Board, parameters: &Parameters) -> Score {
             material += ENDGAME_FACTOR[piece_type];
             let mut mg_value = parameters.mg_pieces[piece_type];
             let mut eg_value = parameters.eg_pieces[piece_type];
-            let horizontal_distance = min(i, board.height() - 1 - i);
-            if horizontal_distance < EDGE_DISTANCE {
-              mg_value -= parameters.mg_edge[piece_type][horizontal_distance];
-              eg_value -= parameters.eg_edge[piece_type][horizontal_distance];
+            #[cfg(feature = "pesto")]
+            {
+              if board.height() == 8 && board.width() == 8 && piece_type < 6 {
+                let index = if piece > 0 { 7 - i } else { i };
+                mg_value += MG_PSQT[piece_type][index][j];
+                eg_value += EG_PSQT[piece_type][index][j];
+              } else {
+                let horizontal_distance = min(i, board.height() - 1 - i);
+                if horizontal_distance < EDGE_DISTANCE {
+                  mg_value -= parameters.mg_edge[piece_type][horizontal_distance];
+                  eg_value -= parameters.eg_edge[piece_type][horizontal_distance];
+                }
+                let vertical_distance = min(j, board.width() - 1 - j);
+                if vertical_distance < EDGE_DISTANCE {
+                  mg_value -= parameters.mg_edge[piece_type][vertical_distance];
+                  eg_value -= parameters.eg_edge[piece_type][vertical_distance];
+                }
+              }
             }
-            let vertical_distance = min(j, board.width() - 1 - j);
-            if vertical_distance < EDGE_DISTANCE {
-              mg_value -= parameters.mg_edge[piece_type][vertical_distance];
-              eg_value -= parameters.eg_edge[piece_type][vertical_distance];
+            #[cfg(not(feature = "pesto"))]
+            {
+              let horizontal_distance = min(i, board.height() - 1 - i);
+              if horizontal_distance < EDGE_DISTANCE {
+                mg_value -= parameters.mg_edge[piece_type][horizontal_distance];
+                eg_value -= parameters.eg_edge[piece_type][horizontal_distance];
+              }
+              let vertical_distance = min(j, board.width() - 1 - j);
+              if vertical_distance < EDGE_DISTANCE {
+                mg_value -= parameters.mg_edge[piece_type][vertical_distance];
+                eg_value -= parameters.eg_edge[piece_type][vertical_distance];
+              }
             }
             if piece.abs() == PAWN {
               // penalty for pawn being blocked
