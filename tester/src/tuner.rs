@@ -1,19 +1,16 @@
-use liberty_chess::positions::get_startpos;
-use liberty_chess::threading::CompressedBoard;
-use liberty_chess::Board;
+use array2d::Array2D;
+use liberty_chess::{Board, Piece};
 use oxidation::parameters::{Parameters, DEFAULT_PARAMETERS};
-use oxidation::{quiescence, SearchConfig, State, QDEPTH};
+use oxidation::{evaluate_raw, get_promotion_values};
 use rand::{seq::SliceRandom, thread_rng};
 use rayon::prelude::*;
 use std::fs::read_to_string;
-use std::sync::mpsc::channel;
 use std::time::Instant;
 use tester::POSITIONS;
-use ulci::{Score, SearchTime};
 
 const TUNE_K: bool = true;
 
-type GameData = Vec<(CompressedBoard, u32, f64)>;
+type GameData = Vec<(Array2D<Piece>, Vec<Piece>, bool, u8, u32, f64)>;
 
 fn calculate_loss_batch(data: &Vec<(f64, GameData)>, parameters: &Parameters) -> f64 {
   let mut loss_total = 0.0;
@@ -27,42 +24,26 @@ fn calculate_loss_batch(data: &Vec<(f64, GameData)>, parameters: &Parameters) ->
 }
 
 fn calculate_loss(k: f64, data: &GameData, parameters: &Parameters) -> (f64, u32) {
-  let state = State::new(0, &get_startpos());
   let (loss, positions) = data
     .par_iter()
-    .map(|(position, count, game_score)| {
-      let mut qdepth = QDEPTH;
-      let mut debug = false;
-      let (_tx, rx) = channel();
-      let position = position.clone().load_from_thread();
-      let mut settings = SearchConfig::new_time(
-        &position,
-        &mut qdepth,
-        SearchTime::Infinite,
-        &rx,
-        &mut debug,
-      );
-      let (_pv, mut score) = quiescence(
-        &state,
-        &mut settings,
-        &position,
-        3,
-        Score::Loss(0),
-        Score::Win(0),
-        parameters,
-      );
-      if !position.to_move() {
-        score = -score;
-      }
-      if let Score::Centipawn(score) = score {
+    .map(
+      |(pieces, promotions, to_move, halfmoves, count, game_score)| {
+        let mut score = evaluate_raw(
+          pieces,
+          get_promotion_values(promotions, parameters),
+          *to_move,
+          *halfmoves,
+          parameters,
+        );
+        if !to_move {
+          score = -score;
+        }
         let fcount = f64::from(*count);
         let sigmoid = 1.0 / (1.0 + (-k * f64::from(score) / 100.0).exp());
         let loss = fcount * (game_score - sigmoid).powi(2);
         (loss, *count)
-      } else {
-        (0.0, 0)
-      }
-    })
+      },
+    )
     .fold(
       || (0.0, 0),
       |(loss_acc, count_acc), (loss, count)| (loss_acc + loss, count_acc + count),
@@ -76,16 +57,17 @@ fn calculate_loss(k: f64, data: &GameData, parameters: &Parameters) -> (f64, u32
 
 fn main() {
   let mut parameters = DEFAULT_PARAMETERS;
+  println!("{parameters:?}");
   let mut data = Vec::new();
   for (file, _, _, k) in POSITIONS {
-    let fens = read_to_string(format!("datagen/{file}.txt")).expect("Unable to read file");
-    let processed_data: GameData = fens
-      .split('\n')
-      .map(|line| {
+    println!("Position {file}");
+    let mut processed_data = Vec::new();
+    for folder in ["tt replacement", "softerer tm part 1", "softerer tm part 2"] {
+      let fens =
+        read_to_string(format!("datagen/{folder}/{file}.txt")).expect("Unable to read file");
+      processed_data.extend(fens.split('\n').map(|line| {
         let mut line = line.split(';');
-        let board = Board::new(line.next().expect("missing FEN"))
-          .expect("Invalid position")
-          .send_to_thread();
+        let board = Board::new(line.next().expect("missing FEN")).expect("Invalid position");
         let games: u32 = line
           .next()
           .expect("Missing games")
@@ -96,23 +78,31 @@ fn main() {
           .expect("Missing score")
           .parse()
           .expect("Invalid score");
-        (board, games, f64::from(score) / f64::from(games) / 2.0)
-      })
-      .collect();
+        (
+          board.board().clone(),
+          board.promotion_options().clone(),
+          board.to_move(),
+          board.halfmoves(),
+          games,
+          f64::from(score) / f64::from(games) / 2.0,
+        )
+      }))
+    }
+    println!("Loaded {} positions", processed_data.len());
     // Calculate K
     if TUNE_K {
       let mut best_k = *k;
       let (loss, positions) = calculate_loss(best_k, &processed_data, &parameters);
       let mut best_loss = loss / f64::from(positions);
       let mut delta = 0.01;
-      println!("Position {file} k {k} loss {best_loss:.6}");
+      println!("k {k} loss {best_loss:.6}");
       while delta > 0.0001 {
         let mut changed = false;
         let k = best_k + delta;
         let (loss, positions) = calculate_loss(k, &processed_data, &parameters);
         let average_loss = loss / f64::from(positions);
-        println!("Position {file} k {k} loss {average_loss:.6}");
         if average_loss < best_loss {
+          println!("Position {file} k {k} loss {average_loss:.6}");
           best_loss = average_loss;
           best_k = k;
           changed = true;
@@ -120,8 +110,8 @@ fn main() {
           let k = best_k - delta;
           let (loss, positions) = calculate_loss(k, &processed_data, &parameters);
           let average_loss = loss / f64::from(positions);
-          println!("Position {file} k {k} loss {average_loss:.6}");
           if average_loss < best_loss {
+            println!("Position {file} k {k} loss {average_loss:.6}");
             best_loss = average_loss;
             best_k = k;
             changed = true;
@@ -133,6 +123,8 @@ fn main() {
       }
       println!("Final k for {file}: {best_k}");
       data.push((best_k, processed_data));
+    } else {
+      data.push((*k, processed_data));
     }
   }
   let start = Instant::now();
@@ -178,17 +170,13 @@ fn main() {
             best_loss = new_loss;
             parameters = new_parameters;
             changed = true;
-            updated = true;
           } else {
             break;
           }
         }
       }
-      if updated {
-        println!("Loss {best_loss:.6}");
-        println!("{parameters:?}");
-      }
     }
     println!("Iteration took {}s", start.elapsed().as_secs());
+    println!("{parameters:?}");
   }
 }

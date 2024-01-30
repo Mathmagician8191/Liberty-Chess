@@ -1,6 +1,6 @@
 [package]
 name = "tester"
-version = "0.3.0"
+version = "0.3.1"
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -15,6 +15,7 @@ name = "tuner"
 path = "src/tuner.rs"
 
 [dependencies]
+array2d = {workspace = true}
 liberty_chess = {workspace = true}
 rand = {workspace = true}
 rayon = {workspace = true}

@@ -8,6 +8,7 @@ use liberty_chess::positions::get_startpos;
 use liberty_chess::threading::CompressedBoard;
 use liberty_chess::{Board, Gamestate, ALL_PIECES};
 use oxidation::glue::process_position;
+use oxidation::parameters::DEFAULT_PARAMETERS;
 use oxidation::{random_move, State, HASH_SIZE, QDEPTH, VERSION_NUMBER};
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
@@ -267,7 +268,7 @@ impl PlayerData {
         let (send_message, receive_message) = channel();
         let ctx = ctx.clone();
         spawn(move || {
-          let mut state = State::new(hash_size, &get_startpos());
+          let mut state = State::new(hash_size, &get_startpos(), DEFAULT_PARAMETERS);
           while let Ok((board, searchtime)) = recieve_request.recv() {
             process_position(
               &send_result,
@@ -341,7 +342,11 @@ impl PlayerData {
   }
 
   // Update and check for bestmove/score update
-  pub fn poll(&mut self, board: &Board, searchtime: SearchTime) -> (Option<Move>, Option<Score>) {
+  pub fn poll(
+    &mut self,
+    board: &Board,
+    searchtime: SearchTime,
+  ) -> (Option<Move>, Option<(Score, u16)>) {
     match self {
       Self::RandomEngine => (random_move(board), None),
       Self::BuiltIn(interface) => interface.get_move(board, searchtime),
@@ -371,8 +376,8 @@ impl EngineInterface {
     &mut self,
     board: &Board,
     searchtime: SearchTime,
-  ) -> (Option<Move>, Option<Score>) {
-    let (mut result, mut score) = (None, None);
+  ) -> (Option<Move>, Option<(Score, u16)>) {
+    let (mut result, mut analysis) = (None, None);
     if self.status {
       // request sent, poll for results
       for message in self.rx.try_iter() {
@@ -382,11 +387,16 @@ impl EngineInterface {
             self.status = false;
           }
           UlciResult::Analysis(result) => {
-            let mut result = result.score;
+            let mut score = result.score;
             if board.to_move() {
-              result = -result;
+              score = -score;
             }
-            score = Some(result);
+            match score {
+              Score::Win(moves) => score = Score::Win(moves - board.moves()),
+              Score::Loss(moves) => score = Score::Loss(moves - board.moves()),
+              Score::Centipawn(_) => (),
+            }
+            analysis = Some((score, result.depth));
           }
           UlciResult::Startup(_) | UlciResult::Info(..) => (),
         }
@@ -396,7 +406,7 @@ impl EngineInterface {
       self.tx.send((board.send_to_thread(), searchtime)).ok();
       self.status = true;
     }
-    (result, score)
+    (result, analysis)
   }
 
   fn cancel_move(&mut self) {
@@ -461,8 +471,8 @@ impl UciInterface {
     &mut self,
     board: &Board,
     searchtime: SearchTime,
-  ) -> (Option<Move>, Option<Score>) {
-    let (mut result, mut score) = (None, None);
+  ) -> (Option<Move>, Option<(Score, u16)>) {
+    let (mut result, mut analysis) = (None, None);
     match self.state {
       UciState::Pending => loop {
         match self.rx.try_recv() {
@@ -510,11 +520,11 @@ impl UciInterface {
                 self.state = UciState::Waiting;
               }
               UlciResult::Analysis(result) => {
-                let mut result = result.score;
+                let mut score = result.score;
                 if board.to_move() {
-                  result = -result;
+                  score = -score;
                 }
-                score = Some(result);
+                analysis = Some((score, result.depth));
               }
               UlciResult::Startup(_) | UlciResult::Info(..) => (),
             },
@@ -541,7 +551,7 @@ impl UciInterface {
       },
       UciState::Unsupported | UciState::Crashed => (),
     }
-    (result, score)
+    (result, analysis)
   }
 
   fn cancel_move(&mut self) {

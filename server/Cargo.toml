@@ -12,5 +12,5 @@ path = "src/match.rs"
 
 [dependencies]
 liberty_chess = {workspace = true}
-parking_lot = {workspace = true}
+rand = {workspace = true}
 ulci = {workspace = true}

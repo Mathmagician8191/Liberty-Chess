@@ -14,6 +14,7 @@ use std::sync::Arc;
 use std::thread::spawn;
 
 /// A request for some ULCI action
+#[derive(Clone)]
 pub enum Request {
   /// The server needs some analysis from the client
   Analysis(AnalysisRequest),
@@ -26,6 +27,7 @@ pub enum Request {
 }
 
 /// A request for analysis
+#[derive(Clone)]
 pub struct AnalysisRequest {
   /// The base position to analyse
   pub fen: String,

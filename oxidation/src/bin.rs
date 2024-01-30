@@ -7,8 +7,8 @@ use liberty_chess::positions::{
 use liberty_chess::{Board, ALL_PIECES};
 use oxidation::parameters::DEFAULT_PARAMETERS;
 use oxidation::{
-  bench, divide, evaluate, get_move_order, search, Output, SearchConfig, State, HASH_NAME,
-  HASH_SIZE, QDEPTH, QDEPTH_NAME, VERSION_NUMBER,
+  bench, divide, evaluate, get_move_order, search, Output, SearchConfig, State, HASH_SIZE, QDEPTH,
+  QDEPTH_NAME, VERSION_NUMBER,
 };
 use std::collections::HashMap;
 use std::io::{stdin, stdout, BufReader};
@@ -19,6 +19,9 @@ use ulci::client::{startup, Message};
 use ulci::{ClientInfo, IntOption, OptionValue, SupportedFeatures, UlciOption, V1Features};
 
 const BENCH_DEPTH: i8 = 7;
+
+const HASH_NAME: &str = "Hash";
+const PRUNE_NAME: &str = "Prune";
 
 // i8 is an offset for bench depth
 const BENCH_POSITIONS: &[(&str, i8)] = &[
@@ -57,6 +60,7 @@ fn main() {
       max: 1 << 32,
     }),
   );
+  options.insert(PRUNE_NAME.to_owned(), UlciOption::Trigger);
   let info = ClientInfo {
     features: SupportedFeatures {
       v1: V1Features::all(),
@@ -71,7 +75,7 @@ fn main() {
   let mut qdepth = QDEPTH;
   let mut hash_size = HASH_SIZE;
   let mut position = get_startpos();
-  let mut state = State::new(hash_size, &position);
+  let mut state = State::new(hash_size, &position, DEFAULT_PARAMETERS);
   let input = BufReader::new(stdin());
   let output = stdout();
   let mut debug = false;
@@ -121,10 +125,7 @@ fn main() {
       Message::UpdateOption(name, value) => match &*name {
         QDEPTH_NAME => match value {
           OptionValue::UpdateInt(value) => qdepth = value as u8,
-          OptionValue::SendTrigger
-          | OptionValue::UpdateBool(_)
-          | OptionValue::UpdateRange(_)
-          | OptionValue::UpdateString(_) => {
+          _ => {
             if debug {
               println!("info string servererror incorrect option type");
             }
@@ -134,13 +135,21 @@ fn main() {
           OptionValue::UpdateInt(value) => {
             if value != hash_size {
               hash_size = value;
-              state = State::new(hash_size, &position);
+              state = State::new(hash_size, &position, DEFAULT_PARAMETERS);
             }
           }
-          OptionValue::SendTrigger
-          | OptionValue::UpdateBool(_)
-          | OptionValue::UpdateRange(_)
-          | OptionValue::UpdateString(_) => {
+          _ => {
+            if debug {
+              println!("info string servererror incorrect option type");
+            }
+          }
+        },
+        PRUNE_NAME => match value {
+          OptionValue::SendTrigger => {
+            state.table.prune(position.moves());
+            println!("info hashfull {}", state.table.capacity());
+          }
+          _ => {
             if debug {
               println!("info string servererror incorrect option type");
             }
@@ -151,7 +160,7 @@ fn main() {
       Message::Eval => {
         println!(
           "info string score {}",
-          evaluate(&position, &DEFAULT_PARAMETERS).show_uci(position.moves(), position.to_move()),
+          evaluate(&state, &position).show_uci(position.moves(), position.to_move()),
         );
       }
       Message::Bench(depth) => {
@@ -159,26 +168,27 @@ fn main() {
           println!("info string servererror minimum bench depth 4");
         } else {
           let start = Instant::now();
+          state.new_game(&position);
           let mut nodes = 0;
           for (position, depth_offset) in BENCH_POSITIONS {
             let depth = (depth + depth_offset) as u8;
             let mut board = Board::new(position).expect("Loading bench position {position} failed");
             nodes += bench(
+              &mut state,
               &mut board,
               depth,
               &mut qdepth,
               &mut debug,
-              hash_size,
               &rx,
               Output::String(stdout()),
             );
             board.friendly_fire = true;
             nodes += bench(
+              &mut state,
               &mut board,
               depth,
               &mut qdepth,
               &mut debug,
-              hash_size,
               &rx,
               Output::String(stdout()),
             );
@@ -192,10 +202,6 @@ fn main() {
         }
       }
       Message::NewGame => state.new_game(&position),
-      Message::Prune => {
-        state.table.prune(position.moves());
-        println!("info hashfull {}", state.table.capacity())
-      }
       Message::Perft(depth) => divide(&position, depth),
     }
   }

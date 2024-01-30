@@ -7,25 +7,44 @@ use liberty_chess::positions::{
   LOADED_BOARD, MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
 };
 
+/// Available options for starting position
+pub enum StartingPosition {
+  /// Fixed FEN with random moves
+  Fen(&'static str),
+  /// Randomly generated board
+  Random,
+}
+
 /// The test positions for the match
-pub const POSITIONS: &[(&str, &str, u32, f64)] = &[
-  ("startpos", STARTPOS, 18, 0.518),
-  ("rectangle", CAPABLANCA_RECTANGLE, 18, 0.3832),
-  ("capablanca", CAPABLANCA, 24, 0.3184),
-  ("liberty", LIBERTY_CHESS, 65, 0.07995),
-  ("mini", MINI, 12, 0.4981),
-  ("mongol", MONGOL, 24, 0.2787),
-  ("african", AFRICAN, 24, 0.3771),
-  ("narnia", NARNIA, 15, 0.4679),
-  ("trump", TRUMP, 35, 0.2862),
-  ("loaded", LOADED_BOARD, 12, 0.371),
-  ("double", DOUBLE_CHESS, 15, 0.2365),
-  ("horde", HORDE, 16, 0.2876),
-  ("elimination", ELIMINATION, 25, 0.0514),
+pub const POSITIONS: &[(&str, StartingPosition, u32, f64)] = &[
+  ("startpos", StartingPosition::Fen(STARTPOS), 18, 0.5383),
+  (
+    "rectangle",
+    StartingPosition::Fen(CAPABLANCA_RECTANGLE),
+    18,
+    0.3847,
+  ),
+  ("capablanca", StartingPosition::Fen(CAPABLANCA), 24, 0.3795),
+  ("liberty", StartingPosition::Fen(LIBERTY_CHESS), 65, 0.1322),
+  ("mini", StartingPosition::Fen(MINI), 12, 0.3914),
+  ("mongol", StartingPosition::Fen(MONGOL), 24, 0.3523),
+  ("african", StartingPosition::Fen(AFRICAN), 24, 0.3839),
+  ("narnia", StartingPosition::Fen(NARNIA), 15, 0.4209),
+  ("trump", StartingPosition::Fen(TRUMP), 35, 0.2549),
+  ("loaded", StartingPosition::Fen(LOADED_BOARD), 12, 0.32),
+  ("double", StartingPosition::Fen(DOUBLE_CHESS), 15, 0.2505),
+  ("horde", StartingPosition::Fen(HORDE), 16, 0.2463),
+  (
+    "elimination",
+    StartingPosition::Fen(ELIMINATION),
+    25,
+    0.03297,
+  ),
   (
     "endgame",
-    "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1",
+    StartingPosition::Fen("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1"),
     12,
-    0.7669,
+    0.7932,
   ),
+  ("random", StartingPosition::Random, 24, 0.3127),
 ];

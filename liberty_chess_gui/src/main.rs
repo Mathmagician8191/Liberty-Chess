@@ -12,7 +12,8 @@ use crate::helpers::{
 use crate::players::{PlayerColour, PlayerData, PlayerType, SearchType, UciState};
 use crate::render::draw_game;
 use crate::themes::{Colours, Theme};
-use eframe::epaint::{pos2, Color32, Pos2, Rect, Rounding, TextureId};
+use eframe::emath::Align2;
+use eframe::epaint::{pos2, Color32, FontId, Pos2, Rect, Rounding, TextureId};
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
   Area, Button, CentralPanel, ColorImage, ComboBox, Context, Label, RichText, ScrollArea,
@@ -71,8 +72,6 @@ mod clock;
 
 const MAX_TIME: u64 = 360;
 
-const EVAL_BAR_WIDTH: f32 = 20.0;
-
 #[derive(Eq, PartialEq)]
 enum Screen {
   Menu,
@@ -112,7 +111,8 @@ pub(crate) struct LibertyChessGUI {
   player: Option<(PlayerData, bool)>,
   searchtime: SearchTime,
   flipped: bool,
-  eval: Option<Score>,
+  eval: Option<(Score, u16)>,
+  safety_mode: bool,
 
   // fields for other screens
   help_page: HelpPage,
@@ -183,6 +183,7 @@ impl LibertyChessGUI {
       searchtime: SearchTime::Infinite,
       flipped: false,
       eval: None,
+      safety_mode: false,
 
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
@@ -234,23 +235,34 @@ impl App for LibertyChessGUI {
       Screen::Game(board) => {
         let board = board.clone();
         SidePanel::right("Sidebar")
-          .min_width((f32::from(self.config.get_text_size())).mul_add(4.8, 6.8))
+          .min_width((f32::from(self.config.get_text_size())).mul_add(5.1, 6.5))
           .resizable(false)
           .show(ctx, |ui| draw_game_sidebar(self, ui, board));
         if self.config.get_evalbar() {
-          if let Some(score) = self.eval {
+          if let Some((score, depth)) = self.eval {
+            let size = f32::from(self.config.get_text_size());
             SidePanel::left("Eval bar")
-              .exact_width(EVAL_BAR_WIDTH)
+              .exact_width(size * 1.6)
               .resizable(false)
               .show(ctx, |ui| {
                 let height = ui.available_height();
                 // chance for black to win makes calculations easier
-                let black_win_chance = match score {
-                  Score::Win(_) => 0.0,
-                  Score::Loss(_) => 1.0,
+                let (black_win_chance, eval) = match score {
+                  Score::Win(moves) => (0.0, format!("#-{moves}")),
+                  Score::Loss(moves) => (1.0, format!("#{moves}")),
                   Score::Centipawn(score) => {
+                    let score_abs = score.abs() / 10;
+                    let (pawns, centipawns) = (score_abs / 10, score_abs % 10);
+                    let eval = if score == 0 {
+                      format!("{pawns}.{centipawns}")
+                    } else if score > 0 {
+                      format!("-{pawns}.{centipawns}")
+                    } else {
+                      format!("+{pawns}.{centipawns}")
+                    };
                     // Sigmoid calculation
-                    1.0 / (1.0 + (score as f32 / 400.0).exp())
+                    let score = 1.0 / (1.0 + (score as f32 / 400.0).exp());
+                    (score, eval)
                   }
                 };
                 let (win_chance, colour_1, colour_2) = if self.flipped {
@@ -263,7 +275,7 @@ impl App for LibertyChessGUI {
                 painter.rect_filled(
                   Rect {
                     min: pos2(0.0, 0.0),
-                    max: pos2(EVAL_BAR_WIDTH * 1.5, bar_height),
+                    max: pos2(size * 2.0, bar_height),
                   },
                   Rounding::ZERO,
                   colour_1,
@@ -271,11 +283,18 @@ impl App for LibertyChessGUI {
                 painter.rect_filled(
                   Rect {
                     min: pos2(0.0, bar_height),
-                    max: pos2(EVAL_BAR_WIDTH * 1.5, height),
+                    max: pos2(size * 2.0, height),
                   },
                   Rounding::ZERO,
                   colour_2,
                 );
+                painter.text(
+                  pos2(size, height),
+                  Align2::CENTER_BOTTOM,
+                  format!("{eval}/{depth}"),
+                  FontId::proportional(size * 0.55),
+                  Color32::GRAY,
+                )
               });
           }
         }
@@ -486,6 +505,9 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
                 Message::Go(settings) => {
                   if let Some(ref board) = position {
                     *side = !board.to_move();
+                    if gui.config.get_opponentflip() {
+                      gui.flipped = *side;
+                    }
                     match settings.time {
                       SearchTime::Increment(time, inc) => {
                         let mut clock = Clock::new_symmetric(
@@ -517,6 +539,9 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
                 Message::Go(_) => {
                   if let Some(ref board) = position {
                     *side = !board.to_move();
+                    if gui.config.get_opponentflip() {
+                      gui.flipped = *side;
+                    }
                   }
                 }
                 Message::UpdateOption(..)
@@ -525,7 +550,6 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
                 | Message::Eval
                 | Message::Bench(_)
                 | Message::NewGame
-                | Message::Prune
                 | Message::Perft(_) => (),
               },
             },
@@ -618,7 +642,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
           .as_ref()
           .map_or((None, None), |player| {
             let colour = gui.alternate_player_colour.get_colour();
-            if gui.config.get_opponentflip() {
+            if gui.config.get_opponentflip() && !matches!(player, PlayerType::Multiplayer(..)) {
               gui.flipped = colour;
             }
             #[cfg(not(feature = "clock"))]
@@ -1059,6 +1083,20 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
   #[cfg(not(target_arch = "wasm32"))]
   if ui.button("Copy FEN").clicked() {
     ui.output_mut(|o| o.copied_text = get_fen(gui));
+  }
+
+  if matches!(gui.player, Some((PlayerData::Multiplayer(..), _))) {
+    if gamestate.friendly_fire {
+      checkbox(
+        ui,
+        &mut gui.safety_mode,
+        "Safety mode",
+        #[cfg(feature = "sound")]
+        gui.audio_engine.as_mut(),
+      );
+    }
+  } else {
+    gui.safety_mode = false;
   }
 
   // if the game is over, report the reason

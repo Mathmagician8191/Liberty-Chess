@@ -21,6 +21,8 @@ pub mod moves;
 pub mod parsing;
 /// A collection of preset positions
 pub mod positions;
+/// Utility to randomly generate a board given certain parameters
+pub mod random_board;
 /// Functions to handle sending boards between threads
 pub mod threading;
 
@@ -407,6 +409,12 @@ impl Board {
     self.moves
   }
 
+  /// Ply count since start of game
+  #[must_use]
+  pub fn ply_count(&self) -> u32 {
+    self.moves * 2 + u32::from(!self.to_move)
+  }
+
   /// Get the hash of the current position
   #[must_use]
   pub const fn hash(&self) -> Hash {
@@ -654,8 +662,8 @@ impl Board {
       // Test for El Vaticano
       if start.0 == end.0 {
         self.halfmoves = 0;
-        self.previous = Vec::new();
-        self.duplicates = Vec::new();
+        self.previous.clear();
+        self.duplicates.clear();
         let lowest = usize::min(start.1, end.1);
         let highest = usize::max(start.1, end.1);
         for i in lowest + 1..highest {
@@ -671,8 +679,8 @@ impl Board {
         return;
       } else if start.1 == end.1 {
         self.halfmoves = 0;
-        self.previous = Vec::new();
-        self.duplicates = Vec::new();
+        self.previous.clear();
+        self.duplicates.clear();
         let lowest = usize::min(start.0, end.0);
         let highest = usize::max(start.0, end.0);
         for i in lowest + 1..highest {
@@ -693,8 +701,8 @@ impl Board {
     match piece.abs() {
       PAWN => {
         self.halfmoves = 0;
-        self.previous = Vec::new();
-        self.duplicates = Vec::new();
+        self.previous.clear();
+        self.duplicates.clear();
         if start.1 == end.1 {
           let lowest = usize::min(start.0, end.0);
           let highest = usize::max(start.0, end.0);
@@ -817,8 +825,8 @@ impl Board {
         self.black_pieces -= 1;
       }
       self.halfmoves = 0;
-      self.previous = Vec::new();
-      self.duplicates = Vec::new();
+      self.previous.clear();
+      self.duplicates.clear();
       if end.0 == self.castle_row(self.to_move) {
         let offset = Self::castle_offset(self.to_move);
         if end.1 == self.queen_column {
@@ -1189,7 +1197,7 @@ impl Board {
       if self.skip_checkmate && self.in_check() && !self.any_moves() {
         self.state = Gamestate::Checkmate(!self.to_move);
       } else {
-        self.state = Gamestate::FiftyMove
+        self.state = Gamestate::FiftyMove;
       }
     } else if self.duplicates.contains(&self.hash) {
       self.state = Gamestate::Repetition;

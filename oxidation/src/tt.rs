@@ -22,19 +22,19 @@ pub struct Entry {
 
 pub struct TranspositionTable {
   entries: Box<[Option<Entry>]>,
-  flags: Option<ExtraFlags>,
+  flags: ExtraFlags,
   // the number of entries full
   capacity: usize,
 }
 
 impl TranspositionTable {
   // Initialise a tt based on a size in megabytes
-  pub fn new(megabytes: usize) -> Self {
+  pub fn new(megabytes: usize, board: &Board) -> Self {
     let size = megabytes * 31_250;
     let entries = vec![None; size].into_boxed_slice();
     Self {
       entries,
-      flags: None,
+      flags: ExtraFlags::new(board),
       capacity: 0,
     }
   }
@@ -95,18 +95,15 @@ impl TranspositionTable {
   // Returns whether the table was cleared
   pub fn new_position(&mut self, position: &Board) -> bool {
     let flags = ExtraFlags::new(position);
-    if let Some(old_flags) = &self.flags {
-      if flags != *old_flags {
-        self.flags = Some(flags);
-        self.clear();
-        return true;
-      }
+    if flags != self.flags {
+      self.clear(flags);
+      return true;
     }
-    self.flags = Some(flags);
     false
   }
 
-  pub fn clear(&mut self) {
+  pub fn clear(&mut self, flags: ExtraFlags) {
+    self.flags = flags;
     if self.capacity > 0 {
       for entry in self.entries.iter_mut() {
         *entry = None;

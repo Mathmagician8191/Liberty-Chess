@@ -27,8 +27,6 @@ pub enum Message {
   Bench(i8),
   /// Clear the TT
   NewGame,
-  /// Prune the TT
-  Prune,
   /// Perft
   Perft(usize),
 }
@@ -435,7 +433,6 @@ pub fn startup(
       Some("stop") => client.send(Message::Stop).ok()?,
       Some("eval") => client.send(Message::Eval).ok()?,
       Some("ucinewgame") => client.send(Message::NewGame).ok()?,
-      Some("prune") => client.send(Message::Prune).ok()?,
       Some("perft") => {
         let depth = words
           .next()

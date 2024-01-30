@@ -67,24 +67,24 @@ impl HelpPage {
 
   pub fn board(self) -> Board {
     match self {
-      Self::PawnForward => Board::new("7/7/7/7/3P3/7/7 w").unwrap(),
+      Self::PawnForward => Board::new("7/3p3/7/7/3P3/7/7 w").unwrap(),
       Self::PawnCapture => Board::new("7/7/2ppp2/3P3/7/7/7 w").unwrap(),
-      Self::PawnDouble => Board::new("7/7/7/7/7/3P3/7 w").unwrap(),
-      Self::Knight => Board::new("7/7/7/3N3/7/7/7 w").unwrap(),
+      Self::PawnDouble => Board::new("7/3p3/7/7/7/3P3/7 w").unwrap(),
+      Self::Knight => Board::new("7/7/3n3/3N3/7/7/7 w").unwrap(),
       Self::Bishop => Board::new("7/ppppppp/7/3B3/7/7/7 w").unwrap(),
       Self::Rook => Board::new("7/ppppppp/7/3R3/7/7/7 w").unwrap(),
       Self::Queen => Board::new("7/ppppppp/7/3Q3/7/7/7 w").unwrap(),
-      Self::King => Board::new("7/7/7/3K3/7/7/7 w").unwrap(),
+      Self::King => Board::new("2rk3/7/7/3K3/7/7/7 w").unwrap(),
       Self::Archbishop => Board::new("7/ppppppp/7/3A3/7/7/7 w").unwrap(),
       Self::Chancellor => Board::new("7/ppppppp/7/3C3/7/7/7 w").unwrap(),
-      Self::Camel => Board::new("7/7/7/3L3/7/7/7 w").unwrap(),
-      Self::Zebra => Board::new("7/7/7/3Z3/7/7/7 w").unwrap(),
-      Self::Mann => Board::new("7/7/7/3X3/7/7/7 w").unwrap(),
-      Self::Nightrider => Board::new("9/9/9/9/4I4/9/9/9/9 w").unwrap(),
-      Self::Champion => Board::new("7/7/7/3H3/7/7/7 w").unwrap(),
-      Self::Centaur => Board::new("7/7/7/3U3/7/7/7 w").unwrap(),
+      Self::Camel => Board::new("7/3l3/7/3L3/7/7/7 w").unwrap(),
+      Self::Zebra => Board::new("7/3z3/7/3Z3/7/7/7 w").unwrap(),
+      Self::Mann => Board::new("7/3x3/7/3X3/7/7/7 w").unwrap(),
+      Self::Nightrider => Board::new("9/4i4/9/9/4I4/9/9/9/9 w").unwrap(),
+      Self::Champion => Board::new("7/7/3p3/3H3/7/7/7 w").unwrap(),
+      Self::Centaur => Board::new("7/3u3/7/3U3/7/7/7 w").unwrap(),
       Self::Amazon => Board::new("7/ppppppp/7/3M3/7/7/7 w").unwrap(),
-      Self::Elephant => Board::new("7/7/7/3E3/7/7/7 w").unwrap(),
+      Self::Elephant => Board::new("3e3/7/7/3E3/7/7/7 w").unwrap(),
       Self::Obstacle => Board::new("7/ppppppp/7/3O3/7/7/7 w").unwrap(),
       Self::Wall => Board::new("7/ppppppp/7/3W3/7/7/7 w").unwrap(),
       Self::EnPassant => {
@@ -93,7 +93,7 @@ impl HelpPage {
         board
       }
       Self::ElVaticano => Board::new("7/7/7/2BpB2/7/7/7 w - c5").unwrap(),
-      Self::Castling => Board::new("8/8/8/8/8/8/8/R3K2R w KQ").unwrap(),
+      Self::Castling => Board::new("r3k2r/8/8/8/8/8/8/R3K2R w KQ").unwrap(),
       Self::Check => Board::new("3r3/7/7/7/7/7/3K3 w").unwrap(),
     }
   }
@@ -145,6 +145,6 @@ pub(crate) fn draw_help(gui: &mut LibertyChessGUI, ctx: &Context) {
   Area::new("Board")
     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
-      draw_board(gui, ctx, ui, &gui.help_page.board(), false, false);
+      draw_board(gui, ctx, ui, gui.help_page.board(), false, false);
     });
 }

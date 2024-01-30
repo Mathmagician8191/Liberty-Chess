@@ -4,8 +4,7 @@ use liberty_chess::positions::{
   AFRICAN, CAPABLANCA, CAPABLANCA_RECTANGLE, DOUBLE_CHESS, ELIMINATION, HORDE, LIBERTY_CHESS,
   LOADED_BOARD, MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
 };
-use rand::seq::SliceRandom;
-use rand::{thread_rng, Rng};
+use liberty_chess::random_board::generate;
 
 #[derive(Eq, PartialEq)]
 pub enum GameMode {
@@ -94,38 +93,8 @@ pub struct RandomConfig {
 impl ToString for RandomConfig {
   fn to_string(&self) -> String {
     let width = self.width.get_value();
-
-    // The gap between the white and black pieces
-    let gap = self.height.get_value() - 4;
-
-    // The available pieces to choose from
-    let pieces = self.pieces.to_lowercase().chars().collect::<Vec<char>>();
-
-    let mut rng = thread_rng();
-
-    // Get the pieces on the board
-    let mut pieces: Vec<char> = (0..width)
-      .map(|_| *pieces.choose(&mut rng).unwrap_or(&'n'))
-      .collect();
-
-    // Add a king to the board
-    if self.spawn_king {
-      pieces[rng.gen_range(0..width)] = 'k';
-    }
-
-    let pieces = pieces.iter().collect::<String>();
-
-    // Build and return the final L-FEN
-    let mut result = pieces.clone();
-    result.push('/');
-    result += &"p".repeat(width);
-    result.push('/');
-    result += &(width.to_string() + "/").repeat(gap);
-    result += &"P".repeat(width);
-    result.push('/');
-    result += &pieces.to_uppercase();
-    result += " w KQkq - 0 1";
-    result
+    let height = self.height.get_value();
+    generate(width, height, &self.pieces, self.spawn_king)
   }
 }
 

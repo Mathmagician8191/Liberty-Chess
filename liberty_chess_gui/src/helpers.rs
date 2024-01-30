@@ -1,3 +1,4 @@
+use crate::players::PlayerData;
 use crate::{switch_screen, LibertyChessGUI, Screen};
 use core::str::FromStr;
 use eframe::egui;
@@ -19,7 +20,12 @@ pub const ICON_SIZE: u32 = 48;
 const ICON_SIZE_FLOAT: f32 = ICON_SIZE as f32;
 
 pub(crate) fn menu_button(gui: &mut LibertyChessGUI, ui: &mut Ui) {
-  if ui.button("Menu").clicked() {
+  let message = if let Some((PlayerData::Multiplayer(_), _)) = gui.player {
+    "Disconnect"
+  } else {
+    "Menu"
+  };
+  if ui.button(message).clicked() {
     switch_screen(gui, Screen::Menu);
   }
 }

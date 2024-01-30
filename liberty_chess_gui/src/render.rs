@@ -105,6 +105,9 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Boa
                 #[cfg(feature = "clock")]
                 Message::Go(settings) => {
                   *side = !board.to_move();
+                  if gui.config.get_opponentflip() {
+                    gui.flipped = *side;
+                  }
                   match settings.time {
                     SearchTime::Increment(time, inc) => {
                       let mut clock = Clock::new_symmetric(
@@ -132,14 +135,18 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Boa
                   }
                 }
                 #[cfg(not(feature = "clock"))]
-                Message::Go(_) => *side = board.to_move(),
+                Message::Go(_) => {
+                  *side = board.to_move();
+                  if gui.config.get_opponentflip() {
+                    gui.flipped = *side;
+                  }
+                }
                 Message::UpdateOption(..)
                 | Message::SetDebug(_)
                 | Message::Stop
                 | Message::Eval
                 | Message::Bench(_)
                 | Message::NewGame
-                | Message::Prune
                 | Message::Perft(_) => (),
               },
               ConnectionMessage::Connected(_) | ConnectionMessage::Timeout => (),
@@ -167,7 +174,7 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Boa
   Area::new("Board")
     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
-      draw_board(gui, ctx, ui, &board, clickable, gui.flipped);
+      draw_board(gui, ctx, ui, board, clickable, gui.flipped);
     });
 }
 
@@ -175,10 +182,13 @@ pub(crate) fn draw_board(
   gui: &mut LibertyChessGUI,
   ctx: &Context,
   ui: &mut Ui,
-  gamestate: &Board,
+  mut gamestate: Board,
   clickable: bool,
   flipped: bool,
 ) {
+  if gui.safety_mode {
+    gamestate.friendly_fire = false;
+  }
   let rows = gamestate.height();
   let cols = gamestate.width();
   let (size, board_size) = get_size(ctx, rows as f32, cols as f32);
@@ -192,8 +202,8 @@ pub(crate) fn draw_board(
   let board_rect = response.rect;
   painter.rect_filled(board_rect, Rounding::ZERO, Colours::WhiteSquare.value());
   if let Some(location) = response.interact_pointer_pos() {
-    let hover = get_hovered(board_rect, location, size as usize, flipped, gamestate);
-    register_response(gui, gamestate, &response, hover);
+    let hover = get_hovered(board_rect, location, size as usize, flipped, &gamestate);
+    register_response(gui, &gamestate, &response, hover);
   }
   let (dragged, offset) = unwrap_tuple(gui.drag);
   let numbers = size >= NUMBER_SCALE && gui.config.get_numbers();

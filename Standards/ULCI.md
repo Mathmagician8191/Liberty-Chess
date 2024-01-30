@@ -135,9 +135,6 @@ These are all the command the client gets from the interface.
 * bench
   Evaluates a series of test positions, optional for debugging purposes
 
-* prune
-  Clears data no longer relevant to the current position, optional
-
 * quit
   quit the program as soon as possible
 

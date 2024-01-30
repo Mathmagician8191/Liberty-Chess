@@ -86,11 +86,7 @@ fn main() {
         }
       }
       Message::Perft(depth) => divide(&position, depth),
-      Message::UpdateOption(..)
-      | Message::Eval
-      | Message::Bench(_)
-      | Message::NewGame
-      | Message::Prune => (),
+      Message::UpdateOption(..) | Message::Eval | Message::Bench(_) | Message::NewGame => (),
     }
   }
 }

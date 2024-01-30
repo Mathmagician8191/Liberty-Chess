@@ -197,6 +197,7 @@ impl Default for Limits {
 }
 
 /// The value of some option to update
+#[derive(Clone)]
 pub enum OptionValue {
   // First string name in option is the option name, second parameter is the value
   /// The value of a string option

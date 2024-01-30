@@ -4,20 +4,18 @@ use liberty_chess::positions::{
   LOADED_BOARD, MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
 };
 use liberty_chess::{Board, Gamestate};
-use parking_lot::Mutex;
-use std::io::BufReader;
-use std::net::{TcpListener, TcpStream};
+use rand::distributions::Alphanumeric;
+use rand::seq::SliceRandom;
+use rand::{thread_rng, Rng};
+use server::handle_connections;
 use std::sync::mpsc::{channel, Receiver, Sender};
-use std::sync::Arc;
 use std::thread::{sleep, spawn};
 use std::time::Duration;
-use ulci::server::{startup_server, AnalysisRequest, Request, UlciResult};
-use ulci::{load_engine, OptionValue, SearchTime};
-
-const PORT: u16 = 25565;
+use ulci::server::{AnalysisRequest, Request, UlciResult};
+use ulci::{load_engine, SearchTime};
 
 /// The test positions for the match
-pub const POSITIONS: &[&str] = &[
+const POSITIONS: &[&str] = &[
   STARTPOS,
   CAPABLANCA_RECTANGLE,
   CAPABLANCA,
@@ -34,34 +32,93 @@ pub const POSITIONS: &[&str] = &[
   "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1",
 ];
 
-fn run_client(name: String, tx: Sender<Request>, rx: Receiver<UlciResult>) -> Option<()> {
-  for position in POSITIONS {
-    let mut position = Board::new(position).unwrap();
+const WHITE_ENGINE: Option<&str> = None;
+const BLACK_ENGINE: Option<&str> = None;
+
+enum SpectatorMessage {
+  Request(Request),
+  Spectator(Sender<Request>),
+}
+
+fn process_spectators(mut spectators: Vec<Sender<Request>>, messages: Receiver<SpectatorMessage>) {
+  let mut last_request = None;
+  while let Ok(message) = messages.recv() {
+    match message {
+      SpectatorMessage::Request(request) => {
+        spectators.retain(|spectator| spectator.send(request.clone()).is_ok());
+        last_request = Some(request);
+      }
+      SpectatorMessage::Spectator(spectator) => {
+        if let Some(ref request) = last_request {
+          spectator.send(request.clone()).ok();
+        }
+        spectators.push(spectator);
+      }
+    }
+  }
+}
+
+fn run_match(
+  (tx_1, rx_1): (Sender<Request>, Receiver<UlciResult>),
+  (tx_2, rx_2): (Sender<Request>, Receiver<UlciResult>),
+  spectators: Sender<SpectatorMessage>,
+) -> Option<()> {
+  loop {
+    let fen = POSITIONS
+      .choose(&mut thread_rng())
+      .expect("Could not find position");
+    let mut position = Board::new(fen).unwrap();
+    if thread_rng().gen_bool(0.5) {
+      position.friendly_fire = true;
+    }
     let mut base_position = position.clone();
     let mut moves = Vec::new();
-    let mut clock = Clock::new(
-      [
-        Duration::from_secs(1200),
-        Duration::from_secs(8),
-        Duration::from_secs(20),
-        Duration::from_millis(80),
-      ],
+    tx_1
+      .send(Request::Position(
+        base_position.to_string(),
+        moves.clone(),
+        false,
+      ))
+      .ok()?;
+    tx_2
+      .send(Request::Position(
+        base_position.to_string(),
+        moves.clone(),
+        false,
+      ))
+      .ok()?;
+    spectators
+      .send(SpectatorMessage::Request(Request::Position(
+        base_position.to_string(),
+        moves.to_vec(),
+        false,
+      )))
+      .ok();
+    let mut clock = Clock::new_symmetric(
+      Duration::from_secs(1200),
+      Duration::from_secs(15),
       position.to_move(),
     );
-    let (engine_tx, engine_rx) = load_engine("./target/release/oxidation");
     clock.toggle_pause();
     while position.state() == Gamestate::InProgress {
-      tx.send(Request::Analysis(AnalysisRequest {
-        fen: base_position.to_string(),
-        moves: moves.clone(),
-        time: SearchTime::from_clock(&mut clock),
-        searchmoves: Vec::new(),
-        new_game: false,
-      }))
-      .ok()?;
+      tx_1
+        .send(Request::Analysis(AnalysisRequest {
+          fen: base_position.to_string(),
+          moves: moves.clone(),
+          time: SearchTime::from_clock(&mut clock),
+          searchmoves: Vec::new(),
+          new_game: false,
+        }))
+        .ok()?;
+      spectators
+        .send(SpectatorMessage::Request(Request::Position(
+          base_position.to_string(),
+          moves.to_vec(),
+          false,
+        )))
+        .ok();
       loop {
-        if let UlciResult::AnalysisStopped(r#move) = rx.recv().ok()? {
-          println!("{name} played {}", r#move.to_string());
+        if let UlciResult::AnalysisStopped(r#move) = rx_1.recv().ok()? {
           if let Some(board) = position.move_if_legal(r#move) {
             if board.halfmoves() == 0 {
               base_position = position;
@@ -77,7 +134,7 @@ fn run_client(name: String, tx: Sender<Request>, rx: Receiver<UlciResult>) -> Op
       if position.state() != Gamestate::InProgress {
         break;
       }
-      engine_tx
+      tx_2
         .send(Request::Analysis(AnalysisRequest {
           fen: base_position.to_string(),
           moves: moves.clone(),
@@ -86,9 +143,15 @@ fn run_client(name: String, tx: Sender<Request>, rx: Receiver<UlciResult>) -> Op
           new_game: false,
         }))
         .ok()?;
+      spectators
+        .send(SpectatorMessage::Request(Request::Position(
+          base_position.to_string(),
+          moves.to_vec(),
+          false,
+        )))
+        .ok();
       loop {
-        if let UlciResult::AnalysisStopped(r#move) = engine_rx.recv().ok()? {
-          println!("Oxidation ({name}) played {}", r#move.to_string());
+        if let UlciResult::AnalysisStopped(r#move) = rx_2.recv().ok()? {
           if let Some(board) = position.move_if_legal(r#move) {
             if board.halfmoves() == 0 {
               base_position = position;
@@ -102,66 +165,85 @@ fn run_client(name: String, tx: Sender<Request>, rx: Receiver<UlciResult>) -> Op
         }
       }
     }
-    tx.send(Request::Position(base_position.to_string(), moves, false))
+    tx_1
+      .send(Request::Position(
+        base_position.to_string(),
+        moves.clone(),
+        false,
+      ))
       .ok()?;
+    tx_2
+      .send(Request::Position(
+        base_position.to_string(),
+        moves.clone(),
+        false,
+      ))
+      .ok()?;
+    spectators
+      .send(SpectatorMessage::Request(Request::Position(
+        base_position.to_string(),
+        moves.to_vec(),
+        false,
+      )))
+      .ok();
     sleep(Duration::from_secs(10));
-  }
-  Some(())
-}
-
-fn handle_connection(
-  stream: TcpStream,
-  connections: &Arc<Mutex<Vec<Sender<Request>>>>,
-) -> Option<()> {
-  let name = match stream.peer_addr() {
-    Ok(ip) => {
-      println!("{ip} Connected");
-      ip.to_string()
-    }
-    Err(_) => {
-      println!("Unknown Connected");
-      "Unknown".to_string()
-    }
-  };
-  let name2 = name.clone();
-  let stream_2 = stream.try_clone().ok()?;
-  let (tx, rx) = channel();
-  connections.lock().push(tx.clone());
-  let (tx_2, rx_2) = channel();
-  spawn(move || {
-    startup_server(rx, &tx_2, BufReader::new(stream), stream_2, false, || ());
-    println!("{name} Disconnected");
-  });
-  spawn(move || run_client(name2, tx, rx_2));
-  Some(())
-}
-
-fn handle_connections(connections: Arc<Mutex<Vec<Sender<Request>>>>) {
-  let listener = TcpListener::bind(format!("0.0.0.0:{PORT}"))
-    .unwrap_or_else(|_| panic!("Failed to bind to port {PORT}"));
-
-  for stream in listener.incoming().flatten() {
-    if handle_connection(stream, &connections).is_none() {
-      println!("try_clone broke");
-    }
   }
 }
 
 fn main() {
-  let connections = Arc::new(Mutex::new(Vec::new()));
-  let new_connections = connections.clone();
-  spawn(|| handle_connections(new_connections));
-  loop {
-    let mut lock = connections.lock();
-    if !lock.is_empty() {
-      lock.retain(|connection| {
-        connection
-          .send(Request::SetOption(String::new(), OptionValue::SendTrigger))
-          .is_ok()
-      });
-      println!("Sending to {} users", lock.len());
+  let password_1: String = thread_rng()
+    .sample_iter(&Alphanumeric)
+    .take(6)
+    .map(char::from)
+    .collect();
+  println!("Password 1: {password_1}");
+  let password_2: String = thread_rng()
+    .sample_iter(&Alphanumeric)
+    .take(6)
+    .map(char::from)
+    .collect();
+  println!("Password 2: {password_2}");
+  let mut player_1 = WHITE_ENGINE.map(load_engine);
+  let mut player_2 = BLACK_ENGINE.map(load_engine);
+  let mut spectators = Vec::new();
+  let (tx, rx) = channel();
+  spawn(|| handle_connections(tx));
+  while let Ok((tx, rx, client)) = rx.recv() {
+    let name = client.username;
+    if name == Some(password_1.clone()) {
+      println!("Found player 1");
+      player_1 = Some((tx, rx));
+      if player_2.is_some() {
+        break;
+      }
+    } else if name == Some(password_2.clone()) {
+      println!("Found player 2");
+      player_2 = Some((tx, rx));
+      if player_1.is_some() {
+        break;
+      }
+    } else {
+      println!("Found spectator");
+      spectators.push(tx);
+      if player_1.is_some() && player_2.is_some() {
+        break;
+      }
     }
-    drop(lock);
-    sleep(Duration::from_millis(10000));
+  }
+  if let (Some(player_1), Some(player_2)) = (player_1, player_2) {
+    println!("Starting match");
+    let (spectator_tx, spectator_rx) = channel();
+    let spectator_tx_copy = spectator_tx.clone();
+    spawn(move || {
+      while let Ok((spectator, _, _)) = rx.recv() {
+        spectator_tx_copy
+          .send(SpectatorMessage::Spectator(spectator))
+          .ok();
+      }
+    });
+    spawn(|| process_spectators(spectators, spectator_rx));
+    run_match(player_1, player_2, spectator_tx);
+  } else {
+    println!("Something went wrong!");
   }
 }

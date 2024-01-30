@@ -63,7 +63,8 @@ fn perft_process_other(pool: &ThreadPool, board: &Board, depth: usize, result: u
 }
 
 fn perft_test(fen: &'static str, results: &[usize]) {
-  let board = Board::new(fen).unwrap();
+  let mut board = Board::new(fen).unwrap();
+  board.skip_checkmate = true;
   assert_eq!(board.to_string(), fen);
   let start = Instant::now();
   let mut max = 0;

@@ -1,172 +1,176 @@
 use liberty_chess::OBSTACLE;
 
 pub(crate) const MIDDLEGAME_PIECE_VALUES: [i32; 18] = [
-  79,   // pawn
-  271,  // knight
-  337,  // bishop
-  513,  // rook
-  1114, // queen
-  -316, // king
-  839,  // archbishop
-  1012, // chancellor
-  132,  // camel
-  98,   // zebra
-  86,   // mann
-  401,  // nightrider
-  528,  // champion
-  598,  // centaur
-  2368, // amazon
-  662,  // elephant
-  30,   // obstacle
-  44,   // wall
+  43,    // pawn
+  309,   // knight
+  371,   // bishop
+  544,   // rook
+  1261,  // queen
+  -1360, // king
+  944,   // archbishop
+  1144,  // chancellor
+  82,    // camel
+  133,   // zebra
+  51,    // mann
+  616,   // nightrider
+  505,   // champion
+  550,   // centaur
+  1846,  // amazon
+  566,   // elephant
+  14,    // obstacle
+  65,    // wall
 ];
 
 const ENDGAME_PIECE_VALUES: [i32; 18] = [
-  205,  // pawn
-  379,  // knight
-  401,  // bishop
-  683,  // rook
-  1129, // queen
-  702,  // king
-  913,  // archbishop
-  1389, // chancellor
-  291,  // camel
-  219,  // zebra
-  308,  // mann
-  295,  // nightrider
-  701,  // champion
-  1031, // centaur
-  2818, // amazon
-  802,  // elephant
-  2,    // obstacle
-  149,  // wall
+  185,  // pawn
+  378,  // knight
+  393,  // bishop
+  711,  // rook
+  1276, // queen
+  1222, // king
+  1171, // archbishop
+  1391, // chancellor
+  339,  // camel
+  248,  // zebra
+  334,  // mann
+  369,  // nightrider
+  967,  // champion
+  1175, // centaur
+  1560, // amazon
+  604,  // elephant
+  100,  // obstacle
+  119,  // wall
 ];
 
 const MIDDLEGAME_EDGE_AVOIDANCE: [[i32; EDGE_DISTANCE]; 18] = [
-  [14, -2],    // pawn
-  [46, 20],    // knight
-  [62, 9],     // bishop
-  [51, 42],    // rook
-  [25, 7],     // queen
-  [-93, -34],  // king
-  [72, 31],    // archbishop
-  [21, 31],    // chancellor
-  [-33, 69],   // camel
-  [14, 79],    // zebra
-  [30, 10],    // mann
-  [-101, -68], // nightrider
-  [1, 0],      // champion
-  [10, 0],     // centaur
-  [211, 0],    // amazon
-  [107, 56],   // elephant
+  [18, -3],    // pawn
+  [37, 22],    // knight
+  [51, 4],     // bishop
+  [38, 30],    // rook
+  [14, -1],    // queen
+  [-109, -35], // king
+  [13, -4],    // archbishop
+  [14, -6],    // chancellor
+  [-22, -6],   // camel
+  [-33, 11],   // zebra
+  [45, 0],     // mann
+  [16, 11],    // nightrider
+  [9, 0],      // champion
+  [5, 5],      // centaur
+  [9, 13],     // amazon
+  [49, 20],    // elephant
   [0, 0],      // obstacle
   [0, 0],      // wall
 ];
 
 const ENDGAME_EDGE_AVOIDANCE: [[i32; EDGE_DISTANCE]; 18] = [
-  [29, 5],    // pawn
-  [9, 9],     // knight
-  [54, 7],    // bishop
-  [37, 7],    // rook
-  [46, 9],    // queen
-  [76, 30],   // king
-  [113, -20], // archbishop
-  [206, 12],  // chancellor
-  [46, -27],  // camel
-  [21, -7],   // zebra
-  [30, 10],   // mann
-  [-26, -5],  // nightrider
-  [100, 11],  // champion
-  [140, 24],  // centaur
-  [239, 0],   // amazon
-  [71, 37],   // elephant
-  [0, 0],     // obstacle
-  [0, 0],     // wall
+  [21, -1],  // pawn
+  [14, 8],   // knight
+  [28, 15],  // bishop
+  [60, 8],   // rook
+  [55, 35],  // queen
+  [65, 20],  // king
+  [118, 40], // archbishop
+  [10, 109], // chancellor
+  [24, 8],   // camel
+  [31, 11],  // zebra
+  [6, 26],   // mann
+  [-16, 2],  // nightrider
+  [119, 9],  // champion
+  [64, 11],  // centaur
+  [30, 55],  // amazon
+  [130, 65], // elephant
+  [0, 0],    // obstacle
+  [0, 0],    // wall
 ];
 
 const MIDDLEGAME_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
-  6,   // pawn
-  20,  // knight
-  7,   // bishop
-  12,  // rook
-  48,  // queen
-  -21, // king
-  13,  // archbishop
-  10,  // chancellor
-  0,   // camel
-  26,  // zebra
-  0,   // mann
+  0,   // pawn
+  18,  // knight
+  15,  // bishop
+  20,  // rook
+  5,   // queen
+  50,  // king
+  -1,  // archbishop
+  6,   // chancellor
+  60,  // camel
+  -26, // zebra
+  12,  // mann
   0,   // nightrider
-  11,  // champion
+  0,   // champion
   0,   // centaur
-  1,   // amazon
+  0,   // amazon
   0,   // elephant
   0,   // obstacle
-  29,  // wall
+  46,  // wall
 ];
 
 const ENDGAME_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
-  29, // pawn
-  17, // knight
-  53, // bishop
-  0,  // rook
-  0,  // queen
-  21, // king
-  29, // archbishop
-  10, // chancellor
-  0,  // camel
-  18, // zebra
-  80, // mann
-  0,  // nightrider
-  11, // champion
-  51, // centaur
-  1,  // amazon
-  37, // elephant
-  0,  // obstacle
-  10, // wall
+  36,  // pawn
+  18,  // knight
+  12,  // bishop
+  7,   // rook
+  -6,  // queen
+  -1,  // king
+  66,  // archbishop
+  78,  // chancellor
+  -34, // camel
+  52,  // zebra
+  -68, // mann
+  0,   // nightrider
+  61,  // champion
+  0,   // centaur
+  73,  // amazon
+  4,   // elephant
+  1,   // obstacle
+  11,  // wall
 ];
 
 const MIDDLEGAME_ENEMY_PAWN_PENALTY: [i32; 18] = [
-  0,  // pawn
-  28, // knight
-  38, // bishop
-  0,  // rook
-  17, // queen
-  37, // king
-  20, // archbishop
-  0,  // chancellor
-  0,  // camel
-  0,  // zebra
-  41, // mann
-  71, // nightrider
-  39, // centaur
-  64, // champion
-  1,  // amazon
-  78, // elephant
-  0,  // obstacle
-  28, // wall
+  0,   // pawn
+  2,   // knight
+  12,  // bishop
+  -16, // rook
+  23,  // queen
+  90,  // king
+  38,  // archbishop
+  14,  // chancellor
+  -60, // camel
+  -54, // zebra
+  58,  // mann
+  45,  // nightrider
+  54,  // champion
+  26,  // centaur
+  88,  // amazon
+  55,  // elephant
+  0,   // obstacle
+  24,  // wall
 ];
 
 const ENDGAME_ENEMY_PAWN_PENALTY: [i32; 18] = [
-  0,  // pawn
-  20, // knight
-  78, // bishop
-  21, // rook
-  45, // queen
-  38, // king
-  48, // archbishop
-  65, // chancellor
-  56, // camel
-  0,  // zebra
-  72, // mann
-  84, // nightrider
-  68, // centaur
-  70, // champion
-  1,  // amazon
-  97, // elephant
-  0,  // obstacle
-  0,  // wall
+  0,   // pawn
+  51,  // knight
+  119, // bishop
+  51,  // rook
+  40,  // queen
+  41,  // king
+  81,  // archbishop
+  131, // chancellor
+  75,  // camel
+  29,  // zebra
+  165, // mann
+  20,  // nightrider
+  84,  // champion
+  182, // centaur
+  8,   // amazon
+  0,   // elephant
+  0,   // obstacle
+  0,   // wall
 ];
+
+// advanced pawns get a bonus of 1/(factor * squares_to_promotion + bonus) times the promotion value
+const PAWN_SCALING_FACTOR: i32 = 8;
+const PAWN_SCALING_BONUS: i32 = 0;
 
 /// Maximum distance from the edge to apply penalty
 pub(crate) const EDGE_DISTANCE: usize = 2;
@@ -178,12 +182,12 @@ pub(crate) const ENDGAME_THRESHOLD: i32 = 32;
 
 pub(crate) const ENDGAME_FACTOR: [i32; 18] = [
   0, // pawn
-  1, //knight
-  1, //bishop
+  1, // knight
+  1, // bishop
   2, // rook
   4, // queen
   2, // king
-  4, //archbishop
+  4, // archbishop
   4, // chancellor
   1, // camel
   1, // zebra
@@ -207,6 +211,8 @@ pub const DEFAULT_PARAMETERS: Parameters = Parameters {
   eg_friendly_pawn_penalty: ENDGAME_FRIENDLY_PAWN_PENALTY,
   mg_enemy_pawn_penalty: MIDDLEGAME_ENEMY_PAWN_PENALTY,
   eg_enemy_pawn_penalty: ENDGAME_ENEMY_PAWN_PENALTY,
+  pawn_scale_factor: PAWN_SCALING_FACTOR,
+  pawn_scaling_bonus: PAWN_SCALING_BONUS,
 };
 
 /// Parameters for evaluation
@@ -217,25 +223,26 @@ pub struct Parameters {
   pub(crate) mg_edge: [[i32; EDGE_DISTANCE]; 18],
   pub(crate) eg_edge: [[i32; EDGE_DISTANCE]; 18],
   pub(crate) mg_friendly_pawn_penalty: [i32; 18],
-  /// Penalties for pawns blocked by friendly pieces in the endgame
-  pub eg_friendly_pawn_penalty: [i32; 18],
-  /// Penalties for pawns blocked by enemy pieces in the middlegame
-  pub mg_enemy_pawn_penalty: [i32; 18],
-  /// Penalties for pawns blocked by enemy pieces in the endgame
-  pub eg_enemy_pawn_penalty: [i32; 18],
+  pub(crate) eg_friendly_pawn_penalty: [i32; 18],
+  pub(crate) mg_enemy_pawn_penalty: [i32; 18],
+  pub(crate) eg_enemy_pawn_penalty: [i32; 18],
+  pub(crate) pawn_scale_factor: i32,
+  pub(crate) pawn_scaling_bonus: i32,
 }
 
 impl Parameters {
   /// How many parameters there are
-  pub const COUNT: usize = 180;
+  pub const COUNT: usize = 182;
 
   /// Is parameter index valid
   pub fn valid_index(index: usize) -> bool {
     let group = index / 18;
     let index = index % 18;
     match group {
-      0 | 1 | 6..=9 => index != OBSTACLE as usize - 1,
+      0 | 1 | 6 | 7 => true,
       2..=5 => index < OBSTACLE as usize - 1,
+      8 | 9 => index != 0,
+      10 => index < 2,
       _ => panic!("Invalid parameter index"),
     }
   }
@@ -244,8 +251,9 @@ impl Parameters {
   pub fn iteration_count(index: usize) -> i32 {
     let group = index / 18;
     match group {
-      0 | 1 => 5,
-      2..=9 => 3,
+      0 | 1 => 4,
+      2..=9 => 2,
+      10 => 1,
       _ => panic!("Invalid parameter index"),
     }
   }
@@ -265,6 +273,11 @@ impl Parameters {
       7 => self.eg_friendly_pawn_penalty[index] += bonus,
       8 => self.mg_enemy_pawn_penalty[index] += bonus,
       9 => self.eg_enemy_pawn_penalty[index] += bonus,
+      10 => match index {
+        0 => self.pawn_scale_factor += bonus,
+        1 => self.pawn_scaling_bonus += bonus,
+        _ => panic!("Invalid parameter index"),
+      },
       _ => panic!("Invalid parameter index"),
     }
   }
