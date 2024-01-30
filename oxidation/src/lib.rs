@@ -440,12 +440,12 @@ pub fn evaluate_raw(
           // bonus for advanced pawn
           #[cfg(not(feature = "pesto"))]
           {
-          let squares_to_go = if piece > 0 { height - 1 - i } else { i } as i32;
-          if squares_to_go != 0 {
-            mg_value += promotion_values.0
-              / (squares_to_go * parameters.pawn_scale_factor + parameters.pawn_scaling_bonus);
-            eg_value += promotion_values.1
-              / (squares_to_go * parameters.pawn_scale_factor + parameters.pawn_scaling_bonus);
+            let squares_to_go = if piece > 0 { height - 1 - i } else { i } as i32;
+            if squares_to_go != 0 {
+              mg_value += promotion_values.0
+                / (squares_to_go * parameters.pawn_scale_factor + parameters.pawn_scaling_bonus);
+              eg_value += promotion_values.1
+                / (squares_to_go * parameters.pawn_scale_factor + parameters.pawn_scaling_bonus);
             }
           }
         }
