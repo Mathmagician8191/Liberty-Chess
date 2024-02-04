@@ -673,7 +673,8 @@ fn alpha_beta(
         let score = -null_move_search(state, settings, &nullmove, depth - 3, -beta);
         if score >= beta {
           // Verification search
-          if depth < 4 || zero_window_search(state, settings, board, depth - 3, beta, true) >= beta {
+          if depth < 4 || zero_window_search(state, settings, board, depth - 3, beta, true) >= beta
+          {
             return (Vec::new(), beta);
           }
         }

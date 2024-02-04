@@ -159,7 +159,9 @@ fn run_match(
             break;
           }
           UlciResult::Analysis(result) => {
-            spectators.send(SpectatorMessage::Kibbutz(UlciResult::Analysis(result))).ok();
+            spectators
+              .send(SpectatorMessage::Kibbutz(UlciResult::Analysis(result)))
+              .ok();
           }
           _ => (),
         }
@@ -215,7 +217,9 @@ fn run_match(
             break;
           }
           UlciResult::Analysis(result) => {
-            spectators.send(SpectatorMessage::Kibbutz(UlciResult::Analysis(result))).ok();
+            spectators
+              .send(SpectatorMessage::Kibbutz(UlciResult::Analysis(result)))
+              .ok();
           }
           _ => (),
         }
