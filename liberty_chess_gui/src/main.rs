@@ -550,7 +550,9 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
                 | Message::Eval
                 | Message::Bench(_)
                 | Message::NewGame
-                | Message::Perft(_) => (),
+                | Message::Perft(_)
+                | Message::Clock(_)
+                | Message::Info(_) => (),
               },
             },
             Err(TryRecvError::Disconnected) => {

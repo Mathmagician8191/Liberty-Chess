@@ -32,12 +32,19 @@ const POSITIONS: &[&str] = &[
   "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1",
 ];
 
+const FRIENDLY_FIRE_CHANCE: f64 = 1.0;
+
+const GAME_LIMIT: usize = 2;
+
 const WHITE_ENGINE: Option<&str> = None;
 const BLACK_ENGINE: Option<&str> = None;
+
+const KIBBUTZ_ENGINE: Option<&str> = Some("target/release/oxidation-0.5.2");
 
 enum SpectatorMessage {
   Request(Request),
   Spectator(Sender<Request>),
+  Kibbutz(UlciResult),
 }
 
 fn process_spectators(mut spectators: Vec<Sender<Request>>, messages: Receiver<SpectatorMessage>) {
@@ -54,21 +61,31 @@ fn process_spectators(mut spectators: Vec<Sender<Request>>, messages: Receiver<S
         }
         spectators.push(spectator);
       }
+      SpectatorMessage::Kibbutz(result) => {
+        if let UlciResult::Analysis(result) = result {
+          spectators.retain(|spectator| {
+            spectator
+              .send(Request::AnalysisResult(result.clone()))
+              .is_ok()
+          });
+        }
+      }
     }
   }
 }
 
 fn run_match(
-  (tx_1, rx_1): (Sender<Request>, Receiver<UlciResult>),
-  (tx_2, rx_2): (Sender<Request>, Receiver<UlciResult>),
+  (mut tx_1, mut rx_1): (Sender<Request>, Receiver<UlciResult>),
+  (mut tx_2, mut rx_2): (Sender<Request>, Receiver<UlciResult>),
   spectators: Sender<SpectatorMessage>,
+  kibbutz_tx: Option<Sender<Request>>,
 ) -> Option<()> {
-  loop {
+  for _ in 0..GAME_LIMIT {
     let fen = POSITIONS
       .choose(&mut thread_rng())
       .expect("Could not find position");
     let mut position = Board::new(fen).unwrap();
-    if thread_rng().gen_bool(0.5) {
+    if thread_rng().gen_bool(FRIENDLY_FIRE_CHANCE) {
       position.friendly_fire = true;
     }
     let mut base_position = position.clone();
@@ -87,13 +104,6 @@ fn run_match(
         false,
       ))
       .ok()?;
-    spectators
-      .send(SpectatorMessage::Request(Request::Position(
-        base_position.to_string(),
-        moves.to_vec(),
-        false,
-      )))
-      .ok();
     let mut clock = Clock::new_symmetric(
       Duration::from_secs(1200),
       Duration::from_secs(15),
@@ -117,18 +127,41 @@ fn run_match(
           false,
         )))
         .ok();
+      spectators
+        .send(SpectatorMessage::Request(Request::Clock(
+          SearchTime::from_clock(&mut clock),
+        )))
+        .ok();
+      if let Some(ref kibbutz) = kibbutz_tx {
+        kibbutz.send(Request::StopAnalysis).ok();
+        kibbutz
+          .send(Request::Analysis(AnalysisRequest {
+            fen: base_position.to_string(),
+            moves: moves.clone(),
+            searchmoves: Vec::new(),
+            time: SearchTime::Infinite,
+            new_game: false,
+          }))
+          .ok();
+      }
       loop {
-        if let UlciResult::AnalysisStopped(r#move) = rx_1.recv().ok()? {
-          if let Some(board) = position.move_if_legal(r#move) {
-            if board.halfmoves() == 0 {
-              base_position = position;
-              moves.clear();
+        match rx_1.recv().ok()? {
+          UlciResult::AnalysisStopped(r#move) => {
+            if let Some(board) = position.move_if_legal(r#move) {
+              if board.halfmoves() == 0 {
+                base_position = position;
+                moves.clear();
+              }
+              position = board;
+              moves.push(r#move);
+              clock.switch_clocks();
             }
-            position = board;
-            moves.push(r#move);
-            clock.switch_clocks();
+            break;
           }
-          break;
+          UlciResult::Analysis(result) => {
+            spectators.send(SpectatorMessage::Kibbutz(UlciResult::Analysis(result))).ok();
+          }
+          _ => (),
         }
       }
       if position.state() != Gamestate::InProgress {
@@ -150,18 +183,41 @@ fn run_match(
           false,
         )))
         .ok();
+      spectators
+        .send(SpectatorMessage::Request(Request::Clock(
+          SearchTime::from_clock(&mut clock),
+        )))
+        .ok();
+      if let Some(ref kibbutz) = kibbutz_tx {
+        kibbutz.send(Request::StopAnalysis).ok();
+        kibbutz
+          .send(Request::Analysis(AnalysisRequest {
+            fen: base_position.to_string(),
+            moves: moves.clone(),
+            searchmoves: Vec::new(),
+            time: SearchTime::Infinite,
+            new_game: false,
+          }))
+          .ok();
+      }
       loop {
-        if let UlciResult::AnalysisStopped(r#move) = rx_2.recv().ok()? {
-          if let Some(board) = position.move_if_legal(r#move) {
-            if board.halfmoves() == 0 {
-              base_position = position;
-              moves.clear();
+        match rx_2.recv().ok()? {
+          UlciResult::AnalysisStopped(r#move) => {
+            if let Some(board) = position.move_if_legal(r#move) {
+              if board.halfmoves() == 0 {
+                base_position = position;
+                moves.clear();
+              }
+              position = board;
+              moves.push(r#move);
+              clock.switch_clocks();
             }
-            position = board;
-            moves.push(r#move);
-            clock.switch_clocks();
+            break;
           }
-          break;
+          UlciResult::Analysis(result) => {
+            spectators.send(SpectatorMessage::Kibbutz(UlciResult::Analysis(result))).ok();
+          }
+          _ => (),
         }
       }
     }
@@ -187,7 +243,10 @@ fn run_match(
       )))
       .ok();
     sleep(Duration::from_secs(10));
+    (tx_1, tx_2) = (tx_2, tx_1);
+    (rx_1, rx_2) = (rx_2, rx_1);
   }
+  None
 }
 
 fn main() {
@@ -234,6 +293,18 @@ fn main() {
     println!("Starting match");
     let (spectator_tx, spectator_rx) = channel();
     let spectator_tx_copy = spectator_tx.clone();
+    let mut kibbutz_tx = None;
+    if let Some((tx, rx)) = KIBBUTZ_ENGINE.map(load_engine) {
+      kibbutz_tx = Some(tx);
+      let spectator_tx_copy = spectator_tx.clone();
+      spawn(move || {
+        while let Ok(message) = rx.recv() {
+          spectator_tx_copy
+            .send(SpectatorMessage::Kibbutz(message))
+            .ok();
+        }
+      });
+    }
     spawn(move || {
       while let Ok((spectator, _, _)) = rx.recv() {
         spectator_tx_copy
@@ -242,7 +313,7 @@ fn main() {
       }
     });
     spawn(|| process_spectators(spectators, spectator_rx));
-    run_match(player_1, player_2, spectator_tx);
+    run_match(player_1, player_2, spectator_tx, kibbutz_tx);
   } else {
     println!("Something went wrong!");
   }

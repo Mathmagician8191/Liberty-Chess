@@ -889,8 +889,10 @@ impl Board {
       self.promotion_target = None;
       if piece == KING {
         if self.to_move {
+          self.black_pieces -= 1;
           &mut self.black_kings
         } else {
+          self.white_pieces -= 1;
           &mut self.white_kings
         }
         .push(target);

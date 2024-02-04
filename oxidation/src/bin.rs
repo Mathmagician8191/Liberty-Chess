@@ -203,6 +203,7 @@ fn main() {
       }
       Message::NewGame => state.new_game(&position),
       Message::Perft(depth) => divide(&position, depth),
+      Message::Clock(_) | Message::Info(_) => (),
     }
   }
 }

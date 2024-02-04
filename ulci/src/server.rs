@@ -1,6 +1,6 @@
 use crate::{
-  write, write_mutex, ClientInfo, IntOption, OptionValue, RangeOption, Score, SearchTime,
-  SupportedFeatures, UlciOption, V1Features, WDL,
+  convert_words, process_info, write, write_mutex, AnalysisResult, ClientInfo, IntOption,
+  OptionValue, RangeOption, Score, SearchTime, SupportedFeatures, UlciOption, V1Features,
 };
 use liberty_chess::moves::Move;
 use liberty_chess::parsing::to_piece;
@@ -8,7 +8,6 @@ use liberty_chess::{BISHOP, KING, KNIGHT, PAWN, QUEEN, ROOK};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, Write};
-use std::str::SplitWhitespace;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::spawn;
@@ -24,6 +23,10 @@ pub enum Request {
   Position(String, Vec<Move>, bool),
   /// The server wants to update an option
   SetOption(String, OptionValue),
+  /// The server is updating the clock
+  Clock(SearchTime),
+  /// The server has results for the client
+  AnalysisResult(AnalysisResult),
 }
 
 /// A request for analysis
@@ -53,24 +56,6 @@ pub enum UlciResult {
   Info(InfoType, String),
 }
 
-/// The result from the analysis
-pub struct AnalysisResult {
-  /// Principal Variation
-  ///
-  /// the first element is the bestmove
-  pub pv: Vec<Move>,
-  /// Evaluation of current position
-  pub score: Score,
-  /// Depth evaluated
-  pub depth: u16,
-  /// Nodes evaluated
-  pub nodes: usize,
-  /// Time
-  pub time: u128,
-  /// WDL
-  pub wdl: Option<WDL>,
-}
-
 impl Default for AnalysisResult {
   fn default() -> Self {
     Self {
@@ -92,108 +77,6 @@ pub enum InfoType {
   ClientError,
   /// The client claims the server has made an error
   ServerError,
-}
-
-fn convert_words(words: SplitWhitespace) -> String {
-  words.collect::<Vec<&str>>().join(" ")
-}
-
-fn process_info(mut words: SplitWhitespace, tx: &Sender<UlciResult>) {
-  let mut result = AnalysisResult::default();
-  let mut modified = false;
-  while let Some(word) = words.next() {
-    match word {
-      "string" => {
-        if let Some(word) = words.next() {
-          match word {
-            "clienterror" => {
-              tx.send(UlciResult::Info(
-                InfoType::ClientError,
-                convert_words(words),
-              ))
-              .ok();
-            }
-            "servererror" => {
-              tx.send(UlciResult::Info(
-                InfoType::ServerError,
-                convert_words(words),
-              ))
-              .ok();
-            }
-            _ => {
-              let result = word.to_owned() + " " + &convert_words(words);
-              tx.send(UlciResult::Info(InfoType::String, result)).ok();
-            }
-          }
-        }
-        return;
-      }
-      "depth" => {
-        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-          result.depth = value;
-          modified = true;
-        }
-      }
-      "nodes" => {
-        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-          result.nodes = value;
-          modified = true;
-        }
-      }
-      "time" => {
-        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
-          result.time = value;
-          modified = true;
-        }
-      }
-      "score" => {
-        if let Some(word) = words.next() {
-          match word {
-            "mate" => {
-              if let Some(word) = words.next() {
-                if let Some(word) = word.strip_prefix('-') {
-                  if let Ok(moves) = word.parse() {
-                    result.score = Score::Loss(moves);
-                    modified = true;
-                  }
-                } else if let Ok(moves) = word.parse() {
-                  result.score = Score::Win(moves);
-                  modified = true;
-                }
-              }
-            }
-            "cp" => {
-              if let Some(score) = words.next().and_then(|w| w.parse().ok()) {
-                result.score = Score::Centipawn(score);
-                modified = true;
-              }
-            }
-            _ => (),
-          }
-        }
-      }
-      "wdl" => {
-        if let (Some(win), Some(draw), Some(loss)) = (
-          words.next().and_then(|w| w.parse().ok()),
-          words.next().and_then(|w| w.parse().ok()),
-          words.next().and_then(|w| w.parse().ok()),
-        ) {
-          result.wdl = Some(WDL { win, draw, loss });
-          modified = true;
-        }
-      }
-      // TODO fix: only works as the last option
-      "pv" => {
-        modified = true;
-        break;
-      }
-      _ => (),
-    }
-  }
-  if modified {
-    result.pv = words.flat_map(str::parse).collect();
-    tx.send(UlciResult::Analysis(result)).ok();
-  }
 }
 
 /// Start up a ULCI server
@@ -368,7 +251,9 @@ fn setup(
         }
       }
       Some("info") => {
-        process_info(words, results);
+        for message in process_info(words) {
+          results.send(message).ok();
+        }
       }
       Some("uciok") => break,
       Some(_) | None => (),
@@ -433,6 +318,29 @@ fn process_server(
           },
         )?;
       }
+      Request::Clock(time) => {
+        write_mutex(out, format!("clock{}", time.to_string()))?;
+      }
+      Request::AnalysisResult(result) => {
+        // TODO: WDL
+        write_mutex(
+          out,
+          format!(
+            "info depth {} score {} time {} nodes {} pv {}\n",
+            result.depth,
+            // TODO: fix
+            result.score.show_uci(0, true),
+            result.time,
+            result.nodes,
+            result
+              .pv
+              .iter()
+              .map(Move::to_string)
+              .collect::<Vec<String>>()
+              .join(" ")
+          ),
+        )?;
+      }
     }
   }
   Some(())
@@ -488,7 +396,7 @@ fn process_analysis(
           .join(" ")
       )
     };
-    write_mutex(out, format!("{}{moves}", request.time.to_string()))?;
+    write_mutex(out, format!("go{}{moves}", request.time.to_string()))?;
     while let Ok(chars) = input.read_line(&mut buffer) {
       if chars == 0 {
         return None;
@@ -496,7 +404,11 @@ fn process_analysis(
       let mut words = buffer.split_whitespace();
       if let Some(word) = words.next() {
         match word {
-          "info" => process_info(words, tx),
+          "info" => {
+            for message in process_info(words) {
+              tx.send(message).ok();
+            }
+          }
           "bestmove" => {
             if let Some(bestmove) = words.next().and_then(|m| m.parse().ok()) {
               tx.send(UlciResult::AnalysisStopped(bestmove)).ok()?;

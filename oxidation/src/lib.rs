@@ -18,8 +18,8 @@ use std::sync::mpsc::{Receiver, Sender, TryRecvError};
 use std::time::Instant;
 use tt::{Entry, ScoreType, TranspositionTable};
 use ulci::client::Message;
-use ulci::server::{AnalysisResult, UlciResult};
-use ulci::{OptionValue, Score, SearchTime};
+use ulci::server::UlciResult;
+use ulci::{AnalysisResult, OptionValue, Score, SearchTime};
 
 #[cfg(feature = "pesto")]
 use crate::pesto::{EG_PSQT, MG_PSQT};
@@ -100,6 +100,7 @@ impl State {
 }
 
 /// Convert promotion options to values
+///
 /// For the tuner
 pub fn get_promotion_values(promotions: &[Piece], parameters: &Parameters) -> (i32, i32) {
   let piece = promotions
@@ -295,6 +296,7 @@ impl<'a> SearchConfig<'a> {
                     }
                   }
                 }
+                Message::Clock(_) | Message::Info(_) => (),
               }
             }
             Err(TryRecvError::Disconnected) => {
@@ -507,28 +509,23 @@ fn recaptures(
       alpha = best_score;
     }
     let mut best_pv = Vec::new();
-    if !settings.search_is_over() {
-      let mut moves = board.generate_recaptures(target);
-      moves.sort_by_key(|(_, piece)| state.parameters.mg_pieces[usize::from(*piece - 1)]);
-      for (bestmove, _) in moves {
-        if let Some(position) = board.test_move_legality(bestmove) {
-          settings.nodes += 1;
-          let (mut pv, mut score) = recaptures(state, settings, &position, -beta, -alpha, target);
-          score = -score;
-          if score >= beta {
-            return (Vec::new(), beta);
-          }
-          if score > alpha {
-            alpha = score;
-            let mut new_pv = vec![bestmove];
-            new_pv.append(&mut pv);
-            best_pv = new_pv;
-          }
-          if settings.search_is_over() {
-            return (best_pv, alpha);
-          }
-          break;
+    let mut moves = board.generate_recaptures(target);
+    moves.sort_by_key(|(_, piece)| state.parameters.mg_pieces[usize::from(*piece - 1)]);
+    for (bestmove, _) in moves {
+      if let Some(position) = board.test_move_legality(bestmove) {
+        settings.nodes += 1;
+        let (mut pv, mut score) = recaptures(state, settings, &position, -beta, -alpha, target);
+        score = -score;
+        if score >= beta {
+          return (Vec::new(), beta);
         }
+        if score > alpha {
+          alpha = score;
+          let mut new_pv = vec![bestmove];
+          new_pv.append(&mut pv);
+          best_pv = new_pv;
+        }
+        break;
       }
     }
     (best_pv, alpha)
@@ -670,12 +667,15 @@ fn alpha_beta(
         return (pv, score);
       }
     }
-    if !nullmove && depth >= 3 && board.has_pieces() && evaluate(state, board) >= beta {
+    // Null move pruning
+    if !pv_node && !nullmove && depth >= 3 && board.has_pieces() && evaluate(state, board) >= beta {
       if let Some(nullmove) = board.nullmove() {
-        let score = -null_move_search(state, settings, &nullmove, depth - 2, -beta);
+        let score = -null_move_search(state, settings, &nullmove, depth - 3, -beta);
         if score >= beta {
-          // Null move reduction
-          depth -= 2;
+          // Verification search
+          if depth < 4 || zero_window_search(state, settings, board, depth - 3, beta, true) >= beta {
+            return (Vec::new(), beta);
+          }
         }
       }
     }

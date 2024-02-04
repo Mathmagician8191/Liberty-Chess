@@ -62,7 +62,12 @@ fn main() {
   for (file, _, _, k) in POSITIONS {
     println!("Position {file}");
     let mut processed_data = Vec::new();
-    for folder in ["tt replacement", "softerer tm part 1", "softerer tm part 2"] {
+    for folder in [
+      "verif search take 1",
+      "verif search take 2",
+      "verif search take 3",
+      "cache check",
+    ] {
       let fens =
         read_to_string(format!("datagen/{folder}/{file}.txt")).expect("Unable to read file");
       processed_data.extend(fens.split('\n').map(|line| {

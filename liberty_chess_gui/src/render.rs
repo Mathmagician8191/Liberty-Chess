@@ -91,7 +91,7 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Boa
               ConnectionMessage::Uci(message) => match message {
                 Message::UpdatePosition(new_board) => {
                   let new_board = new_board.load_from_thread();
-                  *side = board.to_move();
+                  *side = new_board.to_move();
                   #[cfg(feature = "sound")]
                   if let Some(ref mut engine) = gui.audio_engine {
                     let effect = update_sound(&new_board, false);
@@ -101,6 +101,13 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Boa
                   gui.screen = Screen::Game(Box::new(new_board));
                   gui.selected = None;
                   gui.drag = None;
+                }
+                Message::Info(result) => {
+                  let mut score = result.score;
+                  if board.to_move() {
+                    score = -score;
+                  }
+                  gui.eval = Some((score, result.depth));
                 }
                 #[cfg(feature = "clock")]
                 Message::Go(settings) => {
@@ -141,6 +148,34 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Boa
                     gui.flipped = *side;
                   }
                 }
+                #[cfg(feature = "clock")]
+                Message::Clock(time) => match time {
+                  SearchTime::Increment(time, inc) => {
+                    let mut clock = Clock::new_symmetric(
+                      Duration::from_millis(time as u64),
+                      Duration::from_millis(inc as u64),
+                      board.to_move(),
+                    );
+                    clock.toggle_pause();
+                    gui.clock = Some(clock);
+                  }
+                  SearchTime::Asymmetric(wtime, winc, btime, binc) => {
+                    let mut clock = Clock::new(
+                      [
+                        Duration::from_millis(wtime as u64),
+                        Duration::from_millis(btime as u64),
+                        Duration::from_millis(winc as u64),
+                        Duration::from_millis(binc as u64),
+                      ],
+                      board.to_move(),
+                    );
+                    clock.toggle_pause();
+                    gui.clock = Some(clock);
+                  }
+                  _ => gui.clock = None,
+                },
+                #[cfg(not(feature = "clock"))]
+                Message::Clock(_) => (),
                 Message::UpdateOption(..)
                 | Message::SetDebug(_)
                 | Message::Stop

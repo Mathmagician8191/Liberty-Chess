@@ -8,11 +8,13 @@ use liberty_chess::clock::Clock;
 use liberty_chess::moves::Move;
 use liberty_chess::{Board, Piece, PAWN};
 use parking_lot::Mutex;
+use server::InfoType;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::io::{BufReader, Write};
 use std::process::{Command, Stdio};
+use std::str::SplitWhitespace;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::spawn;
@@ -130,14 +132,14 @@ impl ToString for SearchTime {
   fn to_string(&self) -> String {
     match self {
       Self::Increment(time, inc) => {
-        format!("go wtime {time} winc {inc} btime {time} binc {inc}")
+        format!(" wtime {time} winc {inc} btime {time} binc {inc}")
       }
       Self::Asymmetric(wtime, winc, btime, binc) => {
-        format!("go wtime {wtime} winc {winc} btime {btime} binc {binc}")
+        format!(" wtime {wtime} winc {winc} btime {btime} binc {binc}")
       }
-      Self::Infinite => "go infinite".to_owned(),
+      Self::Infinite => " infinite".to_owned(),
       Self::Other(limits) => {
-        let mut result = "go".to_owned();
+        let mut result = String::new();
         let mut limit_count = 0;
         if limits.depth < u8::MAX {
           result += &format!(" depth {}", limits.depth);
@@ -156,7 +158,7 @@ impl ToString for SearchTime {
         }
         result
       }
-      Self::Mate(moves) => format!("go mate {moves}"),
+      Self::Mate(moves) => format!(" mate {moves}"),
     }
   }
 }
@@ -339,6 +341,7 @@ impl Score {
 }
 
 /// Side to move has these chances to win, draw and loss permill
+#[derive(Clone, Copy)]
 pub struct WDL {
   win: u16,
   draw: u16,
@@ -351,6 +354,25 @@ impl ToString for WDL {
   }
 }
 
+/// The result from the analysis
+#[derive(Clone)]
+pub struct AnalysisResult {
+  /// Principal Variation
+  ///
+  /// the first element is the bestmove
+  pub pv: Vec<Move>,
+  /// Evaluation of current position
+  pub score: Score,
+  /// Depth evaluated
+  pub depth: u16,
+  /// Nodes evaluated
+  pub nodes: usize,
+  /// Time
+  pub time: u128,
+  /// WDL
+  pub wdl: Option<WDL>,
+}
+
 #[must_use]
 fn write(writer: &mut impl Write, output: impl Display) -> Option<usize> {
   writer.write(format!("{output}\n").as_bytes()).ok()
@@ -359,6 +381,108 @@ fn write(writer: &mut impl Write, output: impl Display) -> Option<usize> {
 #[must_use]
 fn write_mutex(writer: &Arc<Mutex<impl Write>>, output: impl Display) -> Option<usize> {
   writer.lock().write(format!("{output}\n").as_bytes()).ok()
+}
+
+fn convert_words(words: SplitWhitespace) -> String {
+  words.collect::<Vec<&str>>().join(" ")
+}
+
+fn process_info(mut words: SplitWhitespace) -> Vec<UlciResult> {
+  let mut results = Vec::new();
+  let mut result = AnalysisResult::default();
+  let mut modified = false;
+  while let Some(word) = words.next() {
+    match word {
+      "string" => {
+        if let Some(word) = words.next() {
+          match word {
+            "clienterror" => {
+              results.push(UlciResult::Info(
+                InfoType::ClientError,
+                convert_words(words),
+              ));
+            }
+            "servererror" => {
+              results.push(UlciResult::Info(
+                InfoType::ServerError,
+                convert_words(words),
+              ));
+            }
+            _ => {
+              let result = word.to_owned() + " " + &convert_words(words);
+              results.push(UlciResult::Info(InfoType::String, result));
+            }
+          }
+        }
+        return results;
+      }
+      "depth" => {
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          result.depth = value;
+          modified = true;
+        }
+      }
+      "nodes" => {
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          result.nodes = value;
+          modified = true;
+        }
+      }
+      "time" => {
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          result.time = value;
+          modified = true;
+        }
+      }
+      "score" => {
+        if let Some(word) = words.next() {
+          match word {
+            "mate" => {
+              if let Some(word) = words.next() {
+                if let Some(word) = word.strip_prefix('-') {
+                  if let Ok(moves) = word.parse() {
+                    result.score = Score::Loss(moves);
+                    modified = true;
+                  }
+                } else if let Ok(moves) = word.parse() {
+                  result.score = Score::Win(moves);
+                  modified = true;
+                }
+              }
+            }
+            "cp" => {
+              if let Some(score) = words.next().and_then(|w| w.parse().ok()) {
+                result.score = Score::Centipawn(score);
+                modified = true;
+              }
+            }
+            _ => (),
+          }
+        }
+      }
+      "wdl" => {
+        if let (Some(win), Some(draw), Some(loss)) = (
+          words.next().and_then(|w| w.parse().ok()),
+          words.next().and_then(|w| w.parse().ok()),
+          words.next().and_then(|w| w.parse().ok()),
+        ) {
+          result.wdl = Some(WDL { win, draw, loss });
+          modified = true;
+        }
+      }
+      // TODO fix: only works as the last option
+      "pv" => {
+        modified = true;
+        break;
+      }
+      _ => (),
+    }
+  }
+  if modified {
+    result.pv = words.flat_map(str::parse).collect();
+    results.push(UlciResult::Analysis(result));
+  }
+  results
 }
 
 fn spawn_engine(path: &'static str, requests: Receiver<Request>, results: &Sender<UlciResult>) {

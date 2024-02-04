@@ -1,6 +1,6 @@
 [package]
 name = "oxidation"
-version = "0.5.1"
+version = "0.5.2"
 authors.workspace = true
 repository.workspace = true
 license.workspace = true

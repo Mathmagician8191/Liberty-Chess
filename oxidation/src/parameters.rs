@@ -1,176 +1,176 @@
 use liberty_chess::OBSTACLE;
 
 pub(crate) const MIDDLEGAME_PIECE_VALUES: [i32; 18] = [
-  43,    // pawn
-  309,   // knight
-  371,   // bishop
-  544,   // rook
-  1261,  // queen
-  -1360, // king
-  944,   // archbishop
-  1144,  // chancellor
-  82,    // camel
-  133,   // zebra
-  51,    // mann
-  616,   // nightrider
-  505,   // champion
-  550,   // centaur
-  1846,  // amazon
-  566,   // elephant
-  14,    // obstacle
-  65,    // wall
+  50,    // pawn
+  315,   // knight
+  393,   // bishop
+  564,   // rook
+  1239,  // queen
+  -1464, // king
+  935,   // archbishop
+  1100,  // chancellor
+  145,   // camel
+  126,   // zebra
+  169,   // mann
+  657,   // nighrider
+  510,   // champion
+  594,   // centaur
+  1841,  // amazon
+  657,   // elephant
+  21,    // obstacle
+  117,   // wall
 ];
 
 const ENDGAME_PIECE_VALUES: [i32; 18] = [
-  185,  // pawn
-  378,  // knight
-  393,  // bishop
-  711,  // rook
-  1276, // queen
-  1222, // king
-  1171, // archbishop
-  1391, // chancellor
-  339,  // camel
-  248,  // zebra
-  334,  // mann
-  369,  // nightrider
-  967,  // champion
+  182,  // pawn
+  361,  // knight
+  380,  // bishop
+  682,  // rook
+  1286, // queen
+  1286, // king
+  1058, // archbishop
+  1400, // chancellor
+  291,  // camel
+  237,  // zebra
+  264,  // mann
+  375,  // nightrider
+  1142, // champion
   1175, // centaur
-  1560, // amazon
-  604,  // elephant
-  100,  // obstacle
-  119,  // wall
+  1579, // amazon
+  651,  // elephant
+  109,  // obstacle
+  110,  // wall
 ];
 
 const MIDDLEGAME_EDGE_AVOIDANCE: [[i32; EDGE_DISTANCE]; 18] = [
-  [18, -3],    // pawn
-  [37, 22],    // knight
-  [51, 4],     // bishop
-  [38, 30],    // rook
-  [14, -1],    // queen
-  [-109, -35], // king
-  [13, -4],    // archbishop
-  [14, -6],    // chancellor
-  [-22, -6],   // camel
-  [-33, 11],   // zebra
-  [45, 0],     // mann
-  [16, 11],    // nightrider
-  [9, 0],      // champion
-  [5, 5],      // centaur
-  [9, 13],     // amazon
-  [49, 20],    // elephant
-  [0, 0],      // obstacle
-  [0, 0],      // wall
+  [18, -10],   // pawn
+  [42, 22],    // knight
+  [59, 5],     // bishop
+  [39, 29],    // rook
+  [31, 5],     // queen
+  [-108, -28], // king
+  [35, 17],    // archbishop
+  [13, 5],     // chancellor
+  [-11, -4],   // camel
+  [2, 19],     // zebra
+  [15, 0],     // mann
+  [16, -30],   // nightrider
+  [11, 1],     // champion
+  [34, 21],    // centaur
+  [13, 15],    // amazon
+  [63, 16],    // elephant
+  [0, 0],
+  [0, 0],
 ];
 
 const ENDGAME_EDGE_AVOIDANCE: [[i32; EDGE_DISTANCE]; 18] = [
-  [21, -1],  // pawn
-  [14, 8],   // knight
-  [28, 15],  // bishop
-  [60, 8],   // rook
-  [55, 35],  // queen
-  [65, 20],  // king
-  [118, 40], // archbishop
-  [10, 109], // chancellor
-  [24, 8],   // camel
-  [31, 11],  // zebra
-  [6, 26],   // mann
-  [-16, 2],  // nightrider
-  [119, 9],  // champion
-  [64, 11],  // centaur
-  [30, 55],  // amazon
-  [130, 65], // elephant
-  [0, 0],    // obstacle
-  [0, 0],    // wall
+  [36, 1],   // pawn
+  [6, 0],    // knight
+  [22, 16],  // bishop
+  [44, -4],  // rook
+  [37, 28],  // queen
+  [74, 20],  // king
+  [69, 21],  // archbishop
+  [29, 1],   // chancellor
+  [17, 2],   // camel
+  [-2, 0],   // zebra
+  [30, 10],  // mann
+  [80, 35],  // nightrider
+  [84, 0],   // champion
+  [123, 40], // centaur
+  [68, 62],  // amazon
+  [86, 54],  // elephant
+  [0, 0],
+  [0, 0],
 ];
 
 const MIDDLEGAME_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
-  0,   // pawn
-  18,  // knight
+  -6,  // pawn
+  13,  // knight
   15,  // bishop
-  20,  // rook
-  5,   // queen
-  50,  // king
-  -1,  // archbishop
-  6,   // chancellor
-  60,  // camel
-  -26, // zebra
-  12,  // mann
-  0,   // nightrider
-  0,   // champion
-  0,   // centaur
-  0,   // amazon
-  0,   // elephant
-  0,   // obstacle
-  46,  // wall
+  0,   // rook
+  -3,  // queen
+  49,  // king
+  8,   // archbishop
+  4,   // chancellor
+  14,  // camel
+  0,   // zebra
+  0,   // mann
+  1,   // nightrider
+  -26, // champion
+  -6,  // centaur
+  -26, // amazon
+  -12, // elephant
+  -1,  // obstacle
+  1,   // wall
 ];
 
 const ENDGAME_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
-  36,  // pawn
-  18,  // knight
-  12,  // bishop
-  7,   // rook
-  -6,  // queen
-  -1,  // king
-  66,  // archbishop
-  78,  // chancellor
-  -34, // camel
-  52,  // zebra
-  -68, // mann
+  52,  // pawn
+  22,  // knight
+  0,   // bishop
+  0,   // rook
+  28,  // queen
+  -10, // king
+  22,  // archbishop
+  76,  // chancellor
+  0,   // camel
+  35,  // zebra
+  0,   // mann
   0,   // nightrider
-  61,  // champion
-  0,   // centaur
-  73,  // amazon
-  4,   // elephant
-  1,   // obstacle
-  11,  // wall
+  39,  // champion
+  48,  // centaur
+  77,  // amazon
+  60,  // elephant
+  11,  // obstacle
+  13,  // wall
 ];
 
 const MIDDLEGAME_ENEMY_PAWN_PENALTY: [i32; 18] = [
   0,   // pawn
-  2,   // knight
-  12,  // bishop
-  -16, // rook
-  23,  // queen
-  90,  // king
-  38,  // archbishop
-  14,  // chancellor
-  -60, // camel
-  -54, // zebra
-  58,  // mann
-  45,  // nightrider
-  54,  // champion
-  26,  // centaur
-  88,  // amazon
-  55,  // elephant
+  22,  // knight
+  16,  // bishop
+  -37, // rook
+  14,  // queen
+  110, // king
+  16,  // archbishop
+  6,   // chancellor
+  0,   // camel
+  0,   // zebra
+  1,   // mann
+  36,  // nighrider
+  37,  // champion
+  30,  // centaur
+  10,  // amazon
+  46,  // elephant
   0,   // obstacle
-  24,  // wall
+  31,  // wall
 ];
 
 const ENDGAME_ENEMY_PAWN_PENALTY: [i32; 18] = [
   0,   // pawn
-  51,  // knight
-  119, // bishop
-  51,  // rook
-  40,  // queen
-  41,  // king
-  81,  // archbishop
-  131, // chancellor
-  75,  // camel
-  29,  // zebra
-  165, // mann
-  20,  // nightrider
-  84,  // champion
-  182, // centaur
-  8,   // amazon
+  40,  // knight
+  129, // bishop
+  72,  // rook
+  36,  // queen
+  55,  // king
+  172, // archbishop
+  7,   // chancellor
+  37,  // camel
+  27,  // zebra
+  194, // mann
+  67,  // nightrider
+  130, // champion
+  98,  // centaur
+  162, // amazon
   0,   // elephant
-  0,   // obstacle
+  10,  // obstacle
   0,   // wall
 ];
 
 // advanced pawns get a bonus of 1/(factor * squares_to_promotion + bonus) times the promotion value
 const PAWN_SCALING_FACTOR: i32 = 8;
-const PAWN_SCALING_BONUS: i32 = 0;
+const PAWN_SCALING_BONUS: i32 = -1;
 
 /// Maximum distance from the edge to apply penalty
 pub(crate) const EDGE_DISTANCE: usize = 2;

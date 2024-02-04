@@ -1,4 +1,8 @@
-use crate::{write, OptionValue, SearchSettings, SearchTime, UlciOption, V1Features};
+use crate::server::UlciResult;
+use crate::{
+  process_info, write, AnalysisResult, OptionValue, SearchSettings, SearchTime, UlciOption,
+  V1Features,
+};
 use crate::{ClientInfo, Limits};
 use liberty_chess::parsing::to_char;
 use liberty_chess::positions::get_startpos;
@@ -29,6 +33,10 @@ pub enum Message {
   NewGame,
   /// Perft
   Perft(usize),
+  /// The server is updating the clock state
+  Clock(SearchTime),
+  /// The server has some info
+  Info(AnalysisResult),
 }
 
 fn print_uci(out: &mut impl Write, info: &ClientInfo) -> Option<()> {
@@ -404,6 +412,69 @@ fn go(
     .ok()
 }
 
+fn clock(
+  out: &mut impl Write,
+  client: &Sender<Message>,
+  mut words: SplitWhitespace,
+  debug: bool,
+) -> Option<()> {
+  let mut time = SearchTime::Infinite;
+  while let Some(word) = words.next() {
+    match word {
+      "wtime" => {
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          if let SearchTime::Asymmetric(ref mut wtime, _, _, _) = time {
+            *wtime = value;
+          } else {
+            time = SearchTime::Asymmetric(value, 0, 1000, 0);
+          }
+        } else if debug {
+          write(out, "info string servererror no time specified")?;
+        }
+      }
+      "btime" => {
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          if let SearchTime::Asymmetric(_, _, ref mut btime, _) = time {
+            *btime = value;
+          } else {
+            time = SearchTime::Asymmetric(1000, 0, value, 0);
+          }
+        } else if debug {
+          write(out, "info string servererror no time specified")?;
+        }
+      }
+      "winc" => {
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          if let SearchTime::Asymmetric(_, ref mut winc, _, _) = time {
+            *winc = value;
+          } else {
+            time = SearchTime::Asymmetric(1000, value, 1000, 0);
+          }
+        } else if debug {
+          write(out, "info string servererror no time specified")?;
+        }
+      }
+      "binc" => {
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          if let SearchTime::Asymmetric(_, _, _, ref mut binc) = time {
+            *binc = value;
+          } else {
+            time = SearchTime::Asymmetric(1000, 0, 1000, value);
+          }
+        } else if debug {
+          write(out, "info string servererror no time specified")?;
+        }
+      }
+      _ => {
+        if debug {
+          write(out, "info string servererror unknown clock parameter")?;
+        }
+      }
+    }
+  }
+  client.send(Message::Clock(time)).ok()
+}
+
 /// Set up a new client that handles some requirements locally and passes the rest on to the engine
 ///
 /// Blocks the thread it runs on, should be spawned in a new thread
@@ -448,10 +519,18 @@ pub fn startup(
           .unwrap_or(info.depth);
         client.send(Message::Bench(depth)).ok()?;
       }
+      Some("clock") => clock(&mut out, client, words, debug)?,
       // End the program, the channel being dropped will stop the other thread
       Some("quit") => break,
       // Commands that can be ignored or blank line
-      Some("info") | None => (),
+      Some("info") => {
+        for message in process_info(words) {
+          if let UlciResult::Analysis(result) = message {
+            client.send(Message::Info(result)).ok();
+          }
+        }
+      }
+      None => (),
       // Unrecognised command, log when in debug mode
       Some(command) => {
         if debug {

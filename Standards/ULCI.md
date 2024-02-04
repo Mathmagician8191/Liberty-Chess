@@ -100,9 +100,9 @@ These are all the command the client gets from the interface.
   * btime <x>
     black has x msec left on the clock
   * winc <x>
-    white increment per move in mseconds if x > 0
+    white increment per move in msec if x > 0
   * binc <x>
-    black increment per move in mseconds if x > 0
+    black increment per move in msec if x > 0
   * depth <x>
     search a maximum of x plies
   * nodes <x>
@@ -110,9 +110,20 @@ These are all the command the client gets from the interface.
   * mate <x>
     search for a mate in x moves
   * movetime <x>
-    search a maximum of x mseconds
+    search a maximum of x msec
   * infinite
     search until the "stop" command. Do not exit the search without being told so in this mode! The server should still handle exiting the search, e.g. in case of a human player.
+
+* clock
+  Tells the client about the current clock state. When the client is to move, the go command should be used instead
+  * wtime <x>
+    white has x msec left on the clock
+  * btime <x>
+    black has x msec left on the clock
+  * winc <x>
+    white increment per move in msec if x > 0
+  * binc <x>
+    black increment per move in msec if x > 0
 
 * stop
   Stop calculating as soon as possible, don't forget the "bestmove" token when finishing the search. Human players may take some time to respond to this.
