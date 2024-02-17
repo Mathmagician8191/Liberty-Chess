@@ -535,7 +535,7 @@ impl Board {
       CHAMPION => rows <= 2 && cols <= 2 && (rows == 0 || cols == 0 || rows == cols),
       CENTAUR => (rows <= 1 && cols <= 1) || (rows == 2 && cols == 1) || (rows == 1 && cols == 2),
 
-      // Leaping pieces
+      // Sliding pieces
       BISHOP => rows == cols && self.ray_is_valid(istart, iend, rows),
       ROOK => (rows == 0 || cols == 0) && self.ray_is_valid(istart, iend, usize::max(rows, cols)),
       QUEEN => {

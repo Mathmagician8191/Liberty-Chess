@@ -83,10 +83,17 @@ impl TranspositionTable {
   pub fn store(&mut self, entry: Entry) {
     if self.entries.len() > 0 {
       let index = entry.hash as usize % self.entries.len();
-      if self.entries[index].is_none() {
+      if let Some(old_entry) = self.entries[index] {
+        if old_entry.hash != entry.hash
+          || entry.scoretype == ScoreType::Exact
+          || entry.depth.saturating_add(1) >= old_entry.depth
+        {
+          self.entries[index] = Some(entry);
+        }
+      } else {
         self.capacity += 1;
+        self.entries[index] = Some(entry);
       }
-      self.entries[index] = Some(entry);
     }
   }
 

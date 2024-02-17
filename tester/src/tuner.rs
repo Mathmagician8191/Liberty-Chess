@@ -59,14 +59,19 @@ fn main() {
   let mut parameters = DEFAULT_PARAMETERS;
   println!("{parameters:?}");
   let mut data = Vec::new();
+  let mut total_positions = 0;
   for (file, _, _, k) in POSITIONS {
     println!("Position {file}");
     let mut processed_data = Vec::new();
     for folder in [
-      "verif search take 1",
-      "verif search take 2",
-      "verif search take 3",
-      "cache check",
+      "friendly ordering",
+      "tt replacement part 1",
+      "tt replacement part 2",
+      "tt replacement take 2 part 1",
+      "tt replacement take 2 part 2",
+      "soft tm banking",
+      "delay sorting quiets",
+      "malus",
     ] {
       let fens =
         read_to_string(format!("datagen/{folder}/{file}.txt")).expect("Unable to read file");
@@ -93,7 +98,9 @@ fn main() {
         )
       }))
     }
-    println!("Loaded {} positions", processed_data.len());
+    let position_count = processed_data.len();
+    println!("Loaded {position_count} positions");
+    total_positions += position_count;
     // Calculate K
     if TUNE_K {
       let mut best_k = *k;
@@ -132,6 +139,7 @@ fn main() {
       data.push((*k, processed_data));
     }
   }
+  println!("{total_positions} positions in dataset");
   let start = Instant::now();
   let mut best_loss = calculate_loss_batch(&data, &parameters);
   println!("{}ms to calculate loss", start.elapsed().as_millis());

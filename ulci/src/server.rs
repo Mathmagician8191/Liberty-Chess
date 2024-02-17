@@ -408,6 +408,7 @@ fn process_analysis(
             for message in process_info(words) {
               tx.send(message).ok();
             }
+            completion();
           }
           "bestmove" => {
             if let Some(bestmove) = words.next().and_then(|m| m.parse().ok()) {
