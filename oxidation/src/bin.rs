@@ -57,7 +57,7 @@ fn main() {
     UlciOption::Int(IntOption {
       default: HASH_SIZE,
       min: 0,
-      max: 1 << 32,
+      max: 1 << 28,
     }),
   );
   options.insert(PRUNE_NAME.to_owned(), UlciOption::Trigger);
