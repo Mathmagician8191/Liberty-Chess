@@ -153,7 +153,7 @@ impl Board {
     }
   }
 
-  /// Return a new board if the move is legal
+  /// Returns a new board with the move played if the move is legal
   #[must_use]
   pub fn move_if_legal(&self, test_move: Move) -> Option<Self> {
     let start = test_move.start();

@@ -50,11 +50,11 @@ impl History {
   pub fn malus(&mut self, side: bool, piece: u8, square: (usize, usize), depth: u8) {
     let depth = i32::from(depth);
     let piece = usize::from(piece - 1);
-    let bonus = depth * depth;
+    let malus = depth * depth;
     if side {
-      self.white_data[piece][square] -= bonus;
+      self.white_data[piece][square] -= malus;
     } else {
-      self.black_data[piece][square] -= bonus;
+      self.black_data[piece][square] -= malus;
     }
   }
 

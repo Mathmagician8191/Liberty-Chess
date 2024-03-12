@@ -182,7 +182,8 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Boa
                 | Message::Eval
                 | Message::Bench(_)
                 | Message::NewGame
-                | Message::Perft(_) => (),
+                | Message::Perft(_)
+                | Message::IsReady => (),
               },
               ConnectionMessage::Connected(_) | ConnectionMessage::Timeout => (),
             },
@@ -399,19 +400,12 @@ fn get_hovered(
   gamestate: &Board,
 ) -> Option<((usize, usize), i8)> {
   if board_rect.contains(location) {
-    let x = if flipped {
-      board_rect.max.x - location.x
+    let (x, y) = if flipped {
+      (board_rect.max.x - location.x, location.y - board_rect.min.y)
     } else {
-      location.x - board_rect.min.x
-    } as usize
-      / size;
-    let y = if flipped {
-      location.y - board_rect.min.y
-    } else {
-      board_rect.max.y - location.y
-    } as usize
-      / size;
-    let coords = (y, x);
+      (location.x - board_rect.min.x, board_rect.max.y - location.y)
+    };
+    let coords = (y as usize / size, x as usize / size);
     gamestate.fetch_piece(coords).map(|piece| (coords, *piece))
   } else {
     None

@@ -54,7 +54,7 @@ impl CompressedBoard {
       }
     }
     if piece_types.contains(&PAWN) {
-      for promotion in self.promotion_options.iter() {
+      for promotion in &self.promotion_options {
         if !piece_types.contains(promotion) {
           piece_types.push(*promotion);
         }
@@ -114,7 +114,7 @@ impl Board {
       queen_column: self.queen_column,
       king_column: self.king_column,
       promotion_target: self.promotion_target,
-      promotion_options: self.shared_data.promotion_options.to_vec(),
+      promotion_options: self.shared_data.promotion_options.clone(),
       white_kings: self.white_kings.clone(),
       black_kings: self.black_kings.clone(),
       state: self.state,

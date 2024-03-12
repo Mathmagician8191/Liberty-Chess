@@ -161,9 +161,8 @@ fn setup(
           for word in words.by_ref() {
             if word == "type" {
               break;
-            } else {
-              name_words.push(word);
             }
+            name_words.push(word);
           }
           let option_name = name_words.join(" ");
           if let Some(word) = words.next() {
@@ -178,15 +177,9 @@ fn setup(
                 let mut max = None;
                 while let Some(word) = words.next() {
                   match word {
-                    "default" => {
-                      default = words.next().and_then(|w| w.parse().ok()).or(default);
-                    }
-                    "min" => {
-                      min = words.next().and_then(|w| w.parse().ok()).or(min);
-                    }
-                    "max" => {
-                      max = words.next().and_then(|w| w.parse().ok()).or(max);
-                    }
+                    "default" => default = words.next().and_then(|w| w.parse().ok()).or(default),
+                    "min" => min = words.next().and_then(|w| w.parse().ok()).or(min),
+                    "max" => max = words.next().and_then(|w| w.parse().ok()).or(max),
                     _ => (),
                   }
                 }
@@ -208,9 +201,8 @@ fn setup(
                   for word in words.by_ref() {
                     if word == "var" {
                       break;
-                    } else {
-                      default += word;
                     }
+                    default += word;
                   }
                   let mut choices = HashSet::new();
                   loop {
@@ -218,15 +210,13 @@ fn setup(
                     for word in words.by_ref() {
                       if word == "var" {
                         break;
-                      } else {
-                        option += word;
                       }
+                      option += word;
                     }
                     if option.is_empty() {
                       break;
-                    } else {
-                      choices.insert(option);
                     }
+                    choices.insert(option);
                   }
                   options.insert(
                     option_name,

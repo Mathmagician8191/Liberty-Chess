@@ -79,7 +79,7 @@ impl ExtraFlags {
   #[must_use]
   pub fn new(board: &Board) -> Self {
     Self {
-      promotion_options: board.shared_data.promotion_options.to_vec(),
+      promotion_options: board.shared_data.promotion_options.clone(),
       pawn_moves: board.pawn_moves,
       pawn_row: board.pawn_row,
       castle_row: board.castle_row,

@@ -5,51 +5,50 @@ use liberty_chess::positions::{
   LIBERTY_CHESS, LOADED_BOARD, MINI, MONGOL, NARNIA, STARTPOS, TRUMP,
 };
 use liberty_chess::{Board, ALL_PIECES};
+use oxidation::evaluate::evaluate;
 use oxidation::parameters::DEFAULT_PARAMETERS;
 use oxidation::{
-  bench, divide, evaluate, get_move_order, search, Output, SearchConfig, State, HASH_SIZE, QDEPTH,
+  bench, divide, get_move_order, search, Output, SearchConfig, State, HASH_SIZE, QDEPTH,
   QDEPTH_NAME, VERSION_NUMBER,
 };
 use std::collections::HashMap;
 use std::io::{stdin, stdout, BufReader};
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{channel, Sender};
 use std::thread::spawn;
 use std::time::Instant;
 use ulci::client::{startup, Message};
 use ulci::{ClientInfo, IntOption, OptionValue, SupportedFeatures, UlciOption, V1Features};
 
-const BENCH_DEPTH: i8 = 7;
+const BENCH_DEPTH: i8 = 9;
 
 const HASH_NAME: &str = "Hash";
-const PRUNE_NAME: &str = "Prune";
 
 // i8 is an offset for bench depth
 const BENCH_POSITIONS: &[(&str, i8)] = &[
   (STARTPOS, 0),
   (CAPABLANCA_RECTANGLE, -1),
-  (CAPABLANCA, -1),
-  (LIBERTY_CHESS, -2),
+  (CAPABLANCA, -2),
+  (LIBERTY_CHESS, -3),
   (MINI, 1),
-  (MONGOL, 0),
+  (MONGOL, -1),
   (AFRICAN, -1),
   (NARNIA, 0),
   (TRUMP, -3),
-  (LOADED_BOARD, -2),
+  (LOADED_BOARD, -4),
   (DOUBLE_CHESS, -2),
-  (HORDE, 0),
+  (HORDE, -1),
   (ELIMINATION, 0),
-  ("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1", 0),
+  ("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1", -1),
 ];
 
-fn main() {
-  let (tx, rx) = channel();
+fn startup_client(tx: &Sender<Message>) {
   let mut options = HashMap::new();
   options.insert(
     QDEPTH_NAME.to_owned(),
     UlciOption::Int(IntOption {
       default: usize::from(QDEPTH),
       min: 0,
-      max: usize::from(u8::MAX),
+      max: 50,
     }),
   );
   options.insert(
@@ -60,7 +59,6 @@ fn main() {
       max: 1 << 28,
     }),
   );
-  options.insert(PRUNE_NAME.to_owned(), UlciOption::Trigger);
   let info = ClientInfo {
     features: SupportedFeatures {
       v1: V1Features::all(),
@@ -72,14 +70,18 @@ fn main() {
     pieces: from_chars(ALL_PIECES),
     depth: BENCH_DEPTH,
   };
+  let input = BufReader::new(stdin());
+  startup(tx, &info, input, stdout(), false);
+}
+
+fn main() {
+  let (tx, rx) = channel();
+  spawn(move || startup_client(&tx));
   let mut qdepth = QDEPTH;
   let mut hash_size = HASH_SIZE;
   let mut position = get_startpos();
   let mut state = State::new(hash_size, &position, DEFAULT_PARAMETERS);
-  let input = BufReader::new(stdin());
-  let output = stdout();
   let mut debug = false;
-  spawn(move || startup(&tx, &info, input, output));
   while let Ok(message) = rx.recv() {
     match message {
       Message::SetDebug(new_debug) => debug = new_debug,
@@ -144,17 +146,6 @@ fn main() {
             }
           }
         },
-        PRUNE_NAME => match value {
-          OptionValue::SendTrigger => {
-            state.table.prune(position.moves());
-            println!("info hashfull {}", state.table.capacity());
-          }
-          _ => {
-            if debug {
-              println!("info string servererror incorrect option type");
-            }
-          }
-        },
         _ => (),
       },
       Message::Eval => {
@@ -164,8 +155,8 @@ fn main() {
         );
       }
       Message::Bench(depth) => {
-        if depth < 4 {
-          println!("info string servererror minimum bench depth 4");
+        if depth < 5 {
+          println!("info string servererror minimum bench depth 5");
         } else {
           let start = Instant::now();
           state.new_game(&position);
@@ -203,6 +194,7 @@ fn main() {
       }
       Message::NewGame => state.new_game(&position),
       Message::Perft(depth) => divide(&position, depth),
+      Message::IsReady => println!("readyok"),
       Message::Clock(_) | Message::Info(_) => (),
     }
   }

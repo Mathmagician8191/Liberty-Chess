@@ -37,6 +37,8 @@ pub enum Message {
   Clock(SearchTime),
   /// The server has some info
   Info(AnalysisResult),
+  /// Respond with ReadyOk
+  IsReady,
 }
 
 fn print_uci(out: &mut impl Write, info: &ClientInfo) -> Option<()> {
@@ -483,6 +485,7 @@ pub fn startup(
   info: &ClientInfo,
   mut input: impl BufRead,
   mut out: impl Write,
+  is_always_ready: bool,
 ) -> Option<()> {
   let mut debug = false;
   let mut buffer = String::new();
@@ -496,7 +499,11 @@ pub fn startup(
       Some("uci") => print_uci(&mut out, info)?,
       Some("debug") => process_debug(&mut out, client, words, &mut debug)?,
       Some("isready") => {
-        write(&mut out, "readyok")?;
+        if is_always_ready {
+          write(&mut out, "readyok")?;
+        } else {
+          client.send(Message::IsReady).ok()?;
+        }
       }
       Some("setoption") => setoption(&mut out, client, words, debug, info)?,
       Some("position") => position(&mut out, client, &mut board, words, debug)?,

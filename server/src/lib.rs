@@ -11,7 +11,7 @@ const PORT: u16 = 25565;
 pub type ConnectionInfo = (Sender<Request>, Receiver<UlciResult>, ClientInfo);
 
 fn run_client(
-  connections: Arc<Sender<ConnectionInfo>>,
+  connections: &Arc<Sender<ConnectionInfo>>,
   tx: Sender<Request>,
   rx: Receiver<UlciResult>,
 ) -> Option<()> {
@@ -25,15 +25,12 @@ fn run_client(
 }
 
 fn handle_connection(stream: TcpStream, connections: Arc<Sender<ConnectionInfo>>) -> Option<()> {
-  let name = match stream.peer_addr() {
-    Ok(ip) => {
-      println!("{ip} Connected");
-      ip.to_string()
-    }
-    Err(_) => {
-      println!("Unknown Connected");
-      "Unknown".to_string()
-    }
+  let name = if let Ok(ip) = stream.peer_addr() {
+    println!("{ip} Connected");
+    ip.to_string()
+  } else {
+    println!("Unknown Connected");
+    "Unknown".to_string()
   };
   let stream_2 = stream.try_clone().ok()?;
   let (tx, rx) = channel();
@@ -42,7 +39,7 @@ fn handle_connection(stream: TcpStream, connections: Arc<Sender<ConnectionInfo>>
     startup_server(rx, &tx_2, BufReader::new(stream), stream_2, false, || ());
     println!("{name} Disconnected");
   });
-  spawn(move || run_client(connections, tx, rx_2));
+  spawn(move || run_client(&connections, tx, rx_2));
   Some(())
 }
 

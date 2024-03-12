@@ -335,6 +335,7 @@ pub fn to_letters(mut column: usize) -> Vec<char> {
 }
 
 /// Convert coordinates to a string
+#[must_use]
 pub fn to_indices(column: usize, row_min: usize, row_max: usize) -> String {
   let result = to_letters(column);
 

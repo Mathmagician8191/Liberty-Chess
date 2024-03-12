@@ -22,7 +22,7 @@ Based on the UCI interface reference found at https://github.com/rooklift/nibble
 * arbitrary white space between tokens is allowed
   Example: "debug on\n" and "   debug     on  \n" and "\t  debug \t  \t\ton\t  \n" all set the debug mode of the client on.
 
-* The client will always be in forced mode which means it should never start calculating or pondering without receiving a "go" command first.
+* The client will always be in forced mode which means it should never start calculating without receiving a "go" command first.
 
 * Before the client is asked to search on a position, there will always be a position command to tell the client about the current position.
 

@@ -1,18 +1,16 @@
 use liberty_chess::clock::format_time;
 use liberty_chess::moves::Move;
-use liberty_chess::random_board::generate;
 use liberty_chess::threading::CompressedBoard;
 use liberty_chess::{Board, Gamestate};
 use oxidation::parameters::DEFAULT_PARAMETERS;
-use oxidation::{evaluate, quiescence, random_move, SearchConfig, State, QDEPTH};
+use oxidation::{quiescence, SearchConfig, State, QDEPTH};
 use rand::{thread_rng, Rng};
 use std::collections::{HashMap, HashSet};
 use std::fs::write;
 use std::ops::AddAssign;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::Instant;
-use tester::{StartingPosition, POSITIONS};
-use threadpool::ThreadPool;
+use tester::{get_threadpool, GameResult, StartingPosition, POSITIONS, STC};
 use ulci::server::{AnalysisRequest, Request, UlciResult};
 use ulci::{load_engine, Score, SearchTime};
 
@@ -20,12 +18,9 @@ const CHAMPION: &str = "./target/release/oxidation";
 const CHALLENGER: &str = "./target/release/oxidation";
 
 const GAME_PAIR_COUNT: usize = 180;
-const RANDOM_MOVE_COUNT: usize = 4;
 
-const CHAMP_TIME: SearchTime = SearchTime::Increment(8000, 80);
-const CHALLENGE_TIME: SearchTime = CHAMP_TIME;
-
-const FILTER_THRESHOLD: i32 = 200;
+const CHAMP_TIME: SearchTime = STC;
+const CHALLENGE_TIME: SearchTime = STC;
 
 struct GameInfo {
   result: GameResult,
@@ -35,12 +30,6 @@ struct GameInfo {
   champ_depth: (u32, u32, u32),
   challenge_depth: (u32, u32, u32),
   positions: HashSet<String>,
-}
-
-enum GameResult {
-  ChampWin,
-  Draw,
-  ChallengeWin,
 }
 
 fn sum_tuple<T: AddAssign>(accumulator: &mut (T, T, T), element: (T, T, T)) {
@@ -278,73 +267,16 @@ fn test_position(
   friendly_fire: bool,
 ) {
   println!("Testing {name}");
-  let cores = std::thread::available_parallelism().unwrap().get();
-  let pool = ThreadPool::new(cores - 1);
+  let pool = get_threadpool();
   let champion_side: bool = thread_rng().gen();
   let (tx, rx) = channel();
-  match position {
-    StartingPosition::Fen(fen) => {
-      let mut board = Board::new(fen).expect("Loading board failed");
-      board.friendly_fire = friendly_fire;
-      let state = State::new(0, &board, DEFAULT_PARAMETERS);
-      let mut debug = false;
-      let mut qdepth = QDEPTH;
-      let (_tx, rx_2) = channel();
-      let mut settings =
-        SearchConfig::new_time(&board, &mut qdepth, SearchTime::Infinite, &rx_2, &mut debug);
-      let mut eval = evaluate(&state, &board);
-      if RANDOM_MOVE_COUNT % 2 == 1 {
-        // Final board is opposite stm, invert score
-        eval = -eval;
-      }
-      let alpha = match eval {
-        Score::Centipawn(value) => Score::Centipawn(value - FILTER_THRESHOLD),
-        _ => eval,
-      };
-      let beta = match eval {
-        Score::Centipawn(value) => Score::Centipawn(value + FILTER_THRESHOLD),
-        _ => eval,
-      };
-      for _ in 0..GAME_PAIR_COUNT {
-        let tx = tx.clone();
-        let tx2 = tx.clone();
-        let board = loop {
-          let mut board = board.clone();
-          for _ in 0..RANDOM_MOVE_COUNT {
-            if let Some(randommove) = random_move(&board) {
-              if let Some(new_board) = board.move_if_legal(randommove) {
-                board = new_board;
-              }
-            }
-          }
-          // Filter out busted openings
-          let (_, score) = quiescence(&state, &mut settings, &board, QDEPTH, alpha, beta);
-          if score > alpha && score < beta {
-            break board;
-          }
-        };
-        let compressed_board = board.send_to_thread();
-        let compressed_board_2 = compressed_board.clone();
-        pool.execute(move || play_game(compressed_board, moves, champion_side, &tx));
-        pool.execute(move || play_game(compressed_board_2, moves, !champion_side, &tx2));
-      }
-    }
-    StartingPosition::Random => {
-      let mut rng = thread_rng();
-      for _ in 0..GAME_PAIR_COUNT {
-        let tx = tx.clone();
-        let tx2 = tx.clone();
-        let width = rng.gen_range(6..=12);
-        let height = rng.gen_range(6..=12);
-        let fen = generate(width, height, "mqcaehuriwbznxlo", true);
-        let mut board = Board::new(&fen).expect("Loading board failed");
-        board.friendly_fire = friendly_fire;
-        let compressed_board = board.send_to_thread();
-        let compressed_board_2 = compressed_board.clone();
-        pool.execute(move || play_game(compressed_board, moves, champion_side, &tx));
-        pool.execute(move || play_game(compressed_board_2, moves, !champion_side, &tx2));
-      }
-    }
+  for _ in 0..GAME_PAIR_COUNT {
+    let position = position.get_position(friendly_fire);
+    let position_2 = position.clone();
+    let tx = tx.clone();
+    let tx_2 = tx.clone();
+    pool.execute(move || play_game(position, moves, champion_side, &tx));
+    pool.execute(move || play_game(position_2, moves, !champion_side, &tx_2));
   }
   // to make sure it actually finishes
   drop(tx);
@@ -400,7 +332,7 @@ fn test_position(
 }
 
 fn main() {
-  for (name, position, moves, _) in POSITIONS {
+  for (name, position, moves) in POSITIONS {
     let mut positions = HashMap::new();
     test_position(name, position, *moves, &mut positions, false);
     test_position(

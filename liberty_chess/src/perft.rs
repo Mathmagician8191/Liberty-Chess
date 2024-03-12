@@ -1,6 +1,7 @@
 use crate::Board;
 
 /// Run perft on the specified position
+#[must_use]
 pub fn perft(board: &Board, depth: usize) -> usize {
   if depth > 0 {
     let mut result = 0;

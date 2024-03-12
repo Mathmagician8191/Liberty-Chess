@@ -2,6 +2,7 @@ use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
 
 /// Randomly generates a board given the specified parameters
+#[must_use]
 pub fn generate(width: usize, height: usize, piece_options: &str, spawn_king: bool) -> String {
   // The gap between the white and black pieces
   let gap = height - 4;

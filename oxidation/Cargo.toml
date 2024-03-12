@@ -1,6 +1,6 @@
 [package]
 name = "oxidation"
-version = "0.6.0"
+version = "0.6.1"
 authors.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -27,3 +27,4 @@ ulci = {workspace = true}
 [features]
 default = []
 pesto = []
+feature_extraction = []

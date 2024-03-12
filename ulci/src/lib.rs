@@ -57,7 +57,7 @@ impl ClientInfo {
       }
     }
     if piece_types.contains(&PAWN) {
-      for promotion in board.promotion_options().iter() {
+      for promotion in board.promotion_options() {
         if !piece_types.contains(promotion) {
           piece_types.push(*promotion);
         }
@@ -93,6 +93,7 @@ pub struct V1Features {
 
 impl V1Features {
   /// All features from version 1 are supported
+  #[must_use]
   pub const fn all() -> Self {
     Self {
       board_sizes: true,
@@ -506,6 +507,7 @@ fn spawn_engine(path: &'static str, requests: Receiver<Request>, results: &Sende
 }
 
 /// Load an engine from the provided path
+#[must_use]
 pub fn load_engine(path: &'static str) -> (Sender<Request>, Receiver<UlciResult>) {
   let (send_results, results) = channel();
   let (tx, rx) = channel();

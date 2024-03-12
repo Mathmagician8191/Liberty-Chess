@@ -20,8 +20,83 @@ pub struct Entry {
   pub bestmove: Option<Move>,
 }
 
+impl From<CompactEntry> for Entry {
+  fn from(value: CompactEntry) -> Self {
+    let (scoretype, score) = match value.flags {
+      Flags::ExactCentipawn => (ScoreType::Exact, Score::Centipawn(value.raw_score as i32)),
+      Flags::LowerCentipawn => (
+        ScoreType::LowerBound,
+        Score::Centipawn(value.raw_score as i32),
+      ),
+      Flags::UpperCentipawn => (
+        ScoreType::UpperBound,
+        Score::Centipawn(value.raw_score as i32),
+      ),
+      Flags::ExactWin => (ScoreType::Exact, Score::Win(value.raw_score)),
+      Flags::LowerWin => (ScoreType::LowerBound, Score::Win(value.raw_score)),
+      Flags::UpperWin => (ScoreType::UpperBound, Score::Win(value.raw_score)),
+      Flags::ExactLoss => (ScoreType::Exact, Score::Loss(value.raw_score)),
+      Flags::LowerLoss => (ScoreType::LowerBound, Score::Loss(value.raw_score)),
+      Flags::UpperLoss => (ScoreType::UpperBound, Score::Loss(value.raw_score)),
+    };
+    Self {
+      hash: value.hash,
+      depth: value.depth,
+      movecount: 0,
+      scoretype,
+      score,
+      bestmove: value.bestmove,
+    }
+  }
+}
+
+#[derive(Clone, Copy)]
+pub enum Flags {
+  ExactCentipawn,
+  ExactWin,
+  ExactLoss,
+  LowerCentipawn,
+  LowerWin,
+  LowerLoss,
+  UpperCentipawn,
+  UpperWin,
+  UpperLoss,
+}
+
+#[derive(Clone, Copy)]
+pub struct CompactEntry {
+  hash: Hash,
+  bestmove: Option<Move>,
+  raw_score: u32,
+  flags: Flags,
+  depth: u8,
+}
+
+impl From<Entry> for CompactEntry {
+  fn from(value: Entry) -> Self {
+    let (raw_score, flags) = match (value.score, value.scoretype) {
+      (Score::Centipawn(score), ScoreType::Exact) => (score as u32, Flags::ExactCentipawn),
+      (Score::Centipawn(score), ScoreType::LowerBound) => (score as u32, Flags::LowerCentipawn),
+      (Score::Centipawn(score), ScoreType::UpperBound) => (score as u32, Flags::UpperCentipawn),
+      (Score::Win(moves), ScoreType::Exact) => (moves - value.movecount, Flags::ExactWin),
+      (Score::Win(moves), ScoreType::LowerBound) => (moves - value.movecount, Flags::LowerWin),
+      (Score::Win(moves), ScoreType::UpperBound) => (moves - value.movecount, Flags::UpperWin),
+      (Score::Loss(moves), ScoreType::Exact) => (moves - value.movecount, Flags::ExactLoss),
+      (Score::Loss(moves), ScoreType::LowerBound) => (moves - value.movecount, Flags::LowerLoss),
+      (Score::Loss(moves), ScoreType::UpperBound) => (moves - value.movecount, Flags::UpperLoss),
+    };
+    Self {
+      hash: value.hash,
+      bestmove: value.bestmove,
+      raw_score,
+      flags,
+      depth: value.depth,
+    }
+  }
+}
+
 pub struct TranspositionTable {
-  entries: Box<[Option<Entry>]>,
+  entries: Box<[Option<CompactEntry>]>,
   flags: ExtraFlags,
   // the number of entries full
   capacity: usize,
@@ -30,7 +105,7 @@ pub struct TranspositionTable {
 impl TranspositionTable {
   // Initialise a tt based on a size in megabytes
   pub fn new(megabytes: usize, board: &Board) -> Self {
-    let size = megabytes * 31_250;
+    let size = megabytes * 43690;
     let entries = vec![None; size].into_boxed_slice();
     Self {
       entries,
@@ -54,25 +129,21 @@ impl TranspositionTable {
         if entry.hash == hash {
           ttmove = entry.bestmove;
           if entry.depth >= depth {
-            let mut entry = *entry;
-            if movecount != entry.movecount {
-              match entry.score {
-                Score::Win(ref mut moves) | Score::Loss(ref mut moves) => {
-                  if movecount > entry.movecount {
-                    *moves += movecount - entry.movecount;
-                  } else {
-                    *moves = moves.saturating_sub(entry.movecount - movecount);
-                  }
-                }
-                Score::Centipawn(_) => (),
+            let mut entry = Entry::from(*entry);
+            match entry.score {
+              Score::Win(ref mut moves) | Score::Loss(ref mut moves) => {
+                *moves += movecount;
               }
+              Score::Centipawn(_) => (),
             }
-            return match entry.scoretype {
-              ScoreType::Exact => (Some(entry.score), ttmove),
-              ScoreType::LowerBound if entry.score >= beta => (Some(beta), ttmove),
-              ScoreType::UpperBound if entry.score <= alpha => (Some(alpha), ttmove),
-              _ => (None, ttmove),
+            let cutoff = match entry.scoretype {
+              ScoreType::Exact => true,
+              ScoreType::LowerBound if entry.score >= beta => true,
+              ScoreType::UpperBound if entry.score <= alpha => true,
+              _ => false,
             };
+            let cutoff = if cutoff { Some(entry.score) } else { None };
+            return (cutoff, ttmove);
           }
         }
       }
@@ -88,11 +159,11 @@ impl TranspositionTable {
           || entry.scoretype == ScoreType::Exact
           || entry.depth.saturating_add(1) >= old_entry.depth
         {
-          self.entries[index] = Some(entry);
+          self.entries[index] = Some(CompactEntry::from(entry));
         }
       } else {
         self.capacity += 1;
-        self.entries[index] = Some(entry);
+        self.entries[index] = Some(CompactEntry::from(entry));
       }
     }
   }
@@ -121,19 +192,5 @@ impl TranspositionTable {
 
   pub fn capacity(&self) -> usize {
     self.capacity * 1000 / max(self.entries.len(), 1)
-  }
-
-  /// Clear no longer relevant entries
-  pub fn prune(&mut self, movecount: u32) {
-    if self.capacity > 0 {
-      for entry in self.entries.iter_mut() {
-        if let Some(contents) = entry {
-          if contents.movecount < movecount {
-            *entry = None;
-            self.capacity -= 1;
-          }
-        }
-      }
-    }
   }
 }

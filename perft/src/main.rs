@@ -18,25 +18,6 @@ use std::thread::available_parallelism;
 #[cfg(feature = "parallel")]
 use threadpool::ThreadPool;
 
-// Updated 7 Februrary 2023
-// 5600x benchmarks - multithreaded
-// 5 million = 5.7s
-// 10 million = 9.9s
-// 30 million = 26.5s
-// 100 million = 53.6s
-// 150 million = 131s
-// 200 million = 209 s
-// 500 million = 384s
-// max = 955s
-// Updated 18 Nov 2022
-// i5 8400 benchmarks - multithreaded
-// 2 million = 2.8s
-// 5 million = 9.7s
-// 10 million = 18.5s
-// 30 million = 48s
-// 100 million = 97s
-// 200 million = 380s
-// max = 26 1/2 mins
 const LIMIT: usize = usize::MAX;
 
 fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
@@ -50,7 +31,9 @@ fn print_time(fen: &str, time: Duration, depth: usize, nodes: usize) {
 fn perft_process_final(pool: &ThreadPool, tx: Sender<usize>, board: &Board, depth: usize) {
   let board = board.send_to_thread();
   let closure = move || {
-    tx.send(perft(&board.load_from_thread(), depth)).unwrap();
+    let mut board = board.load_from_thread();
+    board.skip_checkmate = true;
+    tx.send(perft(&board, depth)).unwrap();
   };
   pool.execute(closure);
 }
@@ -58,7 +41,11 @@ fn perft_process_final(pool: &ThreadPool, tx: Sender<usize>, board: &Board, dept
 #[cfg(feature = "parallel")]
 fn perft_process_other(pool: &ThreadPool, board: &Board, depth: usize, result: usize) {
   let board = board.send_to_thread();
-  let closure = move || assert_eq!(perft(&board.load_from_thread(), depth), result);
+  let closure = move || {
+    let mut board = board.load_from_thread();
+    board.skip_checkmate = true;
+    assert_eq!(perft(&board, depth), result)
+  };
   pool.execute(closure);
 }
 

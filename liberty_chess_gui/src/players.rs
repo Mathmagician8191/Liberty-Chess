@@ -1,5 +1,5 @@
 use crate::helpers::NumericalInput;
-use crate::MAX_TIME;
+use crate::{switch_screen, LibertyChessGUI, Screen, MAX_TIME};
 use eframe::egui::Context;
 use enum_iterator::Sequence;
 use liberty_chess::moves::Move;
@@ -24,6 +24,8 @@ use ulci::{ClientInfo, Limits as OtherLimits, Score, SearchTime, SupportedFeatur
 
 #[cfg(feature = "clock")]
 use crate::clock::convert;
+#[cfg(feature = "clock")]
+use liberty_chess::clock::Clock;
 
 #[derive(Eq, PartialEq)]
 pub enum SearchType {
@@ -200,7 +202,7 @@ impl ToString for PlayerType {
 impl PlayerType {
   pub fn built_in() -> Self {
     Self::BuiltIn(
-      NumericalInput::new(u16::from(QDEPTH), 0, u16::from(u8::MAX)),
+      NumericalInput::new(u16::from(QDEPTH), 0, 100),
       NumericalInput::new(HASH_SIZE, 0, 1 << 32),
     )
   }
@@ -331,7 +333,7 @@ impl PlayerData {
         let name = name.to_owned();
         let (tx, rx) = channel();
         spawn(move || {
-          process_connection(address, tx, name);
+          process_connection(address, &tx, name);
         });
         Ok(Self::Multiplayer(Connection {
           connection: rx,
@@ -602,23 +604,13 @@ pub enum ConnectionMessage {
 
 fn process_connection(
   address: SocketAddr,
-  tx: Sender<ConnectionMessage>,
+  tx: &Sender<ConnectionMessage>,
   name: String,
 ) -> Option<()> {
   match TcpStream::connect_timeout(&address, Duration::from_secs(10)) {
     Ok(connection) => {
-      let connection_2 = match connection.try_clone() {
-        Ok(connection) => connection,
-        Err(_) => {
-          return None;
-        }
-      };
-      let connection_3 = match connection.try_clone() {
-        Ok(connection) => connection,
-        Err(_) => {
-          return None;
-        }
-      };
+      let connection_2 = connection.try_clone().ok()?;
+      let connection_3 = connection.try_clone().ok()?;
       tx.send(ConnectionMessage::Connected(connection_3)).ok()?;
       let (uci_tx, rx) = channel();
       spawn(move || {
@@ -637,6 +629,7 @@ fn process_connection(
           },
           BufReader::new(connection),
           connection_2,
+          true,
         )
       });
       while let Ok(message) = rx.recv() {
@@ -650,4 +643,122 @@ fn process_connection(
     }
   }
   None
+}
+
+pub(crate) fn handle_loading_engine(gui: &mut LibertyChessGUI) {
+  // handle loading engine
+  if let Some((ref mut player, ref mut side)) = gui.player {
+    match player {
+      PlayerData::Uci(interface) => {
+        interface.poll();
+        match interface.state {
+          UciState::Pending => (),
+          UciState::Waiting | UciState::Analysing | UciState::AwaitStop => {
+            let board = interface.board.clone();
+            switch_screen(gui, Screen::Game(board));
+          }
+          UciState::Unsupported => {
+            gui.message = Some("Engine does not support position".to_owned());
+            gui.player = None;
+          }
+          UciState::Crashed => {
+            gui.message = Some("Engine has crashed".to_owned());
+            gui.player = None;
+          }
+        }
+      }
+      PlayerData::Multiplayer(interface) => {
+        let mut clear_player = false;
+        let mut position = None;
+        loop {
+          match interface.connection.try_recv() {
+            Ok(message) => match message {
+              ConnectionMessage::Connected(stream) => {
+                interface.output = Some(stream);
+                gui.message = Some("Waiting for server to send board".to_owned());
+              }
+              ConnectionMessage::Timeout => {
+                clear_player = true;
+                gui.message = Some("Connection timed out".to_owned());
+                break;
+              }
+              ConnectionMessage::Uci(message) => match message {
+                Message::UpdatePosition(board) => {
+                  let board = board.load_from_thread();
+                  *side = board.to_move();
+                  position = Some(board);
+                }
+                #[cfg(feature = "clock")]
+                Message::Go(settings) => {
+                  if let Some(ref board) = position {
+                    *side = !board.to_move();
+                    if gui.config.get_opponentflip() {
+                      gui.flipped = *side;
+                    }
+                    match settings.time {
+                      SearchTime::Increment(time, inc) => {
+                        let mut clock = Clock::new_symmetric(
+                          Duration::from_millis(time as u64),
+                          Duration::from_millis(inc as u64),
+                          board.to_move(),
+                        );
+                        clock.toggle_pause();
+                        gui.clock = Some(clock);
+                      }
+                      SearchTime::Asymmetric(wtime, winc, btime, binc) => {
+                        let mut clock = Clock::new(
+                          [
+                            Duration::from_millis(wtime as u64),
+                            Duration::from_millis(btime as u64),
+                            Duration::from_millis(winc as u64),
+                            Duration::from_millis(binc as u64),
+                          ],
+                          board.to_move(),
+                        );
+                        clock.toggle_pause();
+                        gui.clock = Some(clock);
+                      }
+                      _ => gui.clock = None,
+                    }
+                  }
+                }
+                #[cfg(not(feature = "clock"))]
+                Message::Go(_) => {
+                  if let Some(ref board) = position {
+                    *side = !board.to_move();
+                    if gui.config.get_opponentflip() {
+                      gui.flipped = *side;
+                    }
+                  }
+                }
+                Message::UpdateOption(..)
+                | Message::SetDebug(_)
+                | Message::Stop
+                | Message::Eval
+                | Message::Bench(_)
+                | Message::NewGame
+                | Message::Perft(_)
+                | Message::Clock(_)
+                | Message::Info(_)
+                | Message::IsReady => (),
+              },
+            },
+            Err(TryRecvError::Disconnected) => {
+              clear_player = true;
+              gui.message = Some("Disconnected".to_owned());
+              break;
+            }
+            Err(TryRecvError::Empty) => break,
+          }
+        }
+        if clear_player {
+          gui.player = None;
+        }
+        if let Some(position) = position {
+          switch_screen(gui, Screen::Game(Box::new(position)));
+        }
+      }
+      _ => (),
+    }
+  }
 }

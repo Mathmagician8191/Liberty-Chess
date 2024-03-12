@@ -305,7 +305,7 @@ impl Board {
       }
     }
     if piece_types.contains(&PAWN) {
-      for promotion in promotion_options.iter() {
+      for promotion in &promotion_options {
         if !piece_types.contains(promotion) {
           piece_types.push(*promotion);
         }
@@ -464,21 +464,25 @@ impl Board {
   }
 
   /// Whether the size has been changed from the normal chess default
+  #[must_use]
   pub fn non_default_size(&self) -> bool {
     self.height() != 8 || self.width() != 8
   }
 
   /// Whether pawn move settings have been changed from their normal chess defaults
+  #[must_use]
   pub const fn pawn_moves_changed(&self) -> bool {
     self.pawn_row != 2 || self.pawn_moves != 2
   }
 
   /// Whether castling settings have been changed from their normal chess defaults
+  #[must_use]
   pub const fn non_default_castling(&self) -> bool {
     self.castle_row != 0 || self.king_column != 7 || self.queen_column != 0
   }
 
   /// Whether there are multiple or 0 kings
+  #[must_use]
   pub fn king_count_changed(&self) -> bool {
     self.white_kings.len() != 1
       || self.black_kings.len() != 1
@@ -486,6 +490,7 @@ impl Board {
   }
 
   /// Whether any settings have been changed from their normal chess defaults
+  #[must_use]
   pub fn non_default_promotions(&self) -> bool {
     self.shared_data.promotion_options != vec![QUEEN, ROOK, BISHOP, KNIGHT]
   }
@@ -536,38 +541,42 @@ impl Board {
       CENTAUR => (rows <= 1 && cols <= 1) || (rows == 2 && cols == 1) || (rows == 1 && cols == 2),
 
       // Sliding pieces
-      BISHOP => rows == cols && self.ray_is_valid(istart, iend, rows),
-      ROOK => (rows == 0 || cols == 0) && self.ray_is_valid(istart, iend, usize::max(rows, cols)),
+      BISHOP => rows == cols && Self::ray_is_valid(&self.pieces, istart, iend, rows),
+      ROOK => {
+        (rows == 0 || cols == 0)
+          && Self::ray_is_valid(&self.pieces, istart, iend, usize::max(rows, cols))
+      }
       QUEEN => {
         if rows == 0 || cols == 0 {
-          self.ray_is_valid(istart, iend, usize::max(rows, cols))
+          Self::ray_is_valid(&self.pieces, istart, iend, usize::max(rows, cols))
         } else {
-          rows == cols && self.ray_is_valid(istart, iend, rows)
+          rows == cols && Self::ray_is_valid(&self.pieces, istart, iend, rows)
         }
       }
       ARCHBISHOP => {
         (rows == 2 && cols == 1)
           || (rows == 1 && cols == 2)
-          || rows == cols && self.ray_is_valid(istart, iend, rows)
+          || rows == cols && Self::ray_is_valid(&self.pieces, istart, iend, rows)
       }
       CHANCELLOR => {
         (rows == 2 && cols == 1)
           || (rows == 1 && cols == 2)
-          || ((rows == 0 || cols == 0) && self.ray_is_valid(istart, iend, usize::max(rows, cols)))
+          || ((rows == 0 || cols == 0)
+            && Self::ray_is_valid(&self.pieces, istart, iend, usize::max(rows, cols)))
       }
       NIGHTRIDER => {
         if rows == 2 * cols {
-          self.ray_is_valid(istart, iend, cols)
+          Self::ray_is_valid(&self.pieces, istart, iend, cols)
         } else {
-          (cols == 2 * rows) && self.ray_is_valid(istart, iend, rows)
+          (cols == 2 * rows) && Self::ray_is_valid(&self.pieces, istart, iend, rows)
         }
       }
       AMAZON => {
         (rows == 2 && cols == 1) || (rows == 1 && cols == 2) || {
           if rows == 0 || cols == 0 {
-            self.ray_is_valid(istart, iend, usize::max(rows, cols))
+            Self::ray_is_valid(&self.pieces, istart, iend, usize::max(rows, cols))
           } else {
-            rows == cols && self.ray_is_valid(istart, iend, rows)
+            rows == cols && Self::ray_is_valid(&self.pieces, istart, iend, rows)
           }
         }
       }
@@ -1130,11 +1139,16 @@ impl Board {
     self.pieces.get(row as usize, column as usize)
   }
 
-  fn ray_is_valid(&self, start: (isize, isize), end: (isize, isize), steps: usize) -> bool {
+  fn ray_is_valid(
+    pieces: &Array2D<Piece>,
+    start: (isize, isize),
+    end: (isize, isize),
+    steps: usize,
+  ) -> bool {
     let dx = (end.0 - start.0) / steps as isize;
     let dy = (end.1 - start.1) / steps as isize;
     for i in 1..steps as isize {
-      if self.pieces[((start.0 + i * dx) as usize, (start.1 + i * dy) as usize)] != SQUARE {
+      if pieces[((start.0 + i * dx) as usize, (start.1 + i * dy) as usize)] != SQUARE {
         return false;
       }
     }
@@ -1309,24 +1323,21 @@ impl Board {
           PAWN => {
             if self.pawn_checkmates || flexible_piece || even_piece || odd_piece {
               return true;
-            } else {
-              flexible_piece = true;
             }
+            flexible_piece = true;
           }
           KNIGHT | ZEBRA | NIGHTRIDER => {
             if flexible_piece || even_piece || odd_piece {
               return true;
-            } else {
-              flexible_piece = true;
             }
+            flexible_piece = true;
           }
           BISHOP | CAMEL => {
             if even {
               if flexible_piece || odd_piece {
                 return true;
-              } else {
-                even_piece = true;
               }
+              even_piece = true;
             } else if flexible_piece || even_piece {
               return true;
             } else {
@@ -1352,12 +1363,16 @@ impl Board {
       None
     } else {
       let mut new_board = self.clone();
+      new_board.last_move = None;
       if let Some(en_passant) = new_board.en_passant {
         new_board
           .shared_data
           .keys
           .update_en_passant(&mut new_board.hash, en_passant);
         new_board.en_passant = None;
+      }
+      if !new_board.to_move {
+        new_board.moves += 1;
       }
       new_board.to_move = !new_board.to_move;
       new_board.hash ^= new_board.shared_data.keys.to_move;

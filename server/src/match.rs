@@ -12,7 +12,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 use ulci::server::{AnalysisRequest, Request, UlciResult};
-use ulci::{load_engine, SearchTime};
+use ulci::{load_engine, OptionValue, SearchTime};
 
 /// The test positions for the match
 const POSITIONS: &[&str] = &[
@@ -32,14 +32,15 @@ const POSITIONS: &[&str] = &[
   "4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1",
 ];
 
-const FRIENDLY_FIRE_CHANCE: f64 = 1.0;
+const FRIENDLY_FIRE_CHANCE: f64 = 0.5;
 
-const GAME_LIMIT: usize = 2;
+const GAME_LIMIT: usize = 10;
 
 const WHITE_ENGINE: Option<&str> = None;
 const BLACK_ENGINE: Option<&str> = None;
 
-const KIBBUTZ_ENGINE: Option<&str> = Some("target/release/oxidation-0.5.2");
+const KIBBUTZ_ENGINE: Option<&str> = None;
+const HASH_SIZE: usize = 1024;
 
 enum SpectatorMessage {
   Request(Request),
@@ -47,7 +48,7 @@ enum SpectatorMessage {
   Kibbutz(UlciResult),
 }
 
-fn process_spectators(mut spectators: Vec<Sender<Request>>, messages: Receiver<SpectatorMessage>) {
+fn process_spectators(mut spectators: Vec<Sender<Request>>, messages: &Receiver<SpectatorMessage>) {
   let mut last_request = None;
   while let Ok(message) = messages.recv() {
     match message {
@@ -77,8 +78,8 @@ fn process_spectators(mut spectators: Vec<Sender<Request>>, messages: Receiver<S
 fn run_match(
   (mut tx_1, mut rx_1): (Sender<Request>, Receiver<UlciResult>),
   (mut tx_2, mut rx_2): (Sender<Request>, Receiver<UlciResult>),
-  spectators: Sender<SpectatorMessage>,
-  kibbutz_tx: Option<Sender<Request>>,
+  spectators: &Sender<SpectatorMessage>,
+  kibbutz_tx: &Option<Sender<Request>>,
 ) -> Option<()> {
   for _ in 0..GAME_LIMIT {
     let fen = POSITIONS
@@ -123,7 +124,7 @@ fn run_match(
       spectators
         .send(SpectatorMessage::Request(Request::Position(
           base_position.to_string(),
-          moves.to_vec(),
+          moves.clone(),
           false,
         )))
         .ok();
@@ -181,7 +182,7 @@ fn run_match(
       spectators
         .send(SpectatorMessage::Request(Request::Position(
           base_position.to_string(),
-          moves.to_vec(),
+          moves.clone(),
           false,
         )))
         .ok();
@@ -242,7 +243,7 @@ fn run_match(
     spectators
       .send(SpectatorMessage::Request(Request::Position(
         base_position.to_string(),
-        moves.to_vec(),
+        moves.clone(),
         false,
       )))
       .ok();
@@ -299,6 +300,11 @@ fn main() {
     let spectator_tx_copy = spectator_tx.clone();
     let mut kibbutz_tx = None;
     if let Some((tx, rx)) = KIBBUTZ_ENGINE.map(load_engine) {
+      tx.send(Request::SetOption(
+        "Hash".to_owned(),
+        OptionValue::UpdateInt(HASH_SIZE),
+      ))
+      .ok();
       kibbutz_tx = Some(tx);
       let spectator_tx_copy = spectator_tx.clone();
       spawn(move || {
@@ -316,8 +322,8 @@ fn main() {
           .ok();
       }
     });
-    spawn(|| process_spectators(spectators, spectator_rx));
-    run_match(player_1, player_2, spectator_tx, kibbutz_tx);
+    spawn(move || process_spectators(spectators, &spectator_rx));
+    run_match(player_1, player_2, &spectator_tx, &kibbutz_tx);
   } else {
     println!("Something went wrong!");
   }

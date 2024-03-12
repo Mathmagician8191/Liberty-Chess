@@ -30,7 +30,7 @@ fn main() {
   let mut position = get_startpos();
   let mut debug = false;
   let mut selected_move = None;
-  spawn(move || startup(&tx, &info, input, output));
+  spawn(move || startup(&tx, &info, input, output, true));
   while let Ok(message) = rx.recv() {
     match message {
       Message::SetDebug(new_debug) => debug = new_debug,
@@ -91,7 +91,8 @@ fn main() {
       | Message::Bench(_)
       | Message::NewGame
       | Message::Clock(_)
-      | Message::Info(_) => (),
+      | Message::Info(_)
+      | Message::IsReady => (),
     }
   }
 }
