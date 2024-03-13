@@ -13,25 +13,25 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install alsa
       run: sudo apt update; sudo apt install libasound2-dev
     - name: Build
       run: cargo build --release -p liberty_chess_gui
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: liberty-chess-gui
         path: target/release/liberty_chess_gui
   format:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Check Format
       run: cargo fmt --check
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Install alsa
       run: sudo apt update; sudo apt install libasound2-dev
     - name: install cargo-all-features
@@ -41,20 +41,20 @@ jobs:
   oxidation:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Build
       run: cargo build --release --bin oxidation
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: oxidation
         path: target/release/oxidation
   oxidation_windows:
     runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Build
       run: cargo build --release --bin oxidation
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: oxidation-windows
         path: target/release/oxidation.exe
