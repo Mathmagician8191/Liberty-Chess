@@ -1,0 +1,26 @@
+name: Test
+
+on:
+ - push
+ - pull_request
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Check Format
+      run: cargo fmt --check
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install alsa
+      run: sudo apt update; sudo apt install libasound2-dev
+    - name: install cargo-all-features
+      run: cargo install cargo-all-features
+    - name: Run Tests
+      run: cargo test-all-features
