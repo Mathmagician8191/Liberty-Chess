@@ -1405,4 +1405,79 @@ impl Board {
     }
     false
   }
+
+  #[must_use]
+  fn ray_length(
+    pieces: &Array2D<Piece>,
+    colour: bool,
+    (mut row, mut column): (isize, isize),
+    dx: isize,
+    dy: isize,
+  ) -> i32 {
+    let mut length = 0;
+    loop {
+      row += dx;
+      column += dy;
+      match pieces.get(row as usize, column as usize) {
+        Some(&SQUARE) => length += 1,
+        Some(piece) => {
+          if colour != (*piece > 0) {
+            length += 1;
+          }
+          break;
+        }
+        None => break,
+      }
+    }
+    length
+  }
+
+  #[must_use]
+  fn bishop_mobility(pieces: &Array2D<Piece>, piece: (usize, usize), colour: bool) -> i32 {
+    let piece = (piece.0 as isize, piece.1 as isize);
+    Self::ray_length(pieces, colour, piece, 1, 1)
+      + Self::ray_length(pieces, colour, piece, 1, -1)
+      + Self::ray_length(pieces, colour, piece, -1, 1)
+      + Self::ray_length(pieces, colour, piece, -1, -1)
+  }
+
+  #[must_use]
+  fn rook_mobility(pieces: &Array2D<Piece>, piece: (usize, usize), colour: bool) -> i32 {
+    let piece = (piece.0 as isize, piece.1 as isize);
+    Self::ray_length(pieces, colour, piece, 1, 0)
+      + Self::ray_length(pieces, colour, piece, 0, 1)
+      + Self::ray_length(pieces, colour, piece, -1, 0)
+      + Self::ray_length(pieces, colour, piece, 0, -1)
+  }
+
+  #[must_use]
+  fn nightrider_mobility(pieces: &Array2D<Piece>, piece: (usize, usize), colour: bool) -> i32 {
+    let piece = (piece.0 as isize, piece.1 as isize);
+    Self::ray_length(pieces, colour, piece, 2, 1)
+      + Self::ray_length(pieces, colour, piece, 1, 2)
+      + Self::ray_length(pieces, colour, piece, -2, 1)
+      + Self::ray_length(pieces, colour, piece, -1, 2)
+      + Self::ray_length(pieces, colour, piece, 2, -1)
+      + Self::ray_length(pieces, colour, piece, 1, -2)
+      + Self::ray_length(pieces, colour, piece, -2, -1)
+      + Self::ray_length(pieces, colour, piece, -1, -2)
+  }
+
+  /// Get the mobility of a ray attacked piece on a square
+  #[must_use]
+  pub fn mobility(pieces: &Array2D<Piece>, piece: (usize, usize), piece_type: Piece) -> i32 {
+    // not correct for empty square but irrelevant in that case
+    let colour = piece_type > 0;
+    match piece_type.abs() {
+      // factor in ray attacks only
+      BISHOP | ARCHBISHOP => Self::bishop_mobility(pieces, piece, colour),
+      ROOK | CHANCELLOR => Self::rook_mobility(pieces, piece, colour),
+      QUEEN | AMAZON => {
+        Self::bishop_mobility(pieces, piece, colour) + Self::rook_mobility(pieces, piece, colour)
+      }
+      NIGHTRIDER => Self::nightrider_mobility(pieces, piece, colour),
+      // non ray attack pieces are 0 for now
+      _ => 0,
+    }
+  }
 }

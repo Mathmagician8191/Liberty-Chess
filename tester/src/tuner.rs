@@ -8,11 +8,10 @@ use std::fs::read_to_string;
 use std::time::Instant;
 use tester::POSITIONS;
 
-const ITERATION_COUNT: i32 = 2700;
-const START_ITERATION: i32 = 0;
+const ITERATION_COUNT: i32 = 2250;
+const MATERIAL_ONLY_ITERATIONS: i32 = 200;
 const PRINT_FREQUENCY: i32 = 20;
-const BASE_LR: f64 = 12500.0;
-const VARIABLE_LR: f64 = 25000.0;
+const LR: f64 = 40000.0;
 
 type GameData = Vec<(Features, Vec<Piece>, bool, u32, f64)>;
 
@@ -110,16 +109,19 @@ fn process_position(position: &&str, data: &mut Vec<(f64, GameData)>, total_posi
   println!("Position {position}");
   let mut processed_data = Vec::new();
   for folder in [
-    "ttmove killers",
-    "only store quiet ttmove to history",
-    "2-fold decay",
-    "ttmove captures in qsearch",
-    "increase verif search min depth",
-    "tt static eval correction",
+    "Tweak RFP margin",
+    "King movegen VSTC",
+    "triple search part 1",
+    "triple search part 2",
+    "16 byte tt entries",
+    "low depth tt cutoffs part 1",
+    "low depth tt cutoffs part 2",
+    "linear RFP margin",
+    "make LMP more aggressive",
+    "Remove random move ordering at root",
+    "increase LMP depth",
     "Linear LMR",
-    "razoring",
-    "fix pv node tracking",
-    "fail soft",
+    "Linear LMR without killers",
   ] {
     let fens =
       read_to_string(format!("datagen/{folder}/{position}.txt")).expect("Unable to read file");
@@ -208,23 +210,24 @@ fn main() {
   println!("Data loading took {}s", start.elapsed().as_secs());
   start = Instant::now();
   // Tune parameters
-  for i in START_ITERATION..=ITERATION_COUNT {
+  for i in 0..=ITERATION_COUNT {
     let (loss, mut gradient) = calculate_gradients_batch(&data, &parameters);
     if loss < best_loss {
       best_loss = loss;
-      println!("Iteration {i} Loss record {loss:.7}");
+      println!("Iteration {i}/{ITERATION_COUNT} Loss record {loss:.7}");
     } else {
-      println!("Iteration {i} Loss {loss:.7} (Best: {best_loss:.7})");
+      println!("Iteration {i}/{ITERATION_COUNT} Loss {loss:.7} (Best: {best_loss:.7})");
     }
     // let piece values get roughly correct before trying to tune other values
-    if i <= ITERATION_COUNT / 6 {
+    if i <= MATERIAL_ONLY_ITERATIONS {
       gradient = Parameters::<f64> {
         pieces: gradient.pieces,
         ..Default::default()
       };
+      // The learning rate can be higher when tuning piece values only
+      gradient = gradient * 4.0;
     }
-    let lr = BASE_LR + VARIABLE_LR * 0.999_f64.powi(i);
-    parameters += gradient * lr;
+    parameters += gradient * LR;
     if i % PRINT_FREQUENCY == 0 {
       println!("{parameters:?}");
       println!(
@@ -234,5 +237,6 @@ fn main() {
       start = Instant::now();
     }
   }
+  println!("{parameters:?}");
   println!("{}", parameters.to_string());
 }

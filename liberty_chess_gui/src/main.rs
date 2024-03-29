@@ -16,7 +16,7 @@ use eframe::emath::Align2;
 use eframe::epaint::{pos2, Color32, FontId, Pos2, Rect, Rounding, TextureId};
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
-  Area, Button, CentralPanel, ColorImage, ComboBox, Context, Label, RichText, ScrollArea,
+  Area, Button, CentralPanel, ColorImage, ComboBox, Context, Key, Label, RichText, ScrollArea,
   SidePanel, Slider, TextureHandle, TextureOptions, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
@@ -880,7 +880,7 @@ fn draw_settings(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
 
 fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<Board>) {
   menu_button(gui, ui);
-  if ui.button("Flip board").clicked() {
+  if ui.button("Flip board").clicked() || ui.input(|reader| reader.key_released(Key::F)) {
     gui.flipped = !gui.flipped;
   }
   if !gui.undo.is_empty() && ui.button("Undo").clicked() {

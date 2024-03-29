@@ -232,6 +232,24 @@ impl Board {
                 }
               }
             }
+            KING => {
+              let left_column = j.saturating_sub(1);
+              let right_column = usize::min(j + 1, self.width() - 1);
+              let left_row = i.saturating_sub(1);
+              let right_row = usize::min(i + 1, self.height() - 1);
+              for k in left_row..=right_row {
+                for l in left_column..=right_column {
+                  self.add_if_pseudolegal(&mut enemy_captures, &mut moves, (i, j), (k, l));
+                }
+              }
+              // Castling
+              if j >= 2 {
+                self.add_if_pseudolegal(&mut enemy_captures, &mut moves, (i, j), (i, j - 2));
+              }
+              if j + 2 < self.width() {
+                self.add_if_pseudolegal(&mut enemy_captures, &mut moves, (i, j), (i, j + 2));
+              }
+            }
             OBSTACLE | WALL => {
               for k in 0..self.height() {
                 for l in 0..self.width() {

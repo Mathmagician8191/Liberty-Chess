@@ -32,8 +32,21 @@ impl History {
   }
 
   pub fn new_position(&mut self, width: usize, height: usize) {
-    // may change later
-    self.clear(width, height);
+    let array = &self.white_data[0];
+    if width != array.num_columns() || height != array.num_rows() {
+      self.clear(width, height);
+    } else {
+      for array in self.white_data.iter_mut() {
+        for item in array.elements_iter_mut() {
+          *item /= 2;
+        }
+      }
+      for array in self.black_data.iter_mut() {
+        for item in array.elements_iter_mut() {
+          *item /= 2;
+        }
+      }
+    }
   }
 
   pub fn store(&mut self, side: bool, piece: u8, square: (usize, usize), depth: u8) {

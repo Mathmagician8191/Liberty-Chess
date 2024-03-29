@@ -12,8 +12,8 @@ enum Stage {
 /// A struct to represent a move
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub struct Move {
-  start: (u16, u16),
-  end: (u16, u16),
+  start: (u8, u8),
+  end: (u8, u8),
   promotion: Option<Piece>,
 }
 
@@ -65,8 +65,8 @@ impl FromStr for Move {
                 Err(())
               } else {
                 Ok(Self {
-                  start: (start_row as u16 - 1, start_col as u16 - 1),
-                  end: (end_row as u16 - 1, end_col as u16 - 1),
+                  start: (start_row as u8 - 1, start_col as u8 - 1),
+                  end: (end_row as u8 - 1, end_col as u8 - 1),
                   promotion,
                 })
               };
@@ -94,8 +94,8 @@ impl FromStr for Move {
             Err(())
           } else {
             Ok(Self {
-              start: (start_row as u16 - 1, start_col as u16 - 1),
-              end: (end_row as u16 - 1, end_col as u16 - 1),
+              start: (start_row as u8 - 1, start_col as u8 - 1),
+              end: (end_row as u8 - 1, end_col as u8 - 1),
               promotion: None,
             })
           }
@@ -112,8 +112,8 @@ impl Move {
   #[must_use]
   pub const fn new(start: (usize, usize), end: (usize, usize)) -> Self {
     Self {
-      start: (start.0 as u16, start.1 as u16),
-      end: (end.0 as u16, end.1 as u16),
+      start: (start.0 as u8, start.1 as u8),
+      end: (end.0 as u8, end.1 as u8),
       promotion: None,
     }
   }

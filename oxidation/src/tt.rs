@@ -40,7 +40,7 @@ impl From<CompactEntry> for Entry {
       Flags::UpperLoss => (ScoreType::UpperBound, Score::Loss(value.raw_score)),
     };
     Self {
-      hash: value.hash,
+      hash: value.hash as Hash >> 32,
       depth: value.depth,
       movecount: 0,
       scoretype,
@@ -65,7 +65,7 @@ pub enum Flags {
 
 #[derive(Clone, Copy)]
 pub struct CompactEntry {
-  hash: Hash,
+  hash: u32,
   bestmove: Option<Move>,
   raw_score: u32,
   flags: Flags,
@@ -86,7 +86,7 @@ impl From<Entry> for CompactEntry {
       (Score::Loss(moves), ScoreType::UpperBound) => (moves - value.movecount, Flags::UpperLoss),
     };
     Self {
-      hash: value.hash,
+      hash: (value.hash >> 32) as u32,
       bestmove: value.bestmove,
       raw_score,
       flags,
@@ -105,7 +105,7 @@ pub struct TranspositionTable {
 impl TranspositionTable {
   // Initialise a tt based on a size in megabytes
   pub fn new(megabytes: usize, board: &Board) -> Self {
-    let size = megabytes * 43690;
+    let size = megabytes * 65536;
     let entries = vec![None; size].into_boxed_slice();
     Self {
       entries,
@@ -126,7 +126,7 @@ impl TranspositionTable {
     if self.entries.len() > 0 {
       let index = hash as usize % self.entries.len();
       if let Some(entry) = &self.entries[index] {
-        if entry.hash == hash {
+        if entry.hash == (hash >> 32) as u32 {
           ttmove = entry.bestmove;
           if entry.depth >= depth {
             let mut entry = Entry::from(*entry);
@@ -155,7 +155,7 @@ impl TranspositionTable {
     if self.entries.len() > 0 {
       let index = entry.hash as usize % self.entries.len();
       if let Some(old_entry) = self.entries[index] {
-        if old_entry.hash != entry.hash
+        if old_entry.hash != (entry.hash >> 32) as u32
           || entry.scoretype == ScoreType::Exact
           || entry.depth.saturating_add(1) >= old_entry.depth
         {

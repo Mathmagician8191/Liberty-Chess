@@ -21,7 +21,7 @@ impl ToString for FenError {
     match self {
       Self::InvalidPiece(c) => format!("Invalid piece found: {c}"),
       Self::NonRectangular => "Non-rectangular board found".to_owned(),
-      Self::Size => "Board must be between 2x2 and 65536x65536".to_owned(),
+      Self::Size => "Board must be between 2x2 and 256x256".to_owned(),
     }
   }
 }
@@ -416,7 +416,7 @@ pub(crate) fn process_board(
   }
 
   let width = width.unwrap_or(0);
-  if width < 2 || height < 2 || width > 65536 || height > 65536 {
+  if width < 2 || height < 2 || width > 256 || height > 256 {
     Err(FenError::Size)?;
   }
 

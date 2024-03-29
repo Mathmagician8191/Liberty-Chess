@@ -20,6 +20,7 @@ pub struct Features {
   indexes: [[i8; EDGE_PARAMETER_COUNT]; 18],
   friendly_pawns: [i8; 18],
   enemy_pawns: [i8; 18],
+  mobility: [i16; 18],
   // squares to go and multiplier
   pawn_list: Vec<(u8, i8)>,
 }
@@ -45,6 +46,9 @@ pub fn raw(
         let piece_type = piece.unsigned_abs() as usize - 1;
         material += ENDGAME_FACTOR[piece_type];
         let (mut mg_value, mut eg_value) = parameters.pieces[piece_type];
+        let mobility = Board::mobility(pieces, (i, j), piece);
+        mg_value += mobility * parameters.mg_mobility_bonus[piece_type];
+        eg_value += mobility * parameters.eg_mobility_bonus[piece_type];
         #[cfg(feature = "pesto")]
         {
           if height == 8 && width == 8 && piece_type < 6 {
@@ -91,10 +95,10 @@ pub fn raw(
           {
             let squares_to_go = if piece > 0 { height - 1 - i } else { i } as i32;
             if squares_to_go != 0 {
-              mg_value += promotion_values.0
-                / (squares_to_go * parameters.pawn_scale_factor + parameters.pawn_scaling_bonus);
-              eg_value += promotion_values.1
-                / (squares_to_go * parameters.pawn_scale_factor + parameters.pawn_scaling_bonus);
+              let divisor =
+                squares_to_go * parameters.pawn_scale_factor + parameters.pawn_scaling_bonus;
+              mg_value += promotion_values.0 / divisor;
+              eg_value += promotion_values.1 / divisor;
             }
           }
         }
@@ -127,6 +131,7 @@ pub fn eval_features<
     + Default
     + From<i8>
     + From<u8>
+    + From<i16>
     + From<i32>,
 >(
   features: &Features,
@@ -147,6 +152,9 @@ pub fn eval_features<
     let piece_count = T::from(features.enemy_pawns[piece_type]);
     middlegame -= parameters.mg_enemy_pawn_penalty[piece_type] * piece_count;
     endgame -= parameters.eg_enemy_pawn_penalty[piece_type] * piece_count;
+    let mobility = T::from(features.mobility[piece_type]);
+    middlegame += parameters.mg_mobility_bonus[piece_type] * mobility;
+    endgame += parameters.eg_mobility_bonus[piece_type] * mobility;
     let mg_edge = parameters.mg_edge[piece_type];
     let eg_edge = parameters.eg_edge[piece_type];
     let piece_count = features.indexes[piece_type];
@@ -158,10 +166,10 @@ pub fn eval_features<
   }
   for (squares_to_go, multiplier) in &features.pawn_list {
     let multiplier = T::from(*multiplier);
-    let division_factor =
+    let divisor =
       T::from(*squares_to_go) * parameters.pawn_scale_factor + parameters.pawn_scaling_bonus;
-    middlegame += promotion_values.0 / division_factor * multiplier;
-    endgame += promotion_values.1 / division_factor * multiplier;
+    middlegame += promotion_values.0 / divisor * multiplier;
+    endgame += promotion_values.1 / divisor * multiplier;
   }
   let threshold = T::from(ENDGAME_THRESHOLD);
   let material = T::from(features.material);
@@ -200,6 +208,8 @@ pub fn gradient(
   let eg_friendly_pawn_penalty = features.friendly_pawns.map(|x| -f64::from(x) * eg_factor);
   let mg_enemy_pawn_penalty = features.enemy_pawns.map(|x| -f64::from(x) * mg_factor);
   let eg_enemy_pawn_penalty = features.enemy_pawns.map(|x| -f64::from(x) * eg_factor);
+  let mg_mobility_bonus = features.mobility.map(|x| f64::from(x) * mg_factor);
+  let eg_mobility_bonus = features.mobility.map(|x| f64::from(x) * eg_factor);
   let mut pawn_scale_factor = 0.0;
   let mut pawn_scaling_bonus = 0.0;
   let piece_value = promotion_values.0 * mg_factor + promotion_values.1 * eg_factor;
@@ -218,6 +228,8 @@ pub fn gradient(
     eg_friendly_pawn_penalty,
     mg_enemy_pawn_penalty,
     eg_enemy_pawn_penalty,
+    mg_mobility_bonus,
+    eg_mobility_bonus,
     pawn_scale_factor,
     pawn_scaling_bonus,
   }
@@ -231,6 +243,7 @@ pub fn extract_features(pieces: &Array2D<Piece>) -> Features {
   let mut indexes = [[0; EDGE_PARAMETER_COUNT]; 18];
   let mut friendly_pawns = [0; 18];
   let mut enemy_pawns = [0; 18];
+  let mut mobility = [0; 18];
   let mut pawn_list = Vec::new();
   let height = pieces.num_rows();
   let width = pieces.num_columns();
@@ -240,6 +253,8 @@ pub fn extract_features(pieces: &Array2D<Piece>) -> Features {
       if piece != 0 {
         let multiplier = if piece > 0 { 1 } else { -1 };
         let piece_type = piece.unsigned_abs() as usize - 1;
+        mobility[piece_type] +=
+          i16::from(multiplier) * Board::mobility(pieces, (i, j), piece) as i16;
         material += ENDGAME_FACTOR[piece_type];
         piece_counts[piece_type] += multiplier;
         let horizontal_distance = min(i, height - 1 - i).min(EDGE_DISTANCE);
@@ -277,6 +292,7 @@ pub fn extract_features(pieces: &Array2D<Piece>) -> Features {
     indexes,
     friendly_pawns,
     enemy_pawns,
+    mobility,
     pawn_list,
   }
 }

@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 authors = ["Mathmagician8191 <50558333+Mathmagician8191@users.noreply.github.com>"]
-version = "0.17.0"
+version = "0.17.1"
 repository = "https://github.com/Mathmagician8191/Liberty-Chess"
 license = "GPL-3.0"
 edition = "2021"
@@ -14,7 +14,7 @@ liberty_chess = {path = "liberty_chess"}
 oxidation = {path = "oxidation"}
 sound = {path = "sound"}
 ulci = {path = "ulci"}
-array2d = "0.2.1"
+array2d = {git = "https://github.com/Mathmagician8191/array2d", branch="mutable_iteration"}
 eframe = {version = "0.23.0", features = ["persistence"]}
 enum-iterator = "1.2.0"
 kira = {version = "0.8.4", default-features = false, features = ["cpal", "ogg"]}

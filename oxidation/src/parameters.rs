@@ -2,156 +2,198 @@ use liberty_chess::parsing::to_name;
 use std::ops::{Add, AddAssign, Div, Mul};
 
 const PIECE_VALUES: [(i32, i32); 18] = [
-  (59, 143),    // Pawn
-  (288, 298),   // Knight
-  (357, 314),   // Bishop
-  (467, 582),   // Rook
-  (979, 1108),  // Queen
-  (-431, 1209), // King
-  (751, 948),   // Archbishop
-  (882, 1226),  // Chancellor
-  (171, 250),   // Camel
-  (165, 179),   // Zebra
-  (186, 261),   // Mann
-  (534, 311),   // Nightrider
-  (427, 850),   // Champion
-  (502, 953),   // Centaur
-  (1337, 1706), // Amazon
-  (621, 621),   // Elephant
-  (1, 94),      // Obstacle
-  (2, 123),     // Wall
+  (67, 144),    // Pawn
+  (323, 297),   // Knight
+  (360, 263),   // Bishop
+  (489, 481),   // Rook
+  (1024, 998),  // Queen
+  (-195, 887),  // King
+  (832, 965),   // Archbishop
+  (979, 1117),  // Chancellor
+  (253, 195),   // Camel
+  (179, 167),   // Zebra
+  (169, 299),   // Mann
+  (560, 313),   // Nightrider
+  (503, 973),   // Champion
+  (575, 1026),  // Centaur
+  (1432, 1644), // Amazon
+  (653, 633),   // Elephant
+  (1, 25),      // Obstacle
+  (44, 110),    // Wall
 ];
 
-const MIDDLEGAME_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [
-  [0, 15, 25, -19, -3],     // Pawn
-  [50, 55, 42, 26, 7],      // Knight
-  [58, 61, 45, 5, -6],      // Bishop
-  [52, 39, 21, 11, 5],      // Rook
-  [52, 39, 29, 31, 6],      // Queen
-  [-123, -83, -40, 18, 27], // King
-  [62, 37, 21, -9, 0],      // Archbishop
-  [28, 9, -3, 24, -23],     // Chancellor
-  [10, 32, -38, -2, -21],   // Camel
-  [-14, -24, -14, 15, -20], // Zebra
-  [0, 0, 5, 0, 0],          // Mann
-  [0, 0, 0, 0, 0],          // Nightrider
-  [0, 2, 2, 54, 0],         // Champion
-  [45, 42, 33, 35, 24],     // Centaur
-  [5, 4, 3, 2, 1],          // Amazon
-  [159, 109, 51, 65, 0],    // Elephant
+const MG_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [
+  [-7, 16, 29, -10, 0],        // Pawn
+  [43, 47, 38, 30, 13],        // Knight
+  [53, 45, 25, -7, -5],        // Bishop
+  [36, 34, 4, 7, 5],           // Rook
+  [19, 13, 4, 18, -3],         // Queen
+  [-165, -151, -91, -25, -25], // King
+  [65, 17, 14, 16, 0],         // Archbishop
+  [9, 13, 5, 62, -8],          // Chancellor
+  [42, 89, 52, 62, 41],        // Camel
+  [-28, 42, 9, 66, 28],        // Zebra
+  [45, 15, 5, 0, 0],           // Mann
+  [34, 34, 6, 71, -24],        // Nightrider
+  [17, 58, 9, 54, 31],         // Champion
+  [55, 30, 35, 39, 24],        // Centaur
+  [15, 26, 1, 1, 1],           // Amazon
+  [122, 100, 84, 66, 64],      // Elephant
+  [0, 0, 0, 0, 0],             // Obstacle
+  [0, 0, 0, 0, 0],             // Wall
+];
+
+const EG_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [
+  [103, 0, 8, -12, -1],     // Pawn
+  [29, 0, 1, 0, 3],         // Knight
+  [0, 0, 0, 10, 4],         // Bishop
+  [104, 25, 23, 20, 0],     // Rook
+  [69, 22, 10, 12, 15],     // Queen
+  [125, 105, 59, 23, 18],   // King
+  [279, 148, 91, 184, 44],  // Archbishop
+  [18, 86, 48, 44, 76],     // Chancellor
+  [0, -16, -16, -13, -28],  // Camel
+  [76, -10, -26, -15, -26], // Zebra
+  [53, 0, 22, 19, 7],       // Mann
+  [96, 19, 18, 29, 24],     // Nightrider
+  [153, 0, 25, 17, 9],      // Champion
+  [349, 186, 81, 56, 29],   // Centaur
+  [151, 0, 0, 0, 0],        // Amazon
+  [141, 112, 103, 71, 26],  // Elephant
   [0, 0, 0, 0, 0],          // Obstacle
   [0, 0, 0, 0, 0],          // Wall
 ];
 
-const ENDGAME_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [
-  [121, 0, 9, -8, -2],     // Pawn
-  [22, -3, -2, 3, 9],      // Knight
-  [15, 19, 38, 26, 15],    // Bishop
-  [97, 39, 9, 22, 7],      // Rook
-  [71, 28, 30, 19, 10],    // Queen
-  [100, 73, 47, 12, 1],    // King
-  [282, 113, 41, -20, 30], // Archbishop
-  [-23, -39, 0, -27, 7],   // Chancellor
-  [-16, 21, 43, 24, 23],   // Camel
-  [-11, 84, 0, 55, 6],     // Zebra
-  [43, 23, 23, 45, 24],    // Mann
-  [0, 0, 0, 0, 0],         // Nightrider
-  [0, 84, 0, 50, 0],       // Champion
-  [218, 156, 156, 45, 65], // Centaur
-  [0, 0, 0, 0, 0],         // Amazon
-  [100, 94, 88, 106, 79],  // Elephant
-  [0, 0, 0, 0, 0],         // Obstacle
-  [0, 0, 0, 0, 0],         // Wall
-];
-
-const MIDDLEGAME_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
+const MG_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
   0,  // Pawn
-  9,  // Knight
-  11, // Bishop
-  0,  // Rook
+  12, // Knight
+  7,  // Bishop
+  1,  // Rook
   1,  // Queen
-  65, // King
-  1,  // Archbishop
-  10, // Chancellor
+  42, // King
+  9,  // Archbishop
+  0,  // Chancellor
   0,  // Camel
   0,  // Zebra
-  22, // Mann
+  1,  // Mann
+  1,  // Nightrider
+  0,  // Champion
+  0,  // Centaur
+  0,  // Amazon
+  0,  // Elephant
+  9,  // Obstacle
+  0,  // Wall
+];
+
+const EG_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
+  36,  // Pawn
+  13,  // Knight
+  2,   // Bishop
+  0,   // Rook
+  0,   // Queen
+  -3,  // King
+  19,  // Archbishop
+  0,   // Chancellor
+  5,   // Camel
+  1,   // Zebra
+  0,   // Mann
+  0,   // Nightrider
+  0,   // Champion
+  11,  // Centaur
+  111, // Amazon
+  33,  // Elephant
+  2,   // Obstacle
+  2,   // Wall
+];
+
+const MG_ENEMY_PAWN_PENALTY: [i32; 18] = [
+  0,   // Pawn
+  15,  // Knight
+  2,   // Bishop
+  -38, // Rook
+  1,   // Queen
+  122, // King
+  25,  // Archbishop
+  -8,  // Chancellor
+  0,   // Camel
+  0,   // Zebra
+  0,   // Mann
+  9,   // Nightrider
+  50,  // Champion
+  28,  // Centaur
+  0,   // Amazon
+  65,  // Elephant
+  9,   // Obstacle
+  9,   // Wall
+];
+
+const EG_ENEMY_PAWN_PENALTY: [i32; 18] = [
+  0,   // Pawn
+  38,  // Knight
+  100, // Bishop
+  65,  // Rook
+  16,  // Queen
+  46,  // King
+  82,  // Archbishop
+  36,  // Chancellor
+  29,  // Camel
+  24,  // Zebra
+  121, // Mann
+  118, // Nightrider
+  7,   // Champion
+  70,  // Centaur
+  26,  // Amazon
+  30,  // Elephant
+  30,  // Obstacle
+  -18, // Wall
+];
+
+const MG_MOBILITY_BONUS: [i32; 18] = [
+  0, // Pawn
+  0, // Knight
+  4, // Bishop
+  6, // Rook
+  2, // Queen
+  0, // King
+  2, // Archbishop
+  2, // Chancellor
+  0, // Camel
+  0, // Zebra
+  0, // Mann
+  2, // Nightrider
+  0, // Champion
+  0, // Centaur
+  0, // Amazon
+  0, // Elephant
+  0, // Obstacle
+  0, // Wall
+];
+
+const EG_MOBILITY_BONUS: [i32; 18] = [
+  0,  // Pawn
+  0,  // Knight
+  5,  // Bishop
+  7,  // Rook
+  7,  // Queen
+  0,  // King
+  0,  // Archbishop
+  5,  // Chancellor
+  0,  // Camel
+  0,  // Zebra
+  0,  // Mann
   0,  // Nightrider
   0,  // Champion
-  3,  // Centaur
-  0,  // Amazon
+  0,  // Centaur
+  13, // Amazon
   0,  // Elephant
   0,  // Obstacle
   0,  // Wall
 ];
 
-const ENDGAME_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
-  27, // Pawn
-  15, // Knight
-  0,  // Bishop
-  13, // Rook
-  0,  // Queen
-  0,  // King
-  0,  // Archbishop
-  41, // Chancellor
-  28, // Camel
-  1,  // Zebra
-  0,  // Mann
-  0,  // Nightrider
-  0,  // Champion
-  37, // Centaur
-  0,  // Amazon
-  38, // Elephant
-  28, // Obstacle
-  10, // Wall
-];
-
-const MIDDLEGAME_ENEMY_PAWN_PENALTY: [i32; 18] = [
-  0,   // Pawn
-  17,  // Knight
-  9,   // Bishop
-  -19, // Rook
-  0,   // Queen
-  72,  // King
-  15,  // Archbishop
-  10,  // Chancellor
-  10,  // Camel
-  1,   // Zebra
-  1,   // Mann
-  -1,  // Nightrider
-  61,  // Champion
-  32,  // Centaur
-  23,  // Amazon
-  56,  // Elephant
-  0,   // Obstacle
-  0,   // Wall
-];
-
-const ENDGAME_ENEMY_PAWN_PENALTY: [i32; 18] = [
-  0,   // Pawn
-  40,  // Knight
-  112, // Bishop
-  37,  // Rook
-  49,  // Queen
-  63,  // King
-  137, // Archbishop
-  19,  // Chancellor
-  4,   // Camel
-  25,  // Zebra
-  141, // Mann
-  90,  // Nightrider
-  52,  // Champion
-  62,  // Centaur
-  73,  // Amazon
-  55,  // Elephant
-  63,  // Obstacle
-  0,   // Wall
-];
-
 // advanced pawns get a bonus of numerator/(factor * squares_to_promotion + bonus) times the promotion value
-pub(crate) const PAWN_SCALING_NUMERATOR: i32 = 9;
-const PAWN_SCALING_FACTOR: i32 = 60;
-const PAWN_SCALING_BONUS: i32 = -7;
+pub(crate) const PAWN_SCALING_NUMERATOR: i32 = 12;
+const PAWN_SCALING_FACTOR: i32 = 89;
+const PAWN_SCALING_BONUS: i32 = -21;
 
 pub(crate) const TEMPO_BONUS: i32 = 10;
 
@@ -187,18 +229,20 @@ pub(crate) const ENDGAME_FACTOR: [i32; 18] = [
 /// The default set of parameters
 pub const DEFAULT_PARAMETERS: Parameters<i32> = Parameters {
   pieces: PIECE_VALUES,
-  mg_edge: MIDDLEGAME_EDGE_AVOIDANCE,
-  eg_edge: ENDGAME_EDGE_AVOIDANCE,
-  mg_friendly_pawn_penalty: MIDDLEGAME_FRIENDLY_PAWN_PENALTY,
-  eg_friendly_pawn_penalty: ENDGAME_FRIENDLY_PAWN_PENALTY,
-  mg_enemy_pawn_penalty: MIDDLEGAME_ENEMY_PAWN_PENALTY,
-  eg_enemy_pawn_penalty: ENDGAME_ENEMY_PAWN_PENALTY,
+  mg_edge: MG_EDGE_AVOIDANCE,
+  eg_edge: EG_EDGE_AVOIDANCE,
+  mg_friendly_pawn_penalty: MG_FRIENDLY_PAWN_PENALTY,
+  eg_friendly_pawn_penalty: EG_FRIENDLY_PAWN_PENALTY,
+  mg_enemy_pawn_penalty: MG_ENEMY_PAWN_PENALTY,
+  eg_enemy_pawn_penalty: EG_ENEMY_PAWN_PENALTY,
+  mg_mobility_bonus: MG_MOBILITY_BONUS,
+  eg_mobility_bonus: EG_MOBILITY_BONUS,
   pawn_scale_factor: PAWN_SCALING_FACTOR,
   pawn_scaling_bonus: PAWN_SCALING_BONUS,
 };
 
 /// Parameters for evaluation
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct Parameters<T> {
   /// Piece values
   pub pieces: [(T, T); 18],
@@ -214,26 +258,14 @@ pub struct Parameters<T> {
   pub mg_enemy_pawn_penalty: [T; 18],
   /// Endgame penalty for a pawn being blocked by an enemy piece
   pub eg_enemy_pawn_penalty: [T; 18],
+  /// Middlegame mobility bonus
+  pub mg_mobility_bonus: [T; 18],
+  /// Endgame mobility bonus
+  pub eg_mobility_bonus: [T; 18],
   /// Scaling factor for the advanced pawn bonus
   pub pawn_scale_factor: T,
   /// Scaling factor for the advanced pawn bonus
   pub pawn_scaling_bonus: T,
-}
-
-impl<T: Default> Default for Parameters<T> {
-  fn default() -> Self {
-    Self {
-      pieces: Default::default(),
-      mg_edge: Default::default(),
-      eg_edge: Default::default(),
-      mg_friendly_pawn_penalty: Default::default(),
-      eg_friendly_pawn_penalty: Default::default(),
-      mg_enemy_pawn_penalty: Default::default(),
-      eg_enemy_pawn_penalty: Default::default(),
-      pawn_scale_factor: T::default(),
-      pawn_scaling_bonus: T::default(),
-    }
-  }
 }
 
 impl<T: Copy + AddAssign> AddAssign for Parameters<T> {
@@ -245,6 +277,8 @@ impl<T: Copy + AddAssign> AddAssign for Parameters<T> {
       self.eg_friendly_pawn_penalty[i] += rhs.eg_friendly_pawn_penalty[i];
       self.mg_enemy_pawn_penalty[i] += rhs.mg_enemy_pawn_penalty[i];
       self.eg_enemy_pawn_penalty[i] += rhs.eg_enemy_pawn_penalty[i];
+      self.mg_mobility_bonus[i] += rhs.mg_mobility_bonus[i];
+      self.eg_mobility_bonus[i] += rhs.eg_mobility_bonus[i];
     }
     for i in 0..18 {
       for j in 0..5 {
@@ -278,6 +312,8 @@ impl Div<f64> for Parameters<f64> {
       eg_friendly_pawn_penalty: self.eg_friendly_pawn_penalty.map(|x| x / rhs),
       mg_enemy_pawn_penalty: self.mg_enemy_pawn_penalty.map(|x| x / rhs),
       eg_enemy_pawn_penalty: self.eg_enemy_pawn_penalty.map(|x| x / rhs),
+      mg_mobility_bonus: self.mg_mobility_bonus.map(|x| x / rhs),
+      eg_mobility_bonus: self.eg_mobility_bonus.map(|x| x / rhs),
       pawn_scale_factor: self.pawn_scale_factor / rhs,
       pawn_scaling_bonus: self.pawn_scaling_bonus / rhs,
     }
@@ -295,6 +331,8 @@ impl Div<Self> for Parameters<f64> {
       self.eg_friendly_pawn_penalty[i] /= rhs.eg_friendly_pawn_penalty[i];
       self.mg_enemy_pawn_penalty[i] /= rhs.mg_enemy_pawn_penalty[i];
       self.eg_enemy_pawn_penalty[i] /= rhs.eg_enemy_pawn_penalty[i];
+      self.mg_mobility_bonus[i] /= rhs.mg_mobility_bonus[i];
+      self.eg_mobility_bonus[i] /= rhs.eg_mobility_bonus[i];
       for j in 0..5 {
         self.mg_edge[i][j] /= rhs.mg_edge[i][j];
         self.eg_edge[i][j] /= rhs.eg_edge[i][j];
@@ -318,6 +356,8 @@ impl Mul<f64> for Parameters<f64> {
       eg_friendly_pawn_penalty: self.eg_friendly_pawn_penalty.map(|x| x * rhs),
       mg_enemy_pawn_penalty: self.mg_enemy_pawn_penalty.map(|x| x * rhs),
       eg_enemy_pawn_penalty: self.eg_enemy_pawn_penalty.map(|x| x * rhs),
+      mg_mobility_bonus: self.mg_mobility_bonus.map(|x| x * rhs),
+      eg_mobility_bonus: self.eg_mobility_bonus.map(|x| x * rhs),
       pawn_scale_factor: self.pawn_scale_factor * rhs,
       pawn_scaling_bonus: self.pawn_scaling_bonus * rhs,
     }
@@ -336,6 +376,8 @@ impl Parameters<f64> {
       eg_friendly_pawn_penalty: self.eg_friendly_pawn_penalty.map(f64::abs),
       mg_enemy_pawn_penalty: self.mg_enemy_pawn_penalty.map(f64::abs),
       eg_enemy_pawn_penalty: self.eg_enemy_pawn_penalty.map(f64::abs),
+      mg_mobility_bonus: self.mg_mobility_bonus.map(f64::abs),
+      eg_mobility_bonus: self.eg_mobility_bonus.map(f64::abs),
       pawn_scale_factor: self.pawn_scale_factor.abs(),
       pawn_scaling_bonus: self.pawn_scaling_bonus.abs(),
     }
@@ -362,6 +404,8 @@ impl Parameters<f64> {
       eg_friendly_pawn_penalty: self.eg_friendly_pawn_penalty.map(Self::remove_nan),
       mg_enemy_pawn_penalty: self.mg_enemy_pawn_penalty.map(Self::remove_nan),
       eg_enemy_pawn_penalty: self.eg_enemy_pawn_penalty.map(Self::remove_nan),
+      mg_mobility_bonus: self.mg_mobility_bonus.map(Self::remove_nan),
+      eg_mobility_bonus: self.eg_mobility_bonus.map(Self::remove_nan),
       pawn_scale_factor: Self::remove_nan(self.pawn_scale_factor),
       pawn_scaling_bonus: Self::remove_nan(self.pawn_scaling_bonus),
     }
@@ -378,6 +422,8 @@ impl From<Parameters<i32>> for Parameters<f64> {
       eg_friendly_pawn_penalty: value.eg_friendly_pawn_penalty.map(f64::from),
       mg_enemy_pawn_penalty: value.mg_enemy_pawn_penalty.map(f64::from),
       eg_enemy_pawn_penalty: value.eg_enemy_pawn_penalty.map(f64::from),
+      mg_mobility_bonus: value.mg_mobility_bonus.map(f64::from),
+      eg_mobility_bonus: value.eg_mobility_bonus.map(f64::from),
       pawn_scale_factor: f64::from(value.pawn_scale_factor),
       pawn_scaling_bonus: f64::from(value.pawn_scaling_bonus),
     }
@@ -397,7 +443,7 @@ impl ToString for Parameters<f64> {
         to_name(i as i8 + 1)
       );
     }
-    result += "\n];\n\nconst MIDDLEGAME_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [";
+    result += "\n];\n\nconst MG_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [";
     for i in 0..18 {
       result += &format!(
         "\n  {:?}, // {}",
@@ -405,7 +451,7 @@ impl ToString for Parameters<f64> {
         to_name(i as i8 + 1)
       );
     }
-    result += "\n];\n\nconst ENDGAME_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [";
+    result += "\n];\n\nconst EG_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [";
     for i in 0..18 {
       result += &format!(
         "\n  {:?}, // {}",
@@ -413,7 +459,7 @@ impl ToString for Parameters<f64> {
         to_name(i as i8 + 1)
       );
     }
-    result += "\n];\n\nconst MIDDLEGAME_FRIENDLY_PAWN_PENALTY: [i32; 18] = [";
+    result += "\n];\n\nconst MG_FRIENDLY_PAWN_PENALTY: [i32; 18] = [";
     for i in 0..18 {
       result += &format!(
         "\n  {}, // {}",
@@ -421,7 +467,7 @@ impl ToString for Parameters<f64> {
         to_name(i as i8 + 1)
       );
     }
-    result += "\n];\n\nconst ENDGAME_FRIENDLY_PAWN_PENALTY: [i32; 18] = [";
+    result += "\n];\n\nconst EG_FRIENDLY_PAWN_PENALTY: [i32; 18] = [";
     for i in 0..18 {
       result += &format!(
         "\n  {}, // {}",
@@ -429,7 +475,7 @@ impl ToString for Parameters<f64> {
         to_name(i as i8 + 1)
       );
     }
-    result += "\n];\n\nconst MIDDLEGAME_ENEMY_PAWN_PENALTY: [i32; 18] = [";
+    result += "\n];\n\nconst MG_ENEMY_PAWN_PENALTY: [i32; 18] = [";
     for i in 0..18 {
       result += &format!(
         "\n  {}, // {}",
@@ -437,11 +483,27 @@ impl ToString for Parameters<f64> {
         to_name(i as i8 + 1)
       );
     }
-    result += "\n];\n\nconst ENDGAME_ENEMY_PAWN_PENALTY: [i32; 18] = [";
+    result += "\n];\n\nconst EG_ENEMY_PAWN_PENALTY: [i32; 18] = [";
     for i in 0..18 {
       result += &format!(
         "\n  {}, // {}",
         self.eg_enemy_pawn_penalty[i] as i32,
+        to_name(i as i8 + 1)
+      );
+    }
+    result += "\n];\n\nconst MG_MOBILITY_BONUS: [i32; 18] = [";
+    for i in 0..18 {
+      result += &format!(
+        "\n  {}, // {}",
+        self.mg_mobility_bonus[i] as i32,
+        to_name(i as i8 + 1)
+      );
+    }
+    result += "\n];\n\nconst EG_MOBILITY_BONUS: [i32; 18] = [";
+    for i in 0..18 {
+      result += &format!(
+        "\n  {}, // {}",
+        self.eg_mobility_bonus[i] as i32,
         to_name(i as i8 + 1)
       );
     }
