@@ -107,8 +107,8 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.label("Illegal move, menu navigation and checkbox sounds done by:");
       link(
         ui,
-        "Hekit",
-        "https://open.spotify.com/artist/4NOMEI4iHMnWMuUhxH0VEJ",
+        "Aviitone",
+        "https://open.spotify.com/artist/1S4BPnkEXlh3fptVfr5JNf",
       );
       ui.label("They are licensed under CC BY-NC-SA 4.0");
     }
@@ -117,8 +117,8 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.label("Music composed by:");
       link(
         ui,
-        "Hekit",
-        "https://open.spotify.com/artist/4NOMEI4iHMnWMuUhxH0VEJ",
+        "Aviitone",
+        "https://open.spotify.com/artist/1S4BPnkEXlh3fptVfr5JNf",
       );
       ui.label("It is licensed under CC BY-NC-SA 4.0");
       ui.label("List of tracks:");
@@ -128,6 +128,7 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.label("\"Recursive Thinking\"");
       ui.label("\"Perplex Objector\"");
       ui.label("\"Wasted Opportunity\"");
+      ui.label("\"Brillfish\"");
     }
   }
 }

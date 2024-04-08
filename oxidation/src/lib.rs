@@ -439,6 +439,7 @@ pub fn search(
   while depth < settings.max_depth
     && (settings.hard_tm || settings.start.elapsed().as_millis() * 4 <= settings.max_time)
   {
+    settings.seldepth = position.ply_count();
     depth += 1;
     let (pv, score) = alpha_beta_root(state, settings, position, &moves, depth, &mut out);
     if !pv.is_empty() {
@@ -453,7 +454,7 @@ pub fn search(
       position,
       current_score,
       display_depth,
-      &settings,
+      settings,
       &best_pv,
       state.table.capacity(),
     );
@@ -495,7 +496,7 @@ pub fn bench(
     rx,
     debug,
   );
-  let moves = get_move_order(&state, &board, &[]);
+  let moves = get_move_order(state, board, &[]);
   search(state, &mut settings, board, moves, out);
   // calculate branching factor
   let log_nodes = (settings.nodes as f64).ln();

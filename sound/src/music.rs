@@ -20,7 +20,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread::{sleep, spawn};
 
 // The paths for music
-const MUSIC: [(&[u8], Option<&[u8]>); 6] = [
+const MUSIC: [(&[u8], Option<&[u8]>); 7] = [
   (
     include_bytes!("../../resources/music/Hydrangeas-for-a-Friend-Calm.ogg"),
     Some(include_bytes!(
@@ -47,6 +47,7 @@ const MUSIC: [(&[u8], Option<&[u8]>); 6] = [
     include_bytes!("../../resources/music/05 - Wasted Opportunity.ogg"),
     None,
   ),
+  (include_bytes!("../../resources/music/Brillfish.ogg"), None),
 ];
 
 // If it fails, we don't care
