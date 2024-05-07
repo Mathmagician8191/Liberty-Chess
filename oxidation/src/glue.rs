@@ -1,4 +1,4 @@
-use crate::{get_move_order, search, Output, SearchConfig, State};
+use crate::{search, Output, SearchConfig, State};
 use liberty_chess::threading::CompressedBoard;
 use std::sync::mpsc::{Receiver, Sender};
 use ulci::client::Message;
@@ -27,12 +27,12 @@ pub fn process_position(
     receive_message,
     &mut debug,
   );
-  let moves = get_move_order(state, &position, &Vec::new());
   let pv = search(
     state,
     &mut config,
     &mut position,
-    moves,
+    &[],
+    1,
     Output::Channel(tx),
   );
   tx.send(UlciResult::AnalysisStopped(pv[0])).ok()?;

@@ -9,7 +9,7 @@ use std::rc::Rc;
 pub struct CompressedBoard {
   pieces: Array2D<Piece>,
   to_move: bool,
-  castling: [bool; 4],
+  castling: u8,
   en_passant: Option<[usize; 3]>,
   halfmoves: u8,
   moves: u32,
@@ -32,8 +32,8 @@ pub struct CompressedBoard {
 
   // Additional cached values
   // Piece counts ignore kings
-  white_pieces: usize,
-  black_pieces: usize,
+  white_pieces: u32,
+  black_pieces: u32,
 
   last_move: Option<Move>,
 }
@@ -44,7 +44,6 @@ impl CompressedBoard {
   pub fn load_from_thread(self) -> Board {
     let width = self.pieces.num_columns();
     let height = self.pieces.num_rows();
-    let pawn_checkmates = Board::can_checkmate(&self.promotion_options);
 
     let mut piece_types = Vec::new();
     for piece in self.pieces.elements_row_major_iter() {
@@ -61,6 +60,20 @@ impl CompressedBoard {
       }
     }
 
+    let shared_data = SharedData::new(
+      width,
+      height,
+      &self.white_kings,
+      &self.black_kings,
+      self.pawn_moves,
+      self.pawn_row,
+      self.castle_row,
+      self.queen_column,
+      self.king_column,
+      self.promotion_options,
+      piece_types,
+    );
+
     Board {
       pieces: self.pieces,
       to_move: self.to_move,
@@ -68,11 +81,6 @@ impl CompressedBoard {
       en_passant: self.en_passant,
       halfmoves: self.halfmoves,
       moves: self.moves,
-      pawn_moves: self.pawn_moves,
-      pawn_row: self.pawn_row,
-      castle_row: self.castle_row,
-      queen_column: self.queen_column,
-      king_column: self.king_column,
       promotion_target: self.promotion_target,
       white_kings: self.white_kings,
       black_kings: self.black_kings,
@@ -80,16 +88,10 @@ impl CompressedBoard {
       duplicates: self.duplicates,
       previous: self.previous,
       hash: self.hash,
-      shared_data: Rc::new(SharedData::new(
-        width,
-        height,
-        self.promotion_options,
-        piece_types,
-      )),
+      shared_data: Rc::new(shared_data),
       friendly_fire: self.friendly_fire,
       white_pieces: self.white_pieces,
       black_pieces: self.black_pieces,
-      pawn_checkmates,
       skip_checkmate: false,
       last_move: self.last_move,
     }
@@ -108,11 +110,11 @@ impl Board {
       en_passant: self.en_passant,
       halfmoves: self.halfmoves,
       moves: self.moves,
-      pawn_moves: self.pawn_moves,
-      pawn_row: self.pawn_row,
-      castle_row: self.castle_row,
-      queen_column: self.queen_column,
-      king_column: self.king_column,
+      pawn_moves: self.shared_data.pawn_moves,
+      pawn_row: self.shared_data.pawn_row,
+      castle_row: self.shared_data.castle_row,
+      queen_column: self.shared_data.queen_column,
+      king_column: self.shared_data.king_column,
       promotion_target: self.promotion_target,
       promotion_options: self.shared_data.promotion_options.clone(),
       white_kings: self.white_kings.clone(),

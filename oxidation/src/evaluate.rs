@@ -158,7 +158,7 @@ pub fn eval_features<
     let mg_edge = parameters.mg_edge[piece_type];
     let eg_edge = parameters.eg_edge[piece_type];
     let piece_count = features.indexes[piece_type];
-    for index in 0..5 {
+    for index in 0..EDGE_PARAMETER_COUNT {
       let count = T::from(piece_count[index]);
       middlegame -= mg_edge[index] * count;
       endgame -= eg_edge[index] * count;
@@ -190,8 +190,8 @@ pub fn gradient(
   parameters: &Parameters<f64>,
 ) -> Parameters<f64> {
   // clear features that are not tuned
-  features.indexes[OBSTACLE as usize - 1] = [0, 0, 0, 0, 0];
-  features.indexes[WALL as usize - 1] = [0, 0, 0, 0, 0];
+  features.indexes[OBSTACLE as usize - 1] = [0; EDGE_PARAMETER_COUNT];
+  features.indexes[WALL as usize - 1] = [0; EDGE_PARAMETER_COUNT];
   let mg_factor = f64::from(features.material) / f64::from(ENDGAME_THRESHOLD);
   let eg_factor = 1.0 - mg_factor;
   let pieces = features.pieces.map(|x| {
@@ -299,33 +299,34 @@ pub fn extract_features(pieces: &Array2D<Piece>) -> Features {
 
 /// Returns the static evaluation of the provided position
 #[must_use]
-pub fn evaluate(state: &State, board: &Board) -> Score {
+pub fn evaluate(state: &State, board: &Board) -> i32 {
+  #[cfg(not(feature = "feature_extraction"))]
+  let score = raw(
+    board.board(),
+    board.to_move(),
+    #[cfg(not(feature = "pesto"))]
+    state.promotion_values,
+    &state.parameters,
+  );
+  #[cfg(feature = "feature_extraction")]
+  let features = extract_features(board.board());
+  #[cfg(feature = "feature_extraction")]
+  let score = eval_features(
+    &features,
+    board.to_move(),
+    state.promotion_values,
+    &state.parameters,
+  );
+  score
+}
+
+pub(crate) fn evaluate_terminal(board: &Board) -> Score {
   match board.state() {
-    #[cfg(not(feature = "feature_extraction"))]
-    Gamestate::InProgress => {
-      let score = raw(
-        board.board(),
-        board.to_move(),
-        #[cfg(not(feature = "pesto"))]
-        state.promotion_values,
-        &state.parameters,
-      );
-      Score::Centipawn(score)
-    }
-    #[cfg(feature = "feature_extraction")]
-    Gamestate::InProgress => {
-      let features = extract_features(board.board());
-      let score = eval_features(
-        &features,
-        board.to_move(),
-        state.promotion_values,
-        &state.parameters,
-      );
-      Score::Centipawn(score)
-    }
-    Gamestate::Material | Gamestate::FiftyMove | Gamestate::Repetition | Gamestate::Stalemate => {
-      DRAW_SCORE
-    }
+    Gamestate::InProgress
+    | Gamestate::Material
+    | Gamestate::FiftyMove
+    | Gamestate::Repetition
+    | Gamestate::Stalemate => DRAW_SCORE,
     Gamestate::Checkmate(_) | Gamestate::Elimination(_) => Score::Loss(board.moves()),
   }
 }

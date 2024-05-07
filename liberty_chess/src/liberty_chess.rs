@@ -105,7 +105,15 @@ pub enum Gamestate {
 
 struct SharedData {
   keys: Zobrist,
+  castling_masks: Array2D<u8>,
+  pawn_moves: usize,
+  pawn_row: usize,
+  castle_row: usize,
+  queen_column: usize,
+  king_column: usize,
   promotion_options: Vec<Piece>,
+  // Whether pawns promote to a piece that can checkmate
+  pawn_checkmates: bool,
   // are there pieces which attack in this direction
   horizontal: bool,
   diagonal: bool,
@@ -122,12 +130,43 @@ impl SharedData {
   fn new(
     width: usize,
     height: usize,
+    white_kings: &[(usize, usize)],
+    black_kings: &[(usize, usize)],
+    pawn_moves: usize,
+    pawn_row: usize,
+    castle_row: usize,
+    queen_column: usize,
+    king_column: usize,
     promotion_options: Vec<Piece>,
     piece_types: Vec<Piece>,
   ) -> Self {
+    let pawn_checkmates = Board::can_checkmate(&promotion_options);
+    let mut castling_masks = Array2D::filled_with(15, height, width);
+    castling_masks[(castle_row, queen_column)] = 13;
+    castling_masks[(castle_row, king_column)] = 14;
+    let black_castle_row = height - 1 - castle_row;
+    castling_masks[(black_castle_row, queen_column)] = 7;
+    castling_masks[(black_castle_row, king_column)] = 11;
+    for (row, column) in white_kings {
+      if *row == castle_row {
+        castling_masks[(*row, *column)] = 12;
+      }
+    }
+    for (row, column) in black_kings {
+      if *row == black_castle_row {
+        castling_masks[(*row, *column)] = 3;
+      }
+    }
     Self {
       keys: Zobrist::new(width, height),
+      castling_masks,
+      pawn_moves,
+      pawn_row,
+      castle_row,
+      queen_column,
+      king_column,
       promotion_options,
+      pawn_checkmates,
       horizontal: piece_types.iter().any(|p| {
         [
           ROOK, QUEEN, KING, CHANCELLOR, MANN, CHAMPION, CENTAUR, AMAZON, ELEPHANT,
@@ -162,15 +201,10 @@ impl SharedData {
 pub struct Board {
   pieces: Array2D<Piece>,
   to_move: bool,
-  castling: [bool; 4],
+  castling: u8,
   en_passant: Option<[usize; 3]>,
   halfmoves: u8,
   moves: u32,
-  pawn_moves: usize,
-  pawn_row: usize,
-  castle_row: usize,
-  queen_column: usize,
-  king_column: usize,
   promotion_target: Option<(usize, usize)>,
   white_kings: Vec<(usize, usize)>,
   black_kings: Vec<(usize, usize)>,
@@ -185,11 +219,9 @@ pub struct Board {
 
   // Additional cached values
   // Piece counts ignore kings
-  white_pieces: usize,
-  black_pieces: usize,
+  white_pieces: u32,
+  black_pieces: u32,
 
-  // Whether pawns promote to a piece that can checkmate
-  pawn_checkmates: bool,
   /// Skip testing for checkmate/stalemate except for 50-move rule precedence
   pub skip_checkmate: bool,
 
@@ -226,16 +258,16 @@ impl Board {
 
     let to_move = fields.len() == 1 || fields[1] == "w";
 
-    let mut castling = [false; 4];
+    let mut castling = 0;
     if fields.len() > 2 {
       for c in fields[2].chars() {
-        match c {
-          'K' => castling[0] = true,
-          'Q' => castling[1] = true,
-          'k' => castling[2] = true,
-          'q' => castling[3] = true,
-          _ => (),
-        }
+        castling |= match c {
+          'K' => 1,
+          'Q' => 2,
+          'k' => 4,
+          'q' => 8,
+          _ => 0,
+        };
       }
     }
 
@@ -293,8 +325,6 @@ impl Board {
       }
     }
 
-    let pawn_checkmates = Self::can_checkmate(&promotion_options);
-
     let friendly_fire = fields.len() > 8 && fields[8] == "ff";
 
     let mut piece_types = Vec::new();
@@ -312,6 +342,20 @@ impl Board {
       }
     }
 
+    let shared_data = SharedData::new(
+      width,
+      height,
+      &white_kings,
+      &black_kings,
+      pawn_moves,
+      pawn_row,
+      castle_row,
+      queen_column,
+      king_column,
+      promotion_options,
+      piece_types,
+    );
+
     let mut board = Self {
       pieces,
       to_move,
@@ -319,11 +363,6 @@ impl Board {
       en_passant,
       halfmoves,
       moves,
-      pawn_moves,
-      pawn_row,
-      castle_row,
-      queen_column,
-      king_column,
       promotion_target: None,
       white_kings,
       black_kings,
@@ -331,17 +370,11 @@ impl Board {
       duplicates: Vec::new(),
       previous: Vec::new(),
       hash: 0,
-      shared_data: Rc::new(SharedData::new(
-        width,
-        height,
-        promotion_options,
-        piece_types,
-      )),
+      shared_data: Rc::new(shared_data),
       friendly_fire,
       white_pieces,
       black_pieces,
 
-      pawn_checkmates,
       skip_checkmate: false,
 
       last_move: None,
@@ -351,6 +384,29 @@ impl Board {
     board.update();
 
     Ok(board)
+  }
+
+  /// Reuses the allocations of self to more efficiently get a copy of other
+  pub fn clone_from(&mut self, other: &Self) {
+    self.pieces.clone_from(&other.pieces);
+    self.to_move = other.to_move;
+    self.castling = other.castling;
+    self.en_passant = other.en_passant;
+    self.halfmoves = other.halfmoves;
+    self.moves = other.moves;
+    self.promotion_target = other.promotion_target;
+    self.white_kings.clone_from(&other.white_kings);
+    self.black_kings.clone_from(&other.black_kings);
+    self.state = other.state;
+    self.duplicates.clone_from(&other.duplicates);
+    self.previous.clone_from(&other.previous);
+    self.hash = other.hash;
+    self.shared_data = other.shared_data.clone();
+    self.friendly_fire = other.friendly_fire;
+    self.white_pieces = other.white_pieces;
+    self.black_pieces = other.black_pieces;
+    self.skip_checkmate = other.skip_checkmate;
+    self.last_move = other.last_move;
   }
 
   /// Returns the piece at the given coordinates.
@@ -409,12 +465,6 @@ impl Board {
     self.moves
   }
 
-  /// Ply count since start of game
-  #[must_use]
-  pub fn ply_count(&self) -> u32 {
-    self.moves * 2 + u32::from(!self.to_move)
-  }
-
   /// Get the hash of the current position
   #[must_use]
   pub const fn hash(&self) -> Hash {
@@ -423,7 +473,7 @@ impl Board {
 
   /// Returns the number of non-king pieces on the board
   #[must_use]
-  pub const fn pieces(&self) -> (usize, usize) {
+  pub const fn pieces(&self) -> (u32, u32) {
     (self.white_pieces, self.black_pieces)
   }
 
@@ -471,14 +521,16 @@ impl Board {
 
   /// Whether pawn move settings have been changed from their normal chess defaults
   #[must_use]
-  pub const fn pawn_moves_changed(&self) -> bool {
-    self.pawn_row != 2 || self.pawn_moves != 2
+  pub fn pawn_moves_changed(&self) -> bool {
+    self.shared_data.pawn_row != 2 || self.shared_data.pawn_moves != 2
   }
 
   /// Whether castling settings have been changed from their normal chess defaults
   #[must_use]
-  pub const fn non_default_castling(&self) -> bool {
-    self.castle_row != 0 || self.king_column != 7 || self.queen_column != 0
+  pub fn non_default_castling(&self) -> bool {
+    self.shared_data.castle_row != 0
+      || self.shared_data.king_column != 7
+      || self.shared_data.queen_column != 0
   }
 
   /// Whether there are multiple or 0 kings
@@ -588,11 +640,14 @@ impl Board {
             0 => {
               destination == 0
                 && (rows == 1
-                  || (rows <= self.pawn_moves && {
+                  || (rows <= self.shared_data.pawn_moves && {
                     let (valid, iter) = if piece > 0 {
-                      (start.0 < self.pawn_row, start.0 + 1..end.0)
+                      (start.0 < self.shared_data.pawn_row, start.0 + 1..end.0)
                     } else {
-                      (self.height() - start.0 <= self.pawn_row, end.0 + 1..start.0)
+                      (
+                        self.height() - start.0 <= self.shared_data.pawn_row,
+                        end.0 + 1..start.0,
+                      )
                     };
                     valid && {
                       let mut valid = true;
@@ -628,12 +683,12 @@ impl Board {
               let offset = Self::castle_offset(self.to_move);
               let (iter, offset) = if start.1 > end.1 {
                 // Queenside Castling
-                (self.queen_column + 1..start.1, offset + 1)
+                (self.shared_data.queen_column + 1..start.1, offset + 1)
               } else {
                 //Kingside Castling
-                (start.1 + 1..self.king_column, offset)
+                (start.1 + 1..self.shared_data.king_column, offset)
               };
-              let mut valid = self.castling[offset]
+              let mut valid = self.castling & (1 << offset) != 0
                 && !self.is_attacked((start.0, ((start.1 + end.1) / 2)), !self.to_move);
               if valid {
                 for i in iter {
@@ -755,19 +810,10 @@ impl Board {
           self.en_passant = None;
         }
         if start.0 == self.castle_row(!self.to_move) {
-          let offset = Self::castle_offset(!self.to_move);
-          if self.castling[offset] {
-            self.castling[offset] = false;
-            self.hash ^= keys.castling[offset];
-          }
-          if self.castling[offset + 1] {
-            self.castling[offset + 1] = false;
-            self.hash ^= keys.castling[offset + 1];
-          }
           match start.1 {
             _ if start.1 == end.1 + 2 => {
               // queenside castling
-              let rook = (start.0, self.queen_column);
+              let rook = (start.0, self.shared_data.queen_column);
               let end = (start.0, start.1 - 1);
               let rook_type = self.pieces[rook];
               keys.update_hash(&mut self.hash, rook_type, rook);
@@ -777,7 +823,7 @@ impl Board {
             }
             _ if start.1 + 2 == end.1 => {
               // kingside castling
-              let rook = (start.0, self.king_column);
+              let rook = (start.0, self.shared_data.king_column);
               let end = (start.0, start.1 + 1);
               let rook_type = self.pieces[rook];
               keys.update_hash(&mut self.hash, rook_type, rook);
@@ -813,18 +859,6 @@ impl Board {
         }
       }
     }
-    if start.0 == self.castle_row(!self.to_move) {
-      let offset = Self::castle_offset(!self.to_move);
-      if start.1 == self.queen_column {
-        if self.castling[offset + 1] {
-          self.castling[offset + 1] = false;
-          self.hash ^= keys.castling[offset + 1];
-        }
-      } else if start.1 == self.king_column && self.castling[offset] {
-        self.castling[offset] = false;
-        self.hash ^= keys.castling[offset];
-      }
-    }
     let capture = self.pieces[end];
     if capture != SQUARE {
       keys.update_hash(&mut self.hash, capture, end);
@@ -836,21 +870,13 @@ impl Board {
       self.halfmoves = 0;
       self.previous.clear();
       self.duplicates.clear();
-      if end.0 == self.castle_row(self.to_move) {
-        let offset = Self::castle_offset(self.to_move);
-        if end.1 == self.queen_column {
-          if self.castling[offset + 1] {
-            self.castling[offset + 1] = false;
-            self.hash ^= keys.castling[offset + 1];
-          }
-        } else if end.1 == self.king_column && self.castling[offset] {
-          self.castling[offset] = false;
-          self.hash ^= keys.castling[offset];
-        }
-      }
     }
     self.pieces[end] = piece;
     self.pieces[start] = SQUARE;
+    self.hash ^= keys.castling[usize::from(self.castling)];
+    self.castling &= self.shared_data.castling_masks[start];
+    self.castling &= self.shared_data.castling_masks[end];
+    self.hash ^= keys.castling[usize::from(self.castling)];
     // Debugging options, enable validation checks that are slower
     #[cfg(feature = "validate")]
     {
@@ -885,6 +911,20 @@ impl Board {
     }
 
     Some(board)
+  }
+
+  /// Returns a `Board` if the move is legal, and `None` otherwise.
+  /// Assumes the move is psuedo-legal.
+  /// Update the board afterwards if there is a result.
+  #[must_use]
+  pub fn play_pseudolegal(&mut self, start: (usize, usize), end: (usize, usize)) -> bool {
+    self.make_move(start, end);
+    for king in self.kings(!self.to_move) {
+      if self.is_attacked((king.0, king.1), self.to_move) {
+        return false;
+      }
+    }
+    true
   }
 
   /// Apply a promotion, if valid in the position.
@@ -1165,9 +1205,9 @@ impl Board {
 
   fn castle_row(&self, side: bool) -> usize {
     if side {
-      self.castle_row
+      self.shared_data.castle_row
     } else {
-      self.height() - self.castle_row - 1
+      self.height() - self.shared_data.castle_row - 1
     }
   }
 
@@ -1233,11 +1273,7 @@ impl Board {
       result ^= keys.to_move;
     }
 
-    for i in 0..4 {
-      if self.castling[i] {
-        result ^= keys.castling[i];
-      }
-    }
+    result ^= keys.castling[usize::from(self.castling)];
 
     if let Some(en_passant) = self.en_passant {
       keys.update_en_passant(&mut result, en_passant);
@@ -1316,12 +1352,11 @@ impl Board {
     for i in 0..self.height() {
       for j in 0..self.width() {
         let piece = self.pieces[(i, j)];
-        let even = (i + j) % 2 == 0;
         match piece.abs() {
           ROOK | QUEEN | ARCHBISHOP | CHANCELLOR | MANN | CHAMPION | CENTAUR | AMAZON
           | ELEPHANT => return true,
           PAWN => {
-            if self.pawn_checkmates || flexible_piece || even_piece || odd_piece {
+            if self.shared_data.pawn_checkmates || flexible_piece || even_piece || odd_piece {
               return true;
             }
             flexible_piece = true;
@@ -1333,6 +1368,7 @@ impl Board {
             flexible_piece = true;
           }
           BISHOP | CAMEL => {
+            let even = (i + j) % 2 == 0;
             if even {
               if flexible_piece || odd_piece {
                 return true;
@@ -1415,14 +1451,32 @@ impl Board {
     dy: isize,
   ) -> i32 {
     let mut length = 0;
+    let (offset, enemy_pawn) = if colour {
+      (1, Some(&-PAWN))
+    } else {
+      (-1, Some(&PAWN))
+    };
     loop {
       row += dx;
       column += dy;
-      match pieces.get(row as usize, column as usize) {
-        Some(&SQUARE) => length += 1,
+      let column = column as usize;
+      match pieces.get(row as usize, column) {
+        Some(&SQUARE) => {
+          let row = (row + offset) as usize;
+          if pieces.get(row, column.saturating_sub(1)) != enemy_pawn
+            && pieces.get(row, column + 1) != enemy_pawn
+          {
+            length += 1;
+          }
+        }
         Some(piece) => {
           if colour != (*piece > 0) {
-            length += 1;
+            let row = (row + offset) as usize;
+            if pieces.get(row, column.saturating_sub(1)) != enemy_pawn
+              && pieces.get(row, column + 1) != enemy_pawn
+            {
+              length += 1;
+            }
           }
           break;
         }

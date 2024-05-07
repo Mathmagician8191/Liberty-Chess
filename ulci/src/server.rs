@@ -65,6 +65,7 @@ impl Default for AnalysisResult {
       nodes: 1,
       time: 0,
       wdl: None,
+      pv_line: 1,
     }
   }
 }
@@ -73,10 +74,8 @@ impl Default for AnalysisResult {
 pub enum InfoType {
   /// A string message
   String,
-  /// The client has detected an error
-  ClientError,
-  /// The client claims the server has made an error
-  ServerError,
+  /// The client is reporting an error
+  Error,
 }
 
 /// Start up a ULCI server

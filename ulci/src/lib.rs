@@ -372,6 +372,8 @@ pub struct AnalysisResult {
   pub time: u128,
   /// WDL
   pub wdl: Option<WDL>,
+  /// Multi-PV line
+  pub pv_line: u16,
 }
 
 #[must_use]
@@ -395,26 +397,13 @@ fn process_info(mut words: SplitWhitespace) -> Vec<UlciResult> {
   while let Some(word) = words.next() {
     match word {
       "string" => {
-        if let Some(word) = words.next() {
-          match word {
-            "clienterror" => {
-              results.push(UlciResult::Info(
-                InfoType::ClientError,
-                convert_words(words),
-              ));
-            }
-            "servererror" => {
-              results.push(UlciResult::Info(
-                InfoType::ServerError,
-                convert_words(words),
-              ));
-            }
-            _ => {
-              let result = word.to_owned() + " " + &convert_words(words);
-              results.push(UlciResult::Info(InfoType::String, result));
-            }
-          }
-        }
+        let result = convert_words(words);
+        results.push(UlciResult::Info(InfoType::String, result));
+        return results;
+      }
+      "error" => {
+        let result = convert_words(words);
+        results.push(UlciResult::Info(InfoType::Error, result));
         return results;
       }
       "depth" => {

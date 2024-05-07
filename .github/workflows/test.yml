@@ -24,3 +24,9 @@ jobs:
       run: cargo install cargo-all-features
     - name: Run Tests
       run: cargo test-all-features
+  perft:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Perft
+      run: cargo run --release --bin perft

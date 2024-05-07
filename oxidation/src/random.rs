@@ -28,12 +28,10 @@ fn main() {
   let input = BufReader::new(stdin());
   let output = stdout();
   let mut position = get_startpos();
-  let mut debug = false;
   let mut selected_move = None;
   spawn(move || startup(&tx, &info, input, output, true));
   while let Ok(message) = rx.recv() {
     match message {
-      Message::SetDebug(new_debug) => debug = new_debug,
       Message::UpdatePosition(board) => position = board.load_from_thread(),
       Message::Go(settings) => {
         let moves = position.generate_legal();
@@ -62,15 +60,15 @@ fn main() {
               chosen_move.to_string()
             ),
           }
-        } else if debug {
+        } else {
           if settings.moves.is_empty() {
             println!(
-              "info string servererror no legal moves from position {}",
+              "info error no legal moves from position {}",
               position.to_string()
             );
           } else {
             println!(
-              "info string servererror all search moves are illegal in position {}",
+              "info error all search moves are illegal in position {}",
               position.to_string()
             );
           }
@@ -81,12 +79,13 @@ fn main() {
         if let Some(chosen_move) = selected_move {
           println!("bestmove {}", chosen_move.to_string());
           selected_move = None;
-        } else if debug {
-          println!("info string servererror not currently searching");
+        } else {
+          println!("info error not currently searching");
         }
       }
       Message::Perft(depth) => divide(&position, depth),
-      Message::UpdateOption(..)
+      Message::SetDebug(_)
+      | Message::UpdateOption(..)
       | Message::Eval
       | Message::Bench(_)
       | Message::NewGame

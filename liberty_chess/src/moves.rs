@@ -207,4 +207,26 @@ impl Board {
       None
     }
   }
+
+  /// Plays a move on a board and returns whether or not the move is legal
+  #[must_use]
+  pub fn make_pseudolegal_move(&mut self, mv: Move) -> bool {
+    let start = mv.start();
+    let end = mv.end();
+    if self.play_pseudolegal(start, end) {
+      match (self.promotion_available(), mv.promotion()) {
+        (true, Some(piece)) => {
+          self.promote(piece);
+          true
+        }
+        (false, None) => {
+          self.update();
+          true
+        }
+        (true, None) | (false, Some(_)) => false,
+      }
+    } else {
+      false
+    }
+  }
 }

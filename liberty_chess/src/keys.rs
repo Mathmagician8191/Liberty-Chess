@@ -14,7 +14,7 @@ pub struct Zobrist {
   pub pieces: Array2D<[Hash; 18]>,
   en_passant: Array2D<Hash>,
   pub to_move: Hash,
-  pub castling: [Hash; 4],
+  pub castling: [Hash; 16],
 }
 
 impl Zobrist {
@@ -26,7 +26,7 @@ impl Zobrist {
       pieces: Array2D::filled_with([0; 18], height, width),
       en_passant: Array2D::filled_with(0, height, width),
       to_move: rng.gen(),
-      castling: [0; 4],
+      castling: [0; 16],
     };
 
     rng.fill(&mut keys.castling);
@@ -78,13 +78,14 @@ impl ExtraFlags {
   /// Extract the flags from a board
   #[must_use]
   pub fn new(board: &Board) -> Self {
+    let shared_data = &board.shared_data;
     Self {
-      promotion_options: board.shared_data.promotion_options.clone(),
-      pawn_moves: board.pawn_moves,
-      pawn_row: board.pawn_row,
-      castle_row: board.castle_row,
-      queen_column: board.queen_column,
-      king_column: board.king_column,
+      promotion_options: shared_data.promotion_options.clone(),
+      pawn_moves: shared_data.pawn_moves,
+      pawn_row: shared_data.pawn_row,
+      castle_row: shared_data.castle_row,
+      queen_column: shared_data.queen_column,
+      king_column: shared_data.king_column,
       friendly_fire: board.friendly_fire,
     }
   }

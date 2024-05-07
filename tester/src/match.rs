@@ -3,7 +3,7 @@ use liberty_chess::moves::Move;
 use liberty_chess::threading::CompressedBoard;
 use liberty_chess::{Board, Gamestate};
 use oxidation::parameters::DEFAULT_PARAMETERS;
-use oxidation::search::quiescence;
+use oxidation::search::{quiescence, SEARCH_PARAMETERS};
 use oxidation::{SearchConfig, State, QDEPTH};
 use rand::{thread_rng, Rng};
 use std::collections::{HashMap, HashSet};
@@ -169,7 +169,7 @@ fn play_game(
   let mut current_board = board.clone();
   let mut champ_tc = CHAMP_TIME;
   let mut challenge_tc = CHALLENGE_TIME;
-  let state = State::new(0, &board, DEFAULT_PARAMETERS);
+  let mut state = State::new(0, &board, SEARCH_PARAMETERS, DEFAULT_PARAMETERS);
   let mut debug = false;
   let mut qdepth = QDEPTH;
   let (_tx, rx_2) = channel();
@@ -219,15 +219,20 @@ fn play_game(
         &mut champ_tc,
       );
     }
-    if current_board.state() == Gamestate::InProgress {
+    if current_board.state() == Gamestate::InProgress
+      && current_board.halfmoves() < 30
+      && !current_board.in_check()
+    {
+      state.set_first_stack_entry(&current_board);
       let (pv, _) = quiescence(
-        &state,
+        &mut state,
         &mut settings,
-        &current_board,
+        1,
         QDEPTH,
         Score::Loss(0),
         Score::Win(0),
-      );
+      )
+      .unwrap_or((Vec::new(), Score::Centipawn(0)));
       if pv.is_empty() {
         positions.insert(current_board.to_string());
       }

@@ -586,6 +586,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.selectable_value(&mut gui.alternate_player, None, "Local Opponent");
       let values = [
         PlayerType::RandomEngine,
+        PlayerType::MVVLVA,
         PlayerType::built_in(),
         PlayerType::External(String::new()),
         PlayerType::Multiplayer(
@@ -750,7 +751,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
           raw_text_edit(ui, size * 6.0, name);
         });
       }
-      PlayerType::RandomEngine => (),
+      PlayerType::RandomEngine | PlayerType::MVVLVA => (),
     }
   }
 }

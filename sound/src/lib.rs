@@ -2,9 +2,9 @@
 #![warn(missing_docs, unused)]
 //! An engine to handle playing sounds for Liberty Chess
 
+#[cfg(feature = "multithreading")]
 extern crate alloc;
 
-use alloc::string::String;
 use kira::manager::backend::cpal::{CpalBackend, Error};
 use kira::manager::{AudioManager, AudioManagerSettings};
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle, StaticSoundSettings};

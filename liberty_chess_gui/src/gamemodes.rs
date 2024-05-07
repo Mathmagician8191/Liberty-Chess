@@ -103,8 +103,8 @@ impl Default for RandomConfig {
     Self {
       pieces: "qrbn".to_owned(),
       spawn_king: true,
-      width: NumericalInput::<usize>::new(8, 2, usize::MAX),
-      height: NumericalInput::<usize>::new(8, 4, usize::MAX),
+      width: NumericalInput::<usize>::new(8, 2, 256),
+      height: NumericalInput::<usize>::new(8, 4, 256),
     }
   }
 }

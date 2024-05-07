@@ -9,7 +9,8 @@ use liberty_chess::threading::CompressedBoard;
 use liberty_chess::{Board, Gamestate, ALL_PIECES};
 use oxidation::glue::process_position;
 use oxidation::parameters::DEFAULT_PARAMETERS;
-use oxidation::{random_move, State, HASH_SIZE, QDEPTH, VERSION_NUMBER};
+use oxidation::search::SEARCH_PARAMETERS;
+use oxidation::{mvvlva_move, random_move, State, HASH_SIZE, MAX_QDEPTH, QDEPTH, VERSION_NUMBER};
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 use std::io::{BufReader, ErrorKind, Write};
@@ -182,6 +183,7 @@ pub struct Limits {
 #[derive(Clone, Eq, PartialEq)]
 pub enum PlayerType {
   RandomEngine,
+  MVVLVA,
   // parameters are qdepth and hash size
   BuiltIn(NumericalInput<u16>, NumericalInput<usize>),
   External(String),
@@ -192,6 +194,7 @@ impl ToString for PlayerType {
   fn to_string(&self) -> String {
     match self {
       Self::RandomEngine => "Random Mover".to_owned(),
+      Self::MVVLVA => "MVVLVA".to_owned(),
       Self::BuiltIn(..) => format!("Oxidation v{VERSION_NUMBER}"),
       Self::External(_) => "External engine (beta)".to_owned(),
       Self::Multiplayer(..) => "Connect to server (beta)".to_owned(),
@@ -202,7 +205,7 @@ impl ToString for PlayerType {
 impl PlayerType {
   pub fn built_in() -> Self {
     Self::BuiltIn(
-      NumericalInput::new(u16::from(QDEPTH), 0, 100),
+      NumericalInput::new(u16::from(QDEPTH), 0, MAX_QDEPTH),
       NumericalInput::new(HASH_SIZE, 0, 1 << 32),
     )
   }
@@ -210,14 +213,14 @@ impl PlayerType {
   #[cfg(feature = "clock")]
   pub const fn is_thinking(&self) -> bool {
     match self {
-      Self::RandomEngine => false,
+      Self::RandomEngine | Self::MVVLVA => false,
       Self::BuiltIn(..) | Self::External(_) | Self::Multiplayer(..) => true,
     }
   }
 
   pub const fn custom_thinking_time(&self) -> bool {
     match self {
-      Self::RandomEngine | Self::Multiplayer(..) => false,
+      Self::RandomEngine | Self::MVVLVA | Self::Multiplayer(..) => false,
       Self::BuiltIn(..) | Self::External(_) => true,
     }
   }
@@ -253,6 +256,7 @@ impl PlayerColour {
 
 pub enum PlayerData {
   RandomEngine,
+  MVVLVA,
   BuiltIn(EngineInterface),
   Uci(UciInterface),
   Multiplayer(Connection),
@@ -262,6 +266,7 @@ impl PlayerData {
   pub fn new(player: &PlayerType, board: &Board, ctx: &Context) -> Result<Self, String> {
     match player {
       PlayerType::RandomEngine => Ok(Self::RandomEngine),
+      PlayerType::MVVLVA => Ok(Self::MVVLVA),
       PlayerType::BuiltIn(qdepth, hash_size) => {
         let (send_request, recieve_request) = channel();
         let (send_result, recieve_result) = channel();
@@ -270,7 +275,12 @@ impl PlayerData {
         let (send_message, receive_message) = channel();
         let ctx = ctx.clone();
         spawn(move || {
-          let mut state = State::new(hash_size, &get_startpos(), DEFAULT_PARAMETERS);
+          let mut state = State::new(
+            hash_size,
+            &get_startpos(),
+            SEARCH_PARAMETERS,
+            DEFAULT_PARAMETERS,
+          );
           while let Ok((board, searchtime)) = recieve_request.recv() {
             process_position(
               &send_result,
@@ -351,6 +361,7 @@ impl PlayerData {
   ) -> (Option<Move>, Option<(Score, u16)>) {
     match self {
       Self::RandomEngine => (random_move(board), None),
+      Self::MVVLVA => (mvvlva_move(board), None),
       Self::BuiltIn(interface) => interface.get_move(board, searchtime),
       Self::Uci(interface) => interface.get_move(board, searchtime),
       Self::Multiplayer(_) => (None, None),
@@ -361,7 +372,7 @@ impl PlayerData {
     match self {
       Self::BuiltIn(interface) => interface.cancel_move(),
       Self::Uci(interface) => interface.cancel_move(),
-      Self::RandomEngine | Self::Multiplayer(_) => (),
+      Self::RandomEngine | Self::MVVLVA | Self::Multiplayer(_) => (),
     }
   }
 }
@@ -586,12 +597,12 @@ pub struct Connection {
 }
 
 impl Connection {
-  pub fn play_move(&self, r#move: Move) {
+  pub fn play_move(&self, mv: Move) {
     self
       .output
       .as_ref()
       .expect("Connection is missing a stream")
-      .write_all(format!("bestmove {}\n", r#move.to_string()).as_bytes())
+      .write_all(format!("bestmove {}\n", mv.to_string()).as_bytes())
       .ok();
   }
 }

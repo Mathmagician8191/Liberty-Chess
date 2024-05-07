@@ -100,18 +100,14 @@ fn process_debug(
       client.send(Message::SetDebug(false)).ok()
     }
     Some(value) => {
-      if *debug {
-        write(
-          out,
-          &format!("info string servererror Unrecognised debug setting {value}"),
-        )?;
-      }
+      write(
+        out,
+        &format!("info error Unrecognised debug setting {value}"),
+      )?;
       Some(())
     }
     None => {
-      if *debug {
-        write(out, "info string servererror Missing debug setting")?;
-      }
+      write(out, "info error Missing debug setting")?;
       Some(())
     }
   }
@@ -121,10 +117,8 @@ fn setoption(
   out: &mut impl Write,
   client: &Sender<Message>,
   mut words: SplitWhitespace,
-  debug: bool,
   info: &ClientInfo,
 ) -> Option<()> {
-  let mut malformed = true;
   if Some("name") == words.next() {
     let mut name_words = Vec::new();
     let mut value_words = Vec::new();
@@ -160,12 +154,7 @@ fn setoption(
               .ok()?;
           }
           Err(_) => {
-            if debug {
-              write(
-                out,
-                &format!("info string servererror {value} is not an integer"),
-              )?;
-            }
+            write(out, &format!("info error {value} is not an integer"))?;
           }
         },
         UlciOption::Bool(_) => match value.parse() {
@@ -175,12 +164,7 @@ fn setoption(
               .ok()?;
           }
           Err(_) => {
-            if debug {
-              write(
-                out,
-                &format!("info string servererror {value} is not a boolean"),
-              )?;
-            }
+            write(out, &format!("info error {value} is not a boolean"))?;
           }
         },
         UlciOption::Range(option) => {
@@ -188,10 +172,10 @@ fn setoption(
             client
               .send(Message::UpdateOption(name, OptionValue::UpdateRange(value)))
               .ok()?;
-          } else if debug {
+          } else {
             write(
               out,
-              &format!("info string servererror option {name} has no value {value}"),
+              &format!("info error option {name} has no value {value}"),
             )?;
           }
         }
@@ -201,17 +185,11 @@ fn setoption(
             .ok()?;
         }
       }
-      malformed = false;
-    } else if debug {
-      write(
-        out,
-        &format!("info string servererror unrecognised option {name}"),
-      )?;
-      malformed = false;
+    } else {
+      write(out, &format!("info error unrecognised option {name}"))?;
     }
-  }
-  if malformed && debug {
-    write(out, "info string servererror malformed setoption command")?;
+  } else {
+    write(out, "info error malformed setoption command")?;
   }
   Some(())
 }
@@ -239,18 +217,13 @@ fn position(
       if let Ok(board) = Board::new(&fen) {
         board
       } else {
-        write(
-          out,
-          &format!("info string servererror invalid position {fen}"),
-        )?;
+        write(out, &format!("info error invalid position {fen}"))?;
         // Fatal error, quit the program
         return None;
       }
     }
     Some(_) | None => {
-      if debug {
-        write(out, "info string servererror malformed position command")?;
-      }
+      write(out, "info error malformed position command")?;
       return Some(());
     }
   };
@@ -263,7 +236,7 @@ fn position(
           write(
             out,
             &format!(
-              "info string servererror illegal move {} from {}",
+              "info error illegal move {} from {}",
               candidate_move.to_string(),
               board.to_string()
             ),
@@ -272,7 +245,7 @@ fn position(
           return None;
         }
       } else {
-        write(out, &format!("info string servererror invalid move {word}"))?;
+        write(out, &format!("info error invalid move {word}"))?;
         // Fatal error, quit the program
         return None;
       }
@@ -289,12 +262,7 @@ fn position(
     .ok()
 }
 
-fn go(
-  out: &mut impl Write,
-  client: &Sender<Message>,
-  mut words: SplitWhitespace,
-  debug: bool,
-) -> Option<()> {
+fn go(out: &mut impl Write, client: &Sender<Message>, mut words: SplitWhitespace) -> Option<()> {
   let mut time = SearchTime::Infinite;
   while let Some(word) = words.next() {
     match word {
@@ -309,16 +277,16 @@ fn go(
           };
           limits.depth = depth as u8;
           time = SearchTime::Other(limits);
-        } else if debug {
-          write(out, "info string servererror no depth specified")?;
+        } else {
+          write(out, "info error no depth specified")?;
         }
       }
       "mate" => {
         if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
           let moves = u32::from(u8::MAX).min(value);
           time = SearchTime::Mate(moves);
-        } else if debug {
-          write(out, "info string servererror no move count specified")?;
+        } else {
+          write(out, "info error no move count specified")?;
         }
       }
       "nodes" => {
@@ -330,8 +298,8 @@ fn go(
           };
           limits.nodes = value;
           time = SearchTime::Other(limits);
-        } else if debug {
-          write(out, "info string servererror no node count specified")?;
+        } else {
+          write(out, "info error no node count specified")?;
         }
       }
       "movetime" => {
@@ -343,8 +311,8 @@ fn go(
           };
           limits.time = value;
           time = SearchTime::Other(limits);
-        } else if debug {
-          write(out, "info string servererror no time specified")?;
+        } else {
+          write(out, "info error no time specified")?;
         }
       }
       "wtime" => {
@@ -354,8 +322,8 @@ fn go(
           } else {
             time = SearchTime::Asymmetric(value, 0, 1000, 0);
           }
-        } else if debug {
-          write(out, "info string servererror no time specified")?;
+        } else {
+          write(out, "info error no time specified")?;
         }
       }
       "btime" => {
@@ -365,8 +333,8 @@ fn go(
           } else {
             time = SearchTime::Asymmetric(1000, 0, value, 0);
           }
-        } else if debug {
-          write(out, "info string servererror no time specified")?;
+        } else {
+          write(out, "info error no time specified")?;
         }
       }
       "winc" => {
@@ -376,8 +344,8 @@ fn go(
           } else {
             time = SearchTime::Asymmetric(1000, value, 1000, 0);
           }
-        } else if debug {
-          write(out, "info string servererror no time specified")?;
+        } else {
+          write(out, "info error no time specified")?;
         }
       }
       "binc" => {
@@ -387,24 +355,22 @@ fn go(
           } else {
             time = SearchTime::Asymmetric(1000, 0, 1000, value);
           }
-        } else if debug {
-          write(out, "info string servererror no time specified")?;
+        } else {
+          write(out, "info error no time specified")?;
         }
       }
       "searchmoves" => break,
       _ => {
-        if debug {
-          write(out, "info string servererror unknown go parameter")?;
-        }
+        write(out, "info error unknown go parameter")?;
       }
     }
   }
   let mut moves = Vec::new();
   for word in words {
-    if let Ok(r#move) = word.parse() {
-      moves.push(r#move);
+    if let Ok(mv) = word.parse() {
+      moves.push(mv);
     } else {
-      write(out, "info string servererror invalid move specified")?;
+      write(out, "info error invalid move specified")?;
       // Fatal error, quit the program
       return None;
     }
@@ -414,12 +380,7 @@ fn go(
     .ok()
 }
 
-fn clock(
-  out: &mut impl Write,
-  client: &Sender<Message>,
-  mut words: SplitWhitespace,
-  debug: bool,
-) -> Option<()> {
+fn clock(out: &mut impl Write, client: &Sender<Message>, mut words: SplitWhitespace) -> Option<()> {
   let mut time = SearchTime::Infinite;
   while let Some(word) = words.next() {
     match word {
@@ -430,8 +391,8 @@ fn clock(
           } else {
             time = SearchTime::Asymmetric(value, 0, 1000, 0);
           }
-        } else if debug {
-          write(out, "info string servererror no time specified")?;
+        } else {
+          write(out, "info error no time specified")?;
         }
       }
       "btime" => {
@@ -441,8 +402,8 @@ fn clock(
           } else {
             time = SearchTime::Asymmetric(1000, 0, value, 0);
           }
-        } else if debug {
-          write(out, "info string servererror no time specified")?;
+        } else {
+          write(out, "info error no time specified")?;
         }
       }
       "winc" => {
@@ -452,8 +413,8 @@ fn clock(
           } else {
             time = SearchTime::Asymmetric(1000, value, 1000, 0);
           }
-        } else if debug {
-          write(out, "info string servererror no time specified")?;
+        } else {
+          write(out, "info error no time specified")?;
         }
       }
       "binc" => {
@@ -463,14 +424,12 @@ fn clock(
           } else {
             time = SearchTime::Asymmetric(1000, 0, 1000, value);
           }
-        } else if debug {
-          write(out, "info string servererror no time specified")?;
+        } else {
+          write(out, "info error no time specified")?;
         }
       }
       _ => {
-        if debug {
-          write(out, "info string servererror unknown clock parameter")?;
-        }
+        write(out, "info error unknown clock parameter")?;
       }
     }
   }
@@ -505,9 +464,9 @@ pub fn startup(
           client.send(Message::IsReady).ok()?;
         }
       }
-      Some("setoption") => setoption(&mut out, client, words, debug, info)?,
+      Some("setoption") => setoption(&mut out, client, words, info)?,
       Some("position") => position(&mut out, client, &mut board, words, debug)?,
-      Some("go") => go(&mut out, client, words, debug)?,
+      Some("go") => go(&mut out, client, words)?,
       Some("stop") => client.send(Message::Stop).ok()?,
       Some("eval") => client.send(Message::Eval).ok()?,
       Some("ucinewgame") => client.send(Message::NewGame).ok()?,
@@ -526,7 +485,7 @@ pub fn startup(
           .unwrap_or(info.depth);
         client.send(Message::Bench(depth)).ok()?;
       }
-      Some("clock") => clock(&mut out, client, words, debug)?,
+      Some("clock") => clock(&mut out, client, words)?,
       // End the program, the channel being dropped will stop the other thread
       Some("quit") => break,
       // Commands that can be ignored or blank line
@@ -538,14 +497,12 @@ pub fn startup(
         }
       }
       None => (),
-      // Unrecognised command, log when in debug mode
+      // Unrecognised command
       Some(command) => {
-        if debug {
-          write(
-            &mut out,
-            &format!("info string servererror Unrecognised command {command}"),
-          )?;
-        }
+        write(
+          &mut out,
+          &format!("info error Unrecognised command {command}"),
+        )?;
       }
     }
     buffer.clear();

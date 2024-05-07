@@ -11,7 +11,7 @@ use liberty_chess::threading::CompressedBoard;
 use liberty_chess::Board;
 use oxidation::evaluate::evaluate;
 use oxidation::parameters::DEFAULT_PARAMETERS;
-use oxidation::search::quiescence;
+use oxidation::search::{quiescence, SEARCH_PARAMETERS};
 use oxidation::{random_move, SearchConfig, State, QDEPTH};
 use rand::{thread_rng, Rng};
 use std::num::NonZeroUsize;
@@ -79,7 +79,7 @@ impl StartingPosition {
       Self::Fen(fen) => {
         let mut board = Board::new(fen).expect("Loading board failed");
         board.friendly_fire = friendly_fire;
-        let state = State::new(0, &board, DEFAULT_PARAMETERS);
+        let mut state = State::new(0, &board, SEARCH_PARAMETERS, DEFAULT_PARAMETERS);
         let mut debug = false;
         let mut qdepth = QDEPTH;
         let (_tx, rx_2) = channel();
@@ -90,14 +90,8 @@ impl StartingPosition {
           // Final board is opposite stm, invert score
           eval = -eval;
         }
-        let alpha = match eval {
-          Score::Centipawn(value) => Score::Centipawn(value - FILTER_THRESHOLD),
-          _ => eval,
-        };
-        let beta = match eval {
-          Score::Centipawn(value) => Score::Centipawn(value + FILTER_THRESHOLD),
-          _ => eval,
-        };
+        let alpha = Score::Centipawn(eval - FILTER_THRESHOLD);
+        let beta = Score::Centipawn(eval + FILTER_THRESHOLD);
         let board = loop {
           let mut board = board.clone();
           for _ in 0..RANDOM_MOVE_COUNT {
@@ -108,7 +102,9 @@ impl StartingPosition {
             }
           }
           // Filter out busted openings
-          let (_, score) = quiescence(&state, &mut settings, &board, QDEPTH, alpha, beta);
+          state.set_first_stack_entry(&board);
+          let (_, score) = quiescence(&mut state, &mut settings, 1, QDEPTH, alpha, beta)
+            .unwrap_or((Vec::new(), Score::Centipawn(eval)));
           if score > alpha && score < beta {
             break board;
           }

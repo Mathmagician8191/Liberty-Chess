@@ -4,14 +4,14 @@ use oxidation::get_promotion_values;
 use oxidation::parameters::{Parameters, DEFAULT_PARAMETERS};
 use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
-use std::fs::read_to_string;
+use std::fs::{read_dir, read_to_string};
 use std::time::Instant;
 use tester::POSITIONS;
 
-const ITERATION_COUNT: i32 = 2250;
-const MATERIAL_ONLY_ITERATIONS: i32 = 200;
-const PRINT_FREQUENCY: i32 = 20;
-const LR: f64 = 40000.0;
+const ITERATION_COUNT: i32 = 200;
+const PRINT_FREQUENCY: i32 = 25;
+const LR: f64 = 20000.0;
+const MOMENTUM_FACTOR: f64 = 0.8;
 
 type GameData = Vec<(Features, Vec<Piece>, bool, u32, f64)>;
 
@@ -108,30 +108,21 @@ fn setup_threadpool() {
 fn process_position(position: &&str, data: &mut Vec<(f64, GameData)>, total_positions: &mut usize) {
   println!("Position {position}");
   let mut processed_data = Vec::new();
-  for folder in [
-    "Tweak RFP margin",
-    "King movegen VSTC",
-    "triple search part 1",
-    "triple search part 2",
-    "16 byte tt entries",
-    "low depth tt cutoffs part 1",
-    "low depth tt cutoffs part 2",
-    "linear RFP margin",
-    "make LMP more aggressive",
-    "Remove random move ordering at root",
-    "increase LMP depth",
-    "Linear LMR",
-    "Linear LMR without killers",
-  ] {
-    let fens =
-      read_to_string(format!("datagen/{folder}/{position}.txt")).expect("Unable to read file");
+  let folders = read_dir("datagen/Old").expect("Folder does not exist");
+  for folder in folders {
+    let mut folder = folder.expect("Folder does not exist").path();
+    folder.push(format!("{position}.txt"));
+    let fens = read_to_string(folder).expect("Unable to read file");
     let lines: Vec<&str> = fens.split('\n').collect();
     processed_data.extend(
       lines
         .par_iter()
-        .map(|line| {
+        .flat_map(|line| {
           let mut line = line.split(';');
           let board = Board::new(line.next().expect("missing FEN")).expect("Invalid position");
+          if board.halfmoves() >= 30 || board.in_check() {
+            return None;
+          }
           let games: u32 = line
             .next()
             .expect("Missing games")
@@ -143,13 +134,13 @@ fn process_position(position: &&str, data: &mut Vec<(f64, GameData)>, total_posi
             .parse()
             .expect("Invalid score");
           let features = extract_features(board.board());
-          (
+          Some((
             features,
             board.promotion_options().clone(),
             board.to_move(),
             games,
             f64::from(score) / f64::from(games) / 2.0,
-          )
+          ))
         })
         .collect::<GameData>(),
     );
@@ -195,6 +186,9 @@ fn process_position(position: &&str, data: &mut Vec<(f64, GameData)>, total_posi
 fn main() {
   setup_threadpool();
   let mut parameters = Parameters {
+    pieces: DEFAULT_PARAMETERS
+      .pieces
+      .map(|(x, y)| (f64::from(x), f64::from(y))),
     pawn_scale_factor: f64::from(DEFAULT_PARAMETERS.pawn_scale_factor),
     pawn_scaling_bonus: f64::from(DEFAULT_PARAMETERS.pawn_scaling_bonus),
     ..Default::default()
@@ -209,8 +203,11 @@ fn main() {
   let mut best_loss = f64::INFINITY;
   println!("Data loading took {}s", start.elapsed().as_secs());
   start = Instant::now();
-  // Tune parameters
+  // Tune parameters using Nesterov momentum
+  let mut momentum = Parameters::default();
   for i in 0..=ITERATION_COUNT {
+    parameters += momentum;
+    parameters.enforce_invariants();
     let (loss, mut gradient) = calculate_gradients_batch(&data, &parameters);
     if loss < best_loss {
       best_loss = loss;
@@ -218,16 +215,10 @@ fn main() {
     } else {
       println!("Iteration {i}/{ITERATION_COUNT} Loss {loss:.7} (Best: {best_loss:.7})");
     }
-    // let piece values get roughly correct before trying to tune other values
-    if i <= MATERIAL_ONLY_ITERATIONS {
-      gradient = Parameters::<f64> {
-        pieces: gradient.pieces,
-        ..Default::default()
-      };
-      // The learning rate can be higher when tuning piece values only
-      gradient = gradient * 4.0;
-    }
-    parameters += gradient * LR;
+    gradient = gradient * LR;
+    momentum = (gradient + momentum) * MOMENTUM_FACTOR;
+    parameters += gradient;
+    parameters.enforce_invariants();
     if i % PRINT_FREQUENCY == 0 {
       println!("{parameters:?}");
       println!(

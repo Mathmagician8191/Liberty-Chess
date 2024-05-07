@@ -1,166 +1,167 @@
 use liberty_chess::parsing::to_name;
+use liberty_chess::{CENTAUR, CHAMPION, ELEPHANT, KING, MANN, OBSTACLE, WALL};
 use std::ops::{Add, AddAssign, Div, Mul};
 
 const PIECE_VALUES: [(i32, i32); 18] = [
-  (67, 144),    // Pawn
-  (323, 297),   // Knight
-  (360, 263),   // Bishop
-  (489, 481),   // Rook
-  (1024, 998),  // Queen
-  (-195, 887),  // King
-  (832, 965),   // Archbishop
-  (979, 1117),  // Chancellor
-  (253, 195),   // Camel
-  (179, 167),   // Zebra
-  (169, 299),   // Mann
-  (560, 313),   // Nightrider
-  (503, 973),   // Champion
-  (575, 1026),  // Centaur
-  (1432, 1644), // Amazon
-  (653, 633),   // Elephant
-  (1, 25),      // Obstacle
-  (44, 110),    // Wall
+  (55, 138),    // Pawn
+  (286, 346),   // Knight
+  (323, 295),   // Bishop
+  (451, 537),   // Rook
+  (1060, 966),  // Queen
+  (-269, 780),  // King
+  (828, 1020),  // Archbishop
+  (979, 1156),  // Chancellor
+  (243, 225),   // Camel
+  (179, 203),   // Zebra
+  (166, 337),   // Mann
+  (543, 350),   // Nightrider
+  (477, 884),   // Champion
+  (540, 1121),  // Centaur
+  (1540, 1494), // Amazon
+  (681, 600),   // Elephant
+  (2, 38),      // Obstacle
+  (30, 145),    // Wall
 ];
 
 const MG_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [
-  [-7, 16, 29, -10, 0],        // Pawn
-  [43, 47, 38, 30, 13],        // Knight
-  [53, 45, 25, -7, -5],        // Bishop
-  [36, 34, 4, 7, 5],           // Rook
-  [19, 13, 4, 18, -3],         // Queen
-  [-165, -151, -91, -25, -25], // King
-  [65, 17, 14, 16, 0],         // Archbishop
-  [9, 13, 5, 62, -8],          // Chancellor
-  [42, 89, 52, 62, 41],        // Camel
-  [-28, 42, 9, 66, 28],        // Zebra
-  [45, 15, 5, 0, 0],           // Mann
-  [34, 34, 6, 71, -24],        // Nightrider
-  [17, 58, 9, 54, 31],         // Champion
-  [55, 30, 35, 39, 24],        // Centaur
-  [15, 26, 1, 1, 1],           // Amazon
-  [122, 100, 84, 66, 64],      // Elephant
-  [0, 0, 0, 0, 0],             // Obstacle
-  [0, 0, 0, 0, 0],             // Wall
+  [-64, 0, -7, 21, -18, -16, -6, -12, -6],    // Pawn
+  [34, 74, 39, 23, 48, 16, 18, 0, -4],        // Knight
+  [46, 20, 51, 0, 0, -19, -13, -13, 2],       // Bishop
+  [15, 16, -3, -19, -3, -9, -2, -15, -7],     // Rook
+  [-5, 4, 5, -14, 18, -5, -5, 2, 3],          // Queen
+  [-24, -46, -15, 10, 44, 18, 55, 6, 48],     // King
+  [51, 5, 5, 12, 8, 2, -13, -11, -2],         // Archbishop
+  [-23, -21, -25, 4, 36, -28, -11, -15, -8],  // Chancellor
+  [-2, 94, 2, 14, 10, 24, 0, 62, 17],         // Camel
+  [22, 43, -29, 22, 24, 24, 5, 19, -9],       // Zebra
+  [69, 18, 76, 45, 35, 0, 0, 0, 25],          // Mann
+  [13, -12, 35, -52, 35, -16, -46, -56, -14], // Nightrider
+  [0, 29, 19, 0, 0, 0, 0, 0, 0],              // Champion
+  [56, 44, 44, 35, 52, 30, 19, 11, 11],       // Centaur
+  [19, 38, 33, -15, -36, -30, -21, 11, -15],  // Amazon
+  [231, 208, 162, 119, 106, 85, 75, 117, 63], // Elephant
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],                // Obstacle
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],                // Wall
 ];
 
 const EG_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [
-  [103, 0, 8, -12, -1],     // Pawn
-  [29, 0, 1, 0, 3],         // Knight
-  [0, 0, 0, 10, 4],         // Bishop
-  [104, 25, 23, 20, 0],     // Rook
-  [69, 22, 10, 12, 15],     // Queen
-  [125, 105, 59, 23, 18],   // King
-  [279, 148, 91, 184, 44],  // Archbishop
-  [18, 86, 48, 44, 76],     // Chancellor
-  [0, -16, -16, -13, -28],  // Camel
-  [76, -10, -26, -15, -26], // Zebra
-  [53, 0, 22, 19, 7],       // Mann
-  [96, 19, 18, 29, 24],     // Nightrider
-  [153, 0, 25, 17, 9],      // Champion
-  [349, 186, 81, 56, 29],   // Centaur
-  [151, 0, 0, 0, 0],        // Amazon
-  [141, 112, 103, 71, 26],  // Elephant
-  [0, 0, 0, 0, 0],          // Obstacle
-  [0, 0, 0, 0, 0],          // Wall
+  [127, 4, 20, 9, -8, 4, 2, 4, 2],             // Pawn
+  [32, -16, 0, 18, -8, 2, 8, 6, 6],            // Knight
+  [-36, -7, -20, 1, 7, 1, 7, 3, -11],          // Bishop
+  [76, 24, 15, 21, 11, 6, -20, -1, -20],       // Rook
+  [61, -6, -1, 13, -24, 2, -21, -28, -30],     // Queen
+  [101, 85, 58, 40, 17, 22, 4, 19, -2],        // King
+  [161, 156, 77, 51, -10, 7, 58, 33, -29],     // Archbishop
+  [84, 45, 102, -52, -118, -21, -1, -76, -64], // Chancellor
+  [20, -4, 10, -3, -16, 3, 4, -26, -7],        // Camel
+  [10, 12, 34, -4, 12, -12, -17, -4, 13],      // Zebra
+  [0, 101, 0, 13, 0, 21, 16, 0, 0],            // Mann
+  [22, 32, -5, 10, 23, 18, 19, 71, 32],        // Nightrider
+  [81, 100, 54, 110, 0, 0, 0, 0, 6],           // Champion
+  [367, 142, 97, 48, 97, 103, 24, 46, 3],      // Centaur
+  [52, -32, -52, -23, 8, 155, -47, 104, -3],   // Amazon
+  [145, 131, 138, 120, 134, 85, 65, 15, 15],   // Elephant
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],                 // Obstacle
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],                 // Wall
 ];
 
 const MG_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
   0,  // Pawn
-  12, // Knight
-  7,  // Bishop
-  1,  // Rook
-  1,  // Queen
-  42, // King
-  9,  // Archbishop
-  0,  // Chancellor
+  11, // Knight
+  0,  // Bishop
+  0,  // Rook
+  10, // Queen
+  29, // King
+  0,  // Archbishop
+  9,  // Chancellor
   0,  // Camel
   0,  // Zebra
-  1,  // Mann
-  1,  // Nightrider
+  0,  // Mann
+  12, // Nightrider
   0,  // Champion
   0,  // Centaur
   0,  // Amazon
   0,  // Elephant
-  9,  // Obstacle
+  0,  // Obstacle
   0,  // Wall
 ];
 
 const EG_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
-  36,  // Pawn
-  13,  // Knight
-  2,   // Bishop
-  0,   // Rook
-  0,   // Queen
-  -3,  // King
-  19,  // Archbishop
-  0,   // Chancellor
-  5,   // Camel
-  1,   // Zebra
-  0,   // Mann
-  0,   // Nightrider
-  0,   // Champion
-  11,  // Centaur
-  111, // Amazon
-  33,  // Elephant
-  2,   // Obstacle
-  2,   // Wall
+  26, // Pawn
+  14, // Knight
+  14, // Bishop
+  0,  // Rook
+  0,  // Queen
+  0,  // King
+  6,  // Archbishop
+  0,  // Chancellor
+  0,  // Camel
+  7,  // Zebra
+  0,  // Mann
+  0,  // Nightrider
+  0,  // Champion
+  0,  // Centaur
+  0,  // Amazon
+  8,  // Elephant
+  24, // Obstacle
+  11, // Wall
 ];
 
 const MG_ENEMY_PAWN_PENALTY: [i32; 18] = [
   0,   // Pawn
-  15,  // Knight
-  2,   // Bishop
-  -38, // Rook
+  19,  // Knight
+  5,   // Bishop
+  -14, // Rook
   1,   // Queen
-  122, // King
-  25,  // Archbishop
-  -8,  // Chancellor
-  0,   // Camel
-  0,   // Zebra
-  0,   // Mann
-  9,   // Nightrider
-  50,  // Champion
-  28,  // Centaur
-  0,   // Amazon
-  65,  // Elephant
-  9,   // Obstacle
-  9,   // Wall
+  55,  // King
+  24,  // Archbishop
+  4,   // Chancellor
+  18,  // Camel
+  -30, // Zebra
+  19,  // Mann
+  20,  // Nightrider
+  34,  // Champion
+  31,  // Centaur
+  6,   // Amazon
+  55,  // Elephant
+  0,   // Obstacle
+  0,   // Wall
 ];
 
 const EG_ENEMY_PAWN_PENALTY: [i32; 18] = [
   0,   // Pawn
-  38,  // Knight
-  100, // Bishop
-  65,  // Rook
-  16,  // Queen
-  46,  // King
-  82,  // Archbishop
-  36,  // Chancellor
-  29,  // Camel
-  24,  // Zebra
+  21,  // Knight
+  78,  // Bishop
+  81,  // Rook
+  51,  // Queen
+  50,  // King
+  103, // Archbishop
+  92,  // Chancellor
+  3,   // Camel
+  26,  // Zebra
   121, // Mann
-  118, // Nightrider
-  7,   // Champion
-  70,  // Centaur
-  26,  // Amazon
-  30,  // Elephant
-  30,  // Obstacle
-  -18, // Wall
+  65,  // Nightrider
+  72,  // Champion
+  69,  // Centaur
+  75,  // Amazon
+  23,  // Elephant
+  41,  // Obstacle
+  0,   // Wall
 ];
 
 const MG_MOBILITY_BONUS: [i32; 18] = [
   0, // Pawn
   0, // Knight
   4, // Bishop
-  6, // Rook
-  2, // Queen
+  5, // Rook
+  4, // Queen
   0, // King
-  2, // Archbishop
-  2, // Chancellor
+  1, // Archbishop
+  1, // Chancellor
   0, // Camel
   0, // Zebra
   0, // Mann
-  2, // Nightrider
+  4, // Nightrider
   0, // Champion
   0, // Centaur
   0, // Amazon
@@ -172,36 +173,36 @@ const MG_MOBILITY_BONUS: [i32; 18] = [
 const EG_MOBILITY_BONUS: [i32; 18] = [
   0,  // Pawn
   0,  // Knight
-  5,  // Bishop
-  7,  // Rook
-  7,  // Queen
+  6,  // Bishop
+  8,  // Rook
+  8,  // Queen
   0,  // King
-  0,  // Archbishop
-  5,  // Chancellor
+  2,  // Archbishop
+  10, // Chancellor
   0,  // Camel
   0,  // Zebra
   0,  // Mann
   0,  // Nightrider
   0,  // Champion
   0,  // Centaur
-  13, // Amazon
+  16, // Amazon
   0,  // Elephant
   0,  // Obstacle
   0,  // Wall
 ];
 
 // advanced pawns get a bonus of numerator/(factor * squares_to_promotion + bonus) times the promotion value
-pub(crate) const PAWN_SCALING_NUMERATOR: i32 = 12;
-const PAWN_SCALING_FACTOR: i32 = 89;
-const PAWN_SCALING_BONUS: i32 = -21;
+pub(crate) const PAWN_SCALING_NUMERATOR: i32 = 40;
+const PAWN_SCALING_FACTOR: i32 = 305;
+const PAWN_SCALING_BONUS: i32 = -93;
 
 pub(crate) const TEMPO_BONUS: i32 = 10;
 
 /// Maximum distance from the edge to apply penalty
-pub(crate) const EDGE_DISTANCE: usize = 2;
+pub(crate) const EDGE_DISTANCE: usize = 3;
 pub(crate) const EDGE_PARAMETER_COUNT: usize = EDGE_DISTANCE * (EDGE_DISTANCE + 3) / 2;
 pub(crate) const INDEXING: [usize; (EDGE_DISTANCE + 1) * (EDGE_DISTANCE + 1)] =
-  [0, 1, 2, 1, 3, 4, 2, 4, 5];
+  [0, 1, 2, 3, 1, 4, 5, 6, 2, 5, 7, 8, 3, 6, 8, 9];
 
 pub(crate) const ENDGAME_THRESHOLD: i32 = 32;
 
@@ -281,7 +282,7 @@ impl<T: Copy + AddAssign> AddAssign for Parameters<T> {
       self.eg_mobility_bonus[i] += rhs.eg_mobility_bonus[i];
     }
     for i in 0..18 {
-      for j in 0..5 {
+      for j in 0..EDGE_PARAMETER_COUNT {
         self.mg_edge[i][j] += rhs.mg_edge[i][j];
         self.eg_edge[i][j] += rhs.eg_edge[i][j];
       }
@@ -333,7 +334,7 @@ impl Div<Self> for Parameters<f64> {
       self.eg_enemy_pawn_penalty[i] /= rhs.eg_enemy_pawn_penalty[i];
       self.mg_mobility_bonus[i] /= rhs.mg_mobility_bonus[i];
       self.eg_mobility_bonus[i] /= rhs.eg_mobility_bonus[i];
-      for j in 0..5 {
+      for j in 0..EDGE_PARAMETER_COUNT {
         self.mg_edge[i][j] /= rhs.mg_edge[i][j];
         self.eg_edge[i][j] /= rhs.eg_edge[i][j];
       }
@@ -408,6 +409,36 @@ impl Parameters<f64> {
       eg_mobility_bonus: self.eg_mobility_bonus.map(Self::remove_nan),
       pawn_scale_factor: Self::remove_nan(self.pawn_scale_factor),
       pawn_scaling_bonus: Self::remove_nan(self.pawn_scaling_bonus),
+    }
+  }
+
+  /// Some parameter values are known to be preferred by the tuner but lose elo.
+  /// Avoiding these values should allow the other values to better adjust to the constraints
+  pub fn enforce_invariants(&mut self) {
+    let (mg_pawn, eg_pawn) = self.pieces[0];
+    for i in 0..18 {
+      self.mg_mobility_bonus[i] = self.mg_mobility_bonus[i].max(0.0);
+      self.eg_mobility_bonus[i] = self.eg_mobility_bonus[i].max(0.0);
+      self.mg_friendly_pawn_penalty[i] = self.mg_friendly_pawn_penalty[i].clamp(0.0, mg_pawn);
+      self.eg_friendly_pawn_penalty[i] = self.eg_friendly_pawn_penalty[i].clamp(0.0, eg_pawn);
+      self.mg_enemy_pawn_penalty[i] = self.mg_enemy_pawn_penalty[i].min(mg_pawn);
+      self.eg_enemy_pawn_penalty[i] = self.eg_enemy_pawn_penalty[i].clamp(0.0, eg_pawn);
+      let (mg_piece, eg_piece) = self.pieces[i];
+      match (i + 1) as i8 {
+        MANN | CHAMPION | CENTAUR | ELEPHANT => {
+          for j in 0..EDGE_PARAMETER_COUNT {
+            self.mg_edge[i][j] = self.mg_edge[i][j].clamp(0.0, mg_piece);
+            self.eg_edge[i][j] = self.eg_edge[i][j].clamp(0.0, eg_piece);
+          }
+        }
+        KING | OBSTACLE | WALL => (),
+        _ => {
+          for j in 0..EDGE_PARAMETER_COUNT {
+            self.mg_edge[i][j] = self.mg_edge[i][j].min(mg_piece);
+            self.eg_edge[i][j] = self.eg_edge[i][j].min(eg_piece);
+          }
+        }
+      }
     }
   }
 }

@@ -1,14 +1,16 @@
-#![forbid(unsafe_code)]
 #![warn(missing_docs, unused)]
 //! A chess engine for Liberty Chess
 
 use crate::evaluate::evaluate;
 use crate::history::History;
+use crate::movepicker::MovePicker;
 use crate::parameters::Parameters;
 use crate::search::alpha_beta_root;
+use crate::search::SearchParameters;
 use crate::tt::TranspositionTable;
 use liberty_chess::moves::Move;
 use liberty_chess::{perft, Board, ExtraFlags, Piece, PAWN};
+use parameters::DEFAULT_PARAMETERS;
 use parameters::PAWN_SCALING_NUMERATOR;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -25,6 +27,8 @@ use ulci::{AnalysisResult, OptionValue, Score, SearchTime};
 pub mod evaluate;
 /// Interface for efficiently integrating into another application
 pub mod glue;
+/// Interface for picking moves
+pub mod movepicker;
 /// Tunable parameters
 pub mod parameters;
 /// Searching through a position
@@ -40,9 +44,13 @@ mod pesto;
 pub const VERSION_NUMBER: &str = env!("CARGO_PKG_VERSION");
 
 /// Default Quiescence depth
-pub const QDEPTH: u8 = 4;
+pub const QDEPTH: u8 = 3;
+/// Maximum allowed Quiescence depth
+pub const MAX_QDEPTH: u16 = 32;
 /// Default Hash size
 pub const HASH_SIZE: usize = 64;
+/// Default Multi-PV lines
+pub const MULTI_PV_COUNT: u16 = 1;
 
 /// Internal naming thing - do not use
 ///
@@ -59,13 +67,33 @@ pub enum Output<'a> {
   Channel(&'a Sender<UlciResult>),
 }
 
+struct StackEntry {
+  movepicker: MovePicker,
+  board: Board,
+}
+
+impl StackEntry {
+  fn new(board: Board) -> Self {
+    Self {
+      movepicker: MovePicker::new(),
+      board,
+    }
+  }
+
+  fn pick_move(&mut self, history: &History, parameters: &Parameters<i32>) -> Option<(Move, bool)> {
+    self.movepicker.pick_move(history, parameters, &self.board)
+  }
+}
+
 /// The state of the engine
 pub struct State {
   /// A cache of previously visited positions
   pub table: TranspositionTable,
+  // Also stores countermoves
   history: History,
-  killers: Vec<Option<Move>>,
-  root_ply_count: u32,
+  // Thing indexed by ply, contains heap allocation caches
+  stack: Vec<StackEntry>,
+  search_parameters: SearchParameters,
   parameters: Parameters<i32>,
   promotion_values: (i32, i32),
 }
@@ -73,13 +101,18 @@ pub struct State {
 impl State {
   /// Initialise a new state, sets up a TT of the provided capacity
   #[must_use]
-  pub fn new(megabytes: usize, position: &Board, parameters: Parameters<i32>) -> Self {
+  pub fn new(
+    megabytes: usize,
+    position: &Board,
+    search_parameters: SearchParameters,
+    parameters: Parameters<i32>,
+  ) -> Self {
     let promotion_values = get_promotion_values(position.promotion_options(), &parameters);
     Self {
       table: TranspositionTable::new(megabytes, position),
       history: History::new(position.width(), position.height()),
-      killers: Vec::new(),
-      root_ply_count: position.ply_count(),
+      stack: Vec::new(),
+      search_parameters,
       parameters,
       promotion_values,
     }
@@ -92,8 +125,7 @@ impl State {
     self
       .history
       .new_position(position.width(), position.height());
-    self.killers.clear();
-    self.root_ply_count = position.ply_count();
+    self.stack.clear();
     self.promotion_values = get_promotion_values(position.promotion_options(), &self.parameters);
     self.table.new_position(position)
   }
@@ -101,10 +133,15 @@ impl State {
   /// Clears the hash
   pub fn new_game(&mut self, position: &Board) {
     self.history.clear(position.width(), position.height());
-    self.killers.clear();
-    self.root_ply_count = position.ply_count();
+    self.stack.clear();
     self.promotion_values = get_promotion_values(position.promotion_options(), &self.parameters);
     self.table.clear(ExtraFlags::new(position));
+  }
+
+  /// Set up the stack to analyse a position
+  pub fn set_first_stack_entry(&mut self, board: &Board) {
+    self.stack.clear();
+    self.stack.push(StackEntry::new(board.clone()));
   }
 }
 
@@ -142,7 +179,7 @@ pub struct SearchConfig<'a> {
   nodes: usize,
   debug: &'a mut bool,
   // maximum ply count reached
-  seldepth: u32,
+  seldepth: usize,
   millis: u128,
   // variables to track when to check the time
   last_ms_nodes: usize,
@@ -277,18 +314,14 @@ impl<'a> SearchConfig<'a> {
             Ok(message) => match message {
               Message::SetDebug(new_debug) => *self.debug = new_debug,
               Message::UpdatePosition(_) => {
-                if *self.debug {
-                  println!("info string servererror search in progress");
-                }
+                println!("info error search in progress, cannot change position")
               }
               Message::Go(_)
               | Message::Eval
               | Message::Bench(_)
               | Message::NewGame
               | Message::Perft(_) => {
-                if *self.debug {
-                  println!("info string servererror already searching");
-                }
+                println!("info error already searching, cannot start new search")
               }
               Message::Stop => {
                 self.stopped = true;
@@ -302,9 +335,7 @@ impl<'a> SearchConfig<'a> {
                     | OptionValue::UpdateBool(_)
                     | OptionValue::UpdateRange(_)
                     | OptionValue::UpdateString(_) => {
-                      if *self.debug {
-                        println!("info string servererror {QDEPTH_NAME} is an integer");
-                      }
+                      println!("info error {QDEPTH_NAME} is an integer")
                     }
                   }
                 }
@@ -336,17 +367,34 @@ pub fn random_move(board: &Board) -> Option<Move> {
   moves.choose(&mut thread_rng())?.last_move
 }
 
+/// Returns the top capture by MVV-LVA or a random quiet if there are no captures
+#[must_use]
+pub fn mvvlva_move(board: &Board) -> Option<Move> {
+  let (captures, quiets) = get_move_order(&DEFAULT_PARAMETERS, board, &[]);
+  if let Some(capture) = captures.first() {
+    Some(*capture)
+  } else {
+    quiets.choose(&mut thread_rng()).copied()
+  }
+}
+
 /// Sort the searchmoves from a position
 #[must_use]
-pub fn get_move_order(state: &State, position: &Board, searchmoves: &[Move]) -> Vec<Move> {
-  let (captures, other) = position.generate_pseudolegal();
-  let (mut captures, mut other): (Vec<(Move, u8, u8)>, Vec<Move>) = if searchmoves.is_empty() {
+pub fn get_move_order(
+  parameters: &Parameters<i32>,
+  position: &Board,
+  searchmoves: &[Move],
+) -> (Vec<Move>, Vec<Move>) {
+  let mut captures = Vec::new();
+  let mut quiets = Vec::new();
+  position.generate_pseudolegal(&mut captures, &mut quiets);
+  let (mut captures, quiets): (Vec<(Move, u8, u8)>, Vec<Move>) = if searchmoves.is_empty() {
     (
       captures
         .into_iter()
         .filter(|(m, _, _)| position.move_if_legal(*m).is_some())
         .collect(),
-      other
+      quiets
         .into_iter()
         .filter(|m| position.move_if_legal(*m).is_some())
         .collect(),
@@ -357,26 +405,18 @@ pub fn get_move_order(state: &State, position: &Board, searchmoves: &[Move]) -> 
         .into_iter()
         .filter(|(m, _, _)| searchmoves.contains(m) && position.move_if_legal(*m).is_some())
         .collect(),
-      other
+      quiets
         .into_iter()
         .filter(|m| searchmoves.contains(m) && position.move_if_legal(*m).is_some())
         .collect(),
     )
   };
   captures.sort_by_key(|(_, piece, capture)| {
-    state.parameters.pieces[usize::from(*piece - 1)].0
-      - 100 * state.parameters.pieces[usize::from(*capture - 1)].0
+    parameters.pieces[usize::from(*piece - 1)].0
+      - 100 * parameters.pieces[usize::from(*capture - 1)].0
   });
-  other.sort_by_key(|r#move| {
-    -state.history.get(
-      position.to_move(),
-      position.get_piece(r#move.start()).unsigned_abs(),
-      r#move.end(),
-    )
-  });
-  let mut moves: Vec<Move> = captures.into_iter().map(|(m, _, _)| m).collect();
-  moves.append(&mut other);
-  moves
+  let captures: Vec<Move> = captures.into_iter().map(|(m, _, _)| m).collect();
+  (captures, quiets)
 }
 
 fn print_info(
@@ -386,17 +426,24 @@ fn print_info(
   depth: u8,
   settings: &SearchConfig,
   pv: &[Move],
+  pv_line: u16,
+  show_pv_line: bool,
   hashfull: usize,
 ) {
   let time = settings.start.elapsed().as_millis();
   let nps = (1000 * settings.nodes) / max(time as usize, 1);
   match out {
     Output::String(ref mut out) => {
+      let multipv = if show_pv_line {
+        format!("multipv {pv_line} ")
+      } else {
+        String::new()
+      };
       out
-        .write(
+        .write_all(
           format!(
-            "info depth {depth} seldepth {} score {} time {time} nodes {} nps {nps} hashfull {hashfull} pv {}\n",
-            settings.seldepth - position.ply_count(),
+            "info depth {depth} seldepth {} score {} time {time} nodes {} nps {nps} hashfull {hashfull} {multipv}pv {}\n",
+            settings.seldepth,
             score.show_uci(position.moves(), position.to_move()),
             settings.nodes,
             pv
@@ -417,6 +464,7 @@ fn print_info(
         nodes: settings.nodes,
         time,
         wdl: None,
+        pv_line,
       }))
       .ok();
     }
@@ -428,47 +476,88 @@ pub fn search(
   state: &mut State,
   settings: &mut SearchConfig,
   position: &mut Board,
-  mut moves: Vec<Move>,
+  searchmoves: &[Move],
+  multipv: u16,
   mut out: Output,
 ) -> Vec<Move> {
   position.skip_checkmate = true;
-  let mut best_pv = vec![moves[0]];
-  let mut current_score = evaluate(state, position);
+  let mut current_score = Score::Centipawn(evaluate(state, position));
   let mut depth = 0;
   let mut display_depth = 0;
-  while depth < settings.max_depth
-    && (settings.hard_tm || settings.start.elapsed().as_millis() * 4 <= settings.max_time)
+  let (captures, mut quiets) = get_move_order(&state.parameters, position, searchmoves);
+  let mut best_moves = Vec::new();
+  if let (_, Some(ttmove)) = state.table.get(
+    position.hash(),
+    position.moves(),
+    settings.initial_alpha,
+    Score::Win(0),
+    depth,
+  ) {
+    if searchmoves.is_empty() || searchmoves.contains(&ttmove) {
+      best_moves.push(ttmove);
+    }
+  };
+  let mut best_pv = if let Some(best_move) = best_moves.first() {
+    vec![*best_move]
+  } else if let Some(capture) = captures.first() {
+    vec![*capture]
+  } else if let Some(quiet) = quiets.first() {
+    vec![*quiet]
+  } else {
+    Vec::new()
+  };
+  'outer: while depth < settings.max_depth
+    && (settings.hard_tm || settings.start.elapsed().as_millis() * 3 <= settings.max_time)
   {
-    settings.seldepth = position.ply_count();
     depth += 1;
-    let (pv, score) = alpha_beta_root(state, settings, position, &moves, depth, &mut out);
-    if !pv.is_empty() {
-      display_depth = depth;
-      best_pv = pv;
-      current_score = score;
-    } else if !settings.search_is_over() {
-      display_depth = depth;
+    let mut excluded_moves = Vec::new();
+    for pv_line in 1..=multipv {
+      settings.seldepth = 0;
+      let (pv, score) = alpha_beta_root(
+        state,
+        settings,
+        position,
+        &captures,
+        &mut quiets,
+        searchmoves.is_empty() && pv_line == 1,
+        &best_moves,
+        &excluded_moves,
+        depth,
+        pv_line,
+        multipv > 1,
+        &mut out,
+      );
+      if !pv.is_empty() {
+        display_depth = depth;
+        if let Some(best_move) = pv.first() {
+          excluded_moves.push(*best_move);
+        }
+        if pv_line == 1 {
+          best_pv.clone_from(&pv);
+        }
+        current_score = score;
+      } else if !settings.search_is_over() {
+        display_depth = depth;
+        if pv_line > 1 {
+          break;
+        }
+      }
+      print_info(
+        &mut out,
+        position,
+        current_score,
+        display_depth,
+        settings,
+        &pv,
+        pv_line,
+        multipv > 1,
+        state.table.capacity(),
+      );
+      if settings.search_is_over() {
+        break 'outer;
+      }
     }
-    print_info(
-      &mut out,
-      position,
-      current_score,
-      display_depth,
-      settings,
-      &best_pv,
-      state.table.capacity(),
-    );
-    if settings.search_is_over() {
-      break;
-    }
-    let bestmove = best_pv[0];
-    let mut sorted_moves = vec![bestmove];
-    sorted_moves.extend(
-      get_move_order(state, position, &moves)
-        .into_iter()
-        .filter(|m| *m != bestmove),
-    );
-    moves = sorted_moves;
+    best_moves = excluded_moves;
   }
   best_pv
 }
@@ -496,8 +585,7 @@ pub fn bench(
     rx,
     debug,
   );
-  let moves = get_move_order(state, board, &[]);
-  search(state, &mut settings, board, moves, out);
+  search(state, &mut settings, board, &[], 1, out);
   // calculate branching factor
   let log_nodes = (settings.nodes as f64).ln();
   let nodes_per_depth = log_nodes / f64::from(depth);

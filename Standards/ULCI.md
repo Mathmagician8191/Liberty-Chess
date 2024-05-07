@@ -132,10 +132,8 @@ These are all the command the client gets from the interface.
   The server has additional information for the client
   * string <str>
     The server has a generic message for the client
-  * clienterror <str>
-    The client's communication has an error
-  * servererror <str>
-    The server has an error message for the client
+  * error <str>
+    The server is reporting an error
 
 * eval
   Returns the static evaluation of the current position, optional for debugging purposes
@@ -247,11 +245,8 @@ Client to server:
     the cpu usage of the client is x permill.
   * string <str>
     Any string str which will be displayed by the client, if there is a string command the rest of the line will be interpreted as <str>, unless an error argument is supplied.
-    Errors:
-    * clienterror <str>
-      The client has an error message to send to the server, the client may terminate if the error is fatal.
-    * servererror <str>
-      The client has detected a problem with the server's commands and may terminate if the error is fatal.
+  * error <str>
+    The client has an error message to send to the server, the client may terminate if the error is fatal.
   * currline <cpunr> <move1> ... <movei>
     this is the current line the client is calculating. <cpunr> is the number of the cpu if the client is running on more than one cpu. <cpunr> = 1,2,3....
     if the client is just using one cpu, <cpunr> can be omitted.

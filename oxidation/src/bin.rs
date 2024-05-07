@@ -7,9 +7,10 @@ use liberty_chess::positions::{
 use liberty_chess::{Board, ALL_PIECES};
 use oxidation::evaluate::evaluate;
 use oxidation::parameters::DEFAULT_PARAMETERS;
+use oxidation::search::SEARCH_PARAMETERS;
 use oxidation::{
-  bench, divide, get_move_order, search, Output, SearchConfig, State, HASH_SIZE, QDEPTH,
-  QDEPTH_NAME, VERSION_NUMBER,
+  bench, divide, search, Output, SearchConfig, State, HASH_SIZE, MAX_QDEPTH, MULTI_PV_COUNT,
+  QDEPTH, QDEPTH_NAME, VERSION_NUMBER,
 };
 use std::collections::HashMap;
 use std::io::{stdin, stdout, BufReader};
@@ -17,11 +18,12 @@ use std::sync::mpsc::{channel, Sender};
 use std::thread::spawn;
 use std::time::Instant;
 use ulci::client::{startup, Message};
-use ulci::{ClientInfo, IntOption, OptionValue, SupportedFeatures, UlciOption, V1Features};
+use ulci::{ClientInfo, IntOption, OptionValue, Score, SupportedFeatures, UlciOption, V1Features};
 
 const BENCH_DEPTH: i8 = 9;
 
 const HASH_NAME: &str = "Hash";
+const MULTI_PV_NAME: &str = "MultiPV";
 
 // i8 is an offset for bench depth
 const BENCH_POSITIONS: &[(&str, i8)] = &[
@@ -48,7 +50,7 @@ fn startup_client(tx: &Sender<Message>) {
     UlciOption::Int(IntOption {
       default: usize::from(QDEPTH),
       min: 0,
-      max: 50,
+      max: usize::from(MAX_QDEPTH),
     }),
   );
   options.insert(
@@ -57,6 +59,14 @@ fn startup_client(tx: &Sender<Message>) {
       default: HASH_SIZE,
       min: 0,
       max: 1 << 28,
+    }),
+  );
+  options.insert(
+    MULTI_PV_NAME.to_owned(),
+    UlciOption::Int(IntOption {
+      default: usize::from(MULTI_PV_COUNT),
+      min: 1,
+      max: 1 << 10,
     }),
   );
   let info = ClientInfo {
@@ -79,8 +89,9 @@ fn main() {
   spawn(move || startup_client(&tx));
   let mut qdepth = QDEPTH;
   let mut hash_size = HASH_SIZE;
+  let mut pv_lines = MULTI_PV_COUNT;
   let mut position = get_startpos();
-  let mut state = State::new(hash_size, &position, DEFAULT_PARAMETERS);
+  let mut state = State::new(hash_size, &position, SEARCH_PARAMETERS, DEFAULT_PARAMETERS);
   let mut debug = false;
   while let Ok(message) = rx.recv() {
     match message {
@@ -92,71 +103,57 @@ fn main() {
         }
       }
       Message::Go(settings) => {
-        let moves = get_move_order(&state, &position, &settings.moves);
-        if moves.is_empty() {
-          if debug {
-            if settings.moves.is_empty() {
-              println!(
-                "info string servererror no legal moves from position {}",
-                position.to_string()
-              );
-            } else {
-              println!(
-                "info string servererror all search moves are illegal in position {}",
-                position.to_string()
-              );
-            }
-          }
-          println!("bestmove 0000");
-        } else {
-          let mut settings =
-            SearchConfig::new_time(&position, &mut qdepth, settings.time, &rx, &mut debug);
-          let pv = search(
-            &mut state,
-            &mut settings,
-            &mut position,
-            moves,
-            Output::String(stdout()),
-          );
-          println!("bestmove {}", pv[0].to_string());
-        }
+        let searchmoves = settings.moves;
+        let mut settings =
+          SearchConfig::new_time(&position, &mut qdepth, settings.time, &rx, &mut debug);
+        let pv = search(
+          &mut state,
+          &mut settings,
+          &mut position,
+          &searchmoves,
+          pv_lines,
+          Output::String(stdout()),
+        );
+        println!(
+          "bestmove {}",
+          pv.first().map_or("0000".to_string(), ToString::to_string)
+        );
       }
       Message::Stop => {
-        println!("info string servererror not currently searching");
+        println!("info error not currently searching");
       }
       Message::UpdateOption(name, value) => match &*name {
         QDEPTH_NAME => match value {
           OptionValue::UpdateInt(value) => qdepth = value as u8,
-          _ => {
-            if debug {
-              println!("info string servererror incorrect option type");
-            }
-          }
+          _ => println!("info error incorrect option type"),
         },
         HASH_NAME => match value {
           OptionValue::UpdateInt(value) => {
             if value != hash_size {
               hash_size = value;
-              state = State::new(hash_size, &position, DEFAULT_PARAMETERS);
+              state = State::new(hash_size, &position, SEARCH_PARAMETERS, DEFAULT_PARAMETERS);
             }
           }
-          _ => {
-            if debug {
-              println!("info string servererror incorrect option type");
-            }
+          _ => println!("info error incorrect option type"),
+        },
+        MULTI_PV_NAME => match value {
+          OptionValue::UpdateInt(value) => {
+            pv_lines = value as u16;
           }
+          _ => println!("info error incorrect option type"),
         },
         _ => (),
       },
       Message::Eval => {
         println!(
-          "info string score {}",
-          evaluate(&state, &position).show_uci(position.moves(), position.to_move()),
+          "info score {}",
+          Score::Centipawn(evaluate(&state, &position))
+            .show_uci(position.moves(), position.to_move()),
         );
       }
       Message::Bench(depth) => {
         if depth < 5 {
-          println!("info string servererror minimum bench depth 5");
+          println!("info error minimum bench depth 5");
         } else {
           let start = Instant::now();
           state.new_game(&position);

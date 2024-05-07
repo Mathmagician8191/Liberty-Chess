@@ -68,7 +68,7 @@ impl ToString for Board {
     // save castling rights
     let mut needs_castling = true;
     for i in 0..4 {
-      if self.castling[i] {
+      if self.castling & (1 << i) != 0 {
         needs_castling = false;
         result.push(match i {
           0 => 'K',
@@ -120,30 +120,30 @@ impl ToString for Board {
 
     // assemble misc options (also reversed)
     let mut misc = Vec::new();
-    let mut misc_fields = if self.king_column == self.width() - 1 {
+    let mut misc_fields = if self.shared_data.king_column == self.width() - 1 {
       false
     } else {
-      misc.push(self.king_column.to_string());
+      misc.push(self.shared_data.king_column.to_string());
       true
     };
 
-    if misc_fields || self.queen_column != 0 {
-      misc.push(self.queen_column.to_string());
+    if misc_fields || self.shared_data.queen_column != 0 {
+      misc.push(self.shared_data.queen_column.to_string());
       misc_fields = true;
     }
 
-    if misc_fields || self.castle_row != 0 {
-      misc.push((self.castle_row + 1).to_string());
+    if misc_fields || self.shared_data.castle_row != 0 {
+      misc.push((self.shared_data.castle_row + 1).to_string());
       misc_fields = true;
     }
 
-    if misc_fields || self.pawn_row != 2 {
-      misc.push(self.pawn_row.to_string());
+    if misc_fields || self.shared_data.pawn_row != 2 {
+      misc.push(self.shared_data.pawn_row.to_string());
       misc_fields = true;
     }
 
-    if misc_fields || self.pawn_moves != 2 {
-      misc.push(self.pawn_moves.to_string());
+    if misc_fields || self.shared_data.pawn_moves != 2 {
+      misc.push(self.shared_data.pawn_moves.to_string());
     }
 
     if misc.is_empty() && custom_promotion {
@@ -359,8 +359,8 @@ pub(crate) fn process_board(
     Array2D<Piece>,
     Vec<(usize, usize)>,
     Vec<(usize, usize)>,
-    usize,
-    usize,
+    u32,
+    u32,
   ),
   FenError,
 > {

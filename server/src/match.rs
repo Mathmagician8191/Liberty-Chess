@@ -147,14 +147,14 @@ fn run_match(
       }
       loop {
         match rx_1.recv().ok()? {
-          UlciResult::AnalysisStopped(r#move) => {
-            if let Some(board) = position.move_if_legal(r#move) {
+          UlciResult::AnalysisStopped(mv) => {
+            if let Some(board) = position.move_if_legal(mv) {
               if board.halfmoves() == 0 {
                 base_position = position;
                 moves.clear();
               }
               position = board;
-              moves.push(r#move);
+              moves.push(mv);
               clock.switch_clocks();
             }
             break;
@@ -205,14 +205,14 @@ fn run_match(
       }
       loop {
         match rx_2.recv().ok()? {
-          UlciResult::AnalysisStopped(r#move) => {
-            if let Some(board) = position.move_if_legal(r#move) {
+          UlciResult::AnalysisStopped(mv) => {
+            if let Some(board) = position.move_if_legal(mv) {
               if board.halfmoves() == 0 {
                 base_position = position;
                 moves.clear();
               }
               position = board;
-              moves.push(r#move);
+              moves.push(mv);
               clock.switch_clocks();
             }
             break;
