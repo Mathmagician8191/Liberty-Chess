@@ -13,7 +13,7 @@ enum Stage {
   Quiets,
 }
 
-pub(crate) struct MovePicker {
+pub struct MovePicker {
   stage: Stage,
   ttmove: Option<Move>,
   killer: Option<Move>,
@@ -23,7 +23,7 @@ pub(crate) struct MovePicker {
 }
 
 impl MovePicker {
-  pub(crate) fn new() -> Self {
+  pub fn new() -> Self {
     Self {
       stage: Stage::TTmove,
       ttmove: None,
@@ -34,7 +34,7 @@ impl MovePicker {
     }
   }
 
-  pub(crate) fn init(&mut self, ttmove: Option<Move>) {
+  pub fn init(&mut self, ttmove: Option<Move>) {
     self.stage = Stage::TTmove;
     self.ttmove = ttmove;
     self.searched_countermove = None;
@@ -42,12 +42,12 @@ impl MovePicker {
     self.quiets.clear();
   }
 
-  pub(crate) fn store_killer(&mut self, killer: Move) {
+  pub fn store_killer(&mut self, killer: Move) {
     self.killer = Some(killer);
   }
 
   // Returns pseudolegal move and whether the move is a capture
-  pub(crate) fn pick_move(
+  pub fn pick_move(
     &mut self,
     history: &History,
     parameters: &Parameters<i32>,

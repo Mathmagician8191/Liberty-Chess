@@ -1,14 +1,16 @@
 use array2d::Array2D;
 use liberty_chess::moves::Move;
 
-type HistoryInternals = [Array2D<(i32, Option<Move>)>; 18];
+const MAX_HISTORY: i32 = 1 << 14;
+
+type HistoryInternals = [Array2D<(i16, Option<Move>)>; 18];
 
 pub struct History {
   white_data: HistoryInternals,
   black_data: HistoryInternals,
 }
 
-fn get_data(width: usize, height: usize) -> Array2D<(i32, Option<Move>)> {
+fn get_data(width: usize, height: usize) -> Array2D<(i16, Option<Move>)> {
   Array2D::filled_with((0, None), height, width)
 }
 
@@ -50,36 +52,49 @@ impl History {
     }
   }
 
-  pub fn bonus(&mut self, side: bool, piece: u8, square: (usize, usize), depth: u8) {
+  fn stat_bonus(depth: u8) -> i32 {
     let depth = i32::from(depth);
+    16 * depth * depth
+  }
+
+  fn apply_history(score: &mut i16, bonus: i32) {
+    let mut new_score = i32::from(*score);
+    let bonus = bonus.clamp(-MAX_HISTORY, MAX_HISTORY);
+    new_score += bonus - bonus.abs() * new_score / MAX_HISTORY;
+    *score = new_score as i16;
+  }
+
+  pub fn bonus(&mut self, side: bool, piece: u8, square: (usize, usize), depth: u8) {
     let piece = usize::from(piece - 1);
-    let bonus = depth * depth;
-    if side {
-      self.white_data[piece][square].0 += bonus;
+    let bonus = Self::stat_bonus(depth);
+    let history = if side {
+      &mut self.white_data
     } else {
-      self.black_data[piece][square].0 += bonus;
-    }
+      &mut self.black_data
+    };
+    Self::apply_history(&mut history[piece][square].0, bonus);
   }
 
   pub fn malus(&mut self, side: bool, piece: u8, square: (usize, usize), depth: u8) {
-    let depth = i32::from(depth);
     let piece = usize::from(piece - 1);
-    let malus = depth * depth;
-    if side {
-      self.white_data[piece][square].0 -= malus;
+    let malus = -Self::stat_bonus(depth);
+    let history = if side {
+      &mut self.white_data
     } else {
-      self.black_data[piece][square].0 -= malus;
-    }
+      &mut self.black_data
+    };
+    Self::apply_history(&mut history[piece][square].0, malus);
   }
 
   #[must_use]
-  pub fn get(&self, side: bool, piece: u8, square: (usize, usize)) -> i32 {
+  pub fn get(&self, side: bool, piece: u8, square: (usize, usize)) -> i16 {
     let piece = usize::from(piece - 1);
-    if side {
-      self.white_data[piece][square].0
+    let history = if side {
+      &self.white_data
     } else {
-      self.black_data[piece][square].0
-    }
+      &self.black_data
+    };
+    history[piece][square].0
   }
 
   #[must_use]

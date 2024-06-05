@@ -1,6 +1,9 @@
 // Pesto PSQT tables
 // For testing how much elo could be gained by specialising for 8x8 boards
-pub const MG_PSQT: [[[i32; 8]; 8]; 6] = [
+
+use crate::parameters::pack;
+
+const MG_PSQT: [[[i32; 8]; 8]; 6] = [
   // pawn
   [
     [0, 0, 0, 0, 0, 0, 0, 0],
@@ -69,7 +72,7 @@ pub const MG_PSQT: [[[i32; 8]; 8]; 6] = [
   ],
 ];
 
-pub const EG_PSQT: [[[i32; 8]; 8]; 6] = [
+const EG_PSQT: [[[i32; 8]; 8]; 6] = [
   // pawn
   [
     [0, 0, 0, 0, 0, 0, 0, 0],
@@ -137,3 +140,21 @@ pub const EG_PSQT: [[[i32; 8]; 8]; 6] = [
     [-53, -34, -21, -11, -28, -14, -24, -43],
   ],
 ];
+
+pub const PSQT: [[[i64; 8]; 8]; 6] = {
+  let mut result = [[[0; 8]; 8]; 6];
+  let mut piece = 0;
+  while piece < 6 {
+    let mut i = 0;
+    while i < 8 {
+      let mut j = 0;
+      while j < 8 {
+        result[piece][i][j] = pack(MG_PSQT[piece][i][j], EG_PSQT[piece][i][j]);
+        j += 1;
+      }
+      i += 1;
+    }
+    piece += 1;
+  }
+  result
+};

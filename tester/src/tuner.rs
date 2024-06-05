@@ -8,10 +8,10 @@ use std::fs::{read_dir, read_to_string};
 use std::time::Instant;
 use tester::POSITIONS;
 
-const ITERATION_COUNT: i32 = 200;
-const PRINT_FREQUENCY: i32 = 25;
-const LR: f64 = 20000.0;
-const MOMENTUM_FACTOR: f64 = 0.8;
+const ITERATION_COUNT: i32 = 210;
+const PRINT_FREQUENCY: i32 = 30;
+const LR: f64 = 15000.0;
+const MOMENTUM_FACTOR: f64 = 0.85;
 
 type GameData = Vec<(Features, Vec<Piece>, bool, u32, f64)>;
 
@@ -108,7 +108,7 @@ fn setup_threadpool() {
 fn process_position(position: &&str, data: &mut Vec<(f64, GameData)>, total_positions: &mut usize) {
   println!("Position {position}");
   let mut processed_data = Vec::new();
-  let folders = read_dir("datagen/Old").expect("Folder does not exist");
+  let folders = read_dir("datagen/Good").expect("Folder does not exist");
   for folder in folders {
     let mut folder = folder.expect("Folder does not exist").path();
     folder.push(format!("{position}.txt"));
@@ -117,12 +117,9 @@ fn process_position(position: &&str, data: &mut Vec<(f64, GameData)>, total_posi
     processed_data.extend(
       lines
         .par_iter()
-        .flat_map(|line| {
+        .map(|line| {
           let mut line = line.split(';');
           let board = Board::new(line.next().expect("missing FEN")).expect("Invalid position");
-          if board.halfmoves() >= 30 || board.in_check() {
-            return None;
-          }
           let games: u32 = line
             .next()
             .expect("Missing games")
@@ -134,13 +131,13 @@ fn process_position(position: &&str, data: &mut Vec<(f64, GameData)>, total_posi
             .parse()
             .expect("Invalid score");
           let features = extract_features(board.board());
-          Some((
+          (
             features,
             board.promotion_options().clone(),
             board.to_move(),
             games,
             f64::from(score) / f64::from(games) / 2.0,
-          ))
+          )
         })
         .collect::<GameData>(),
     );

@@ -262,8 +262,10 @@ impl ToString for IntOption {
 
 /// One of a range of possibilities
 pub struct RangeOption {
-  default: String,
-  options: HashSet<String>,
+  /// The default value of the range
+  pub default: String,
+  /// All the valid options for the range
+  pub options: HashSet<String>,
 }
 
 impl ToString for RangeOption {

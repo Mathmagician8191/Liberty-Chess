@@ -12,35 +12,38 @@ use oxidation::{
   bench, divide, search, Output, SearchConfig, State, HASH_SIZE, MAX_QDEPTH, MULTI_PV_COUNT,
   QDEPTH, QDEPTH_NAME, VERSION_NUMBER,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{stdin, stdout, BufReader};
 use std::sync::mpsc::{channel, Sender};
 use std::thread::spawn;
 use std::time::Instant;
 use ulci::client::{startup, Message};
-use ulci::{ClientInfo, IntOption, OptionValue, Score, SupportedFeatures, UlciOption, V1Features};
+use ulci::{
+  ClientInfo, IntOption, OptionValue, RangeOption, Score, SupportedFeatures, UlciOption, V1Features,
+};
 
 const BENCH_DEPTH: i8 = 9;
 
 const HASH_NAME: &str = "Hash";
 const MULTI_PV_NAME: &str = "MultiPV";
+const VARIANT_NAME: &str = "UCI_Variant";
 
 // i8 is an offset for bench depth
 const BENCH_POSITIONS: &[(&str, i8)] = &[
   (STARTPOS, 0),
-  (CAPABLANCA_RECTANGLE, -1),
-  (CAPABLANCA, -2),
-  (LIBERTY_CHESS, -3),
-  (MINI, 1),
-  (MONGOL, -1),
+  (CAPABLANCA_RECTANGLE, 0),
+  (CAPABLANCA, 0),
+  (LIBERTY_CHESS, -1),
+  (MINI, 2),
+  (MONGOL, 0),
   (AFRICAN, -1),
-  (NARNIA, 0),
-  (TRUMP, -3),
+  (NARNIA, 1),
+  (TRUMP, -2),
   (LOADED_BOARD, -4),
   (DOUBLE_CHESS, -2),
   (HORDE, -1),
   (ELIMINATION, 0),
-  ("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1", -1),
+  ("4k3/pppppppp/8/8/8/8/PPPPPPPP/4K3 w - - 0 1", 0),
 ];
 
 fn startup_client(tx: &Sender<Message>) {
@@ -67,6 +70,16 @@ fn startup_client(tx: &Sender<Message>) {
       default: usize::from(MULTI_PV_COUNT),
       min: 1,
       max: 1 << 10,
+    }),
+  );
+  let mut variants = HashSet::new();
+  variants.insert("chess".to_owned());
+  variants.insert("horde".to_owned());
+  options.insert(
+    VARIANT_NAME.to_owned(),
+    UlciOption::Range(RangeOption {
+      default: "chess".to_owned(),
+      options: variants,
     }),
   );
   let info = ClientInfo {
@@ -142,6 +155,8 @@ fn main() {
           }
           _ => println!("info error incorrect option type"),
         },
+        // Does not do anything, just there for servers that expect it
+        VARIANT_NAME => (),
         _ => (),
       },
       Message::Eval => {

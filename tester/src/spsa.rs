@@ -12,7 +12,7 @@ use tester::{get_threadpool, GameResult, POSITIONS, STC};
 use ulci::server::UlciResult;
 use ulci::SearchTime;
 
-const ITERATION_COUNT: u16 = 1000;
+const ITERATION_COUNT: u16 = 2000;
 
 const ALPHA: f32 = 0.602;
 const GAMMA: f32 = 0.101;
@@ -32,10 +32,11 @@ where
 
 impl Spsa<f32> for SearchParameters {
   fn random_delta() -> Self {
+    let mut rng = thread_rng();
     Self {
-      lmr_base: 0.0,
-      lmr_factor: 0.0,
-      lmr_pv_reduction: 0.0,
+      lmr_base: rng.gen_range(-0.06..0.06),
+      lmr_factor: rng.gen_range(-0.04..0.04),
+      lmr_pv_reduction: rng.gen_range(-0.1..0.1),
     }
   }
 

@@ -9,9 +9,9 @@ use ulci::Score;
 
 /// The default parameters for the search
 pub const SEARCH_PARAMETERS: SearchParameters = SearchParameters {
-  lmr_base: 0.31,
-  lmr_factor: 0.327,
-  lmr_pv_reduction: 0.526,
+  lmr_base: 0.42826194,
+  lmr_factor: 0.36211678,
+  lmr_pv_reduction: 0.6459082,
 };
 
 /// Parameters affecting the behaviour of the search
@@ -23,7 +23,7 @@ pub struct SearchParameters {
   pub lmr_base: f32,
   /// LMR reduction scaling factor
   pub lmr_factor: f32,
-  /// How much to reduce the LMR in pv nodes
+  /// How much to reduce LMR by in pv nodes
   pub lmr_pv_reduction: f32,
 }
 
@@ -91,6 +91,7 @@ fn recaptures(
         .push(StackEntry::new(state.stack[ply - 1].board.clone()));
     }
     for (mv, _) in moves {
+      // Safety - the indices are different therefore the references don't alias
       let position = unsafe {
         let board = &*(&state.stack[ply - 1].board as *const Board);
         let position = &mut state.stack[ply].board;
@@ -169,6 +170,7 @@ pub fn quiescence(
         .push(StackEntry::new(state.stack[ply - 1].board.clone()));
     }
     for (mv, _, _) in moves {
+      // Safety - the indices are different therefore the references don't alias
       let position = unsafe {
         let board = &*(&state.stack[ply - 1].board as *const Board);
         let position = &mut state.stack[ply].board;
@@ -241,7 +243,7 @@ fn alpha_beta(
       movecount: board.moves(),
       scoretype: tt_flag,
       score,
-      bestmove: pv.first().copied(),
+      bestmove: None,
     });
     Some((pv, score))
   } else {
@@ -283,21 +285,21 @@ fn alpha_beta(
       // Null move pruning
       if !nullmove && depth >= 2 && Score::Centipawn(eval) >= beta && board.has_pieces() {
         if let Some(nullmove) = board.nullmove() {
-          let null_depth = depth.saturating_sub(3);
+          let null_depth = depth.saturating_sub(3 + depth / 5);
           state.stack[ply].board = nullmove;
           let score = -null_move_search(state, settings, ply + 1, null_depth, -beta)?;
           if score >= beta {
+            let score = match score {
+              Score::Centipawn(_) => score,
+              _ => beta,
+            };
             // Verification search
-            if depth >= 4 {
-              let score = zero_window_search(state, settings, ply, null_depth, beta, true)?;
-              if score >= beta {
+            if null_depth > 0 {
+              let verif_score = zero_window_search(state, settings, ply, null_depth, beta, true)?;
+              if verif_score >= beta {
                 return Some((Vec::new(), score));
               }
             } else {
-              let score = match score {
-                Score::Centipawn(_) => score,
-                _ => beta,
-              };
               return Some((Vec::new(), score));
             }
           }
@@ -339,6 +341,7 @@ fn alpha_beta(
           break;
         }
       }
+      // Safety - the indices are different therefore the references don't alias
       let position = unsafe {
         let board = &*(&state.stack[ply - 1].board as *const Board);
         let position = &mut state.stack[ply].board;
@@ -535,15 +538,18 @@ pub(crate) fn alpha_beta_root(
   for best_move in best_moves {
     if !excluded_moves.contains(best_move) {
       if let Some(position) = board.move_if_legal(*best_move) {
+        let node_count = settings.nodes;
         settings.nodes += 1;
         move_count += 1;
         state.stack[0].board = position;
+        let mut failed_high = false;
         let (mut pv, score) = if move_count > 1 {
           // Zero window search to see if raises alpha
           let score = zero_window_search(state, settings, 1, depth - 1, -alpha, false);
           if let Some(mut score) = score {
             score = -score;
             if score > alpha {
+              failed_high = true;
               backup_pv = best_pv;
               best_pv = vec![*best_move];
               if show_output {
@@ -583,6 +589,7 @@ pub(crate) fn alpha_beta_root(
           return (best_pv, alpha);
         };
         if score > alpha {
+          settings.best_move_nodes += settings.nodes - node_count;
           alpha = score;
           let mut new_pv = vec![*best_move];
           new_pv.append(&mut pv);
@@ -601,12 +608,22 @@ pub(crate) fn alpha_beta_root(
               state.table.capacity(),
             );
           }
-        } else {
+        } else if failed_high {
           // In case of PVS research fail-low, revert best pv
           best_pv.clone_from(&backup_pv);
-        }
-        if !settings.hard_tm && settings.start.elapsed().as_millis() * 5 >= settings.max_time * 4 {
-          return (best_pv, alpha);
+          if show_output {
+            print_info(
+              out,
+              board,
+              alpha,
+              depth,
+              settings,
+              &best_pv,
+              pv_line,
+              show_pv_line,
+              state.table.capacity(),
+            );
+          }
         }
       }
     }
@@ -615,15 +632,18 @@ pub(crate) fn alpha_beta_root(
     if !best_moves.contains(capture) && !excluded_moves.contains(capture) {
       let mut position = board.clone();
       position.play_move(*capture);
+      let node_count = settings.nodes;
       settings.nodes += 1;
       move_count += 1;
-      state.stack[0].board = position.clone();
+      state.stack[0].board = position;
+      let mut failed_high = false;
       let (mut pv, score) = if move_count > 1 {
         // Zero window search to see if raises alpha
         let score = zero_window_search(state, settings, 1, depth - 1, -alpha, false);
         if let Some(mut score) = score {
           score = -score;
           if score > alpha {
+            failed_high = true;
             backup_pv = best_pv;
             best_pv = vec![*capture];
             if show_output {
@@ -663,6 +683,12 @@ pub(crate) fn alpha_beta_root(
         return (best_pv, alpha);
       };
       if score > alpha {
+        let nodes_taken = settings.nodes - node_count;
+        if move_count == 1 {
+          settings.best_move_nodes += nodes_taken;
+        } else {
+          settings.best_move_nodes = nodes_taken;
+        }
         alpha = score;
         let mut new_pv = vec![*capture];
         new_pv.append(&mut pv);
@@ -681,12 +707,22 @@ pub(crate) fn alpha_beta_root(
             state.table.capacity(),
           );
         }
-      } else {
+      } else if failed_high {
         // In case of PVS research fail-low, revert best pv
         best_pv.clone_from(&backup_pv);
-      }
-      if !settings.hard_tm && settings.start.elapsed().as_millis() * 5 >= settings.max_time * 4 {
-        return (best_pv, alpha);
+        if show_output {
+          print_info(
+            out,
+            board,
+            alpha,
+            depth,
+            settings,
+            &best_pv,
+            pv_line,
+            show_pv_line,
+            state.table.capacity(),
+          );
+        }
       }
     }
   }
@@ -701,15 +737,28 @@ pub(crate) fn alpha_beta_root(
     if !best_moves.contains(quiet) && !excluded_moves.contains(quiet) {
       let mut position = board.clone();
       position.play_move(*quiet);
+      let node_count = settings.nodes;
       settings.nodes += 1;
       move_count += 1;
-      state.stack[0].board = position.clone();
+      // Late move reductions
+      let reduction = if depth >= 3 && move_count > 5 && !position.in_check() {
+        let reduction = state.search_parameters.lmr_base
+          + f32::from(depth).ln() * (move_count as f32).ln() * state.search_parameters.lmr_factor
+          - state.search_parameters.lmr_pv_reduction;
+        // avoid dropping into qsearch
+        (reduction as i8).clamp(0, (depth / 2) as i8) as u8
+      } else {
+        0
+      };
+      state.stack[0].board = position;
+      let mut failed_high = false;
       let (mut pv, score) = if move_count > 1 {
         // Zero window search to see if raises alpha
-        let score = zero_window_search(state, settings, 1, depth - 1, -alpha, false);
+        let score = zero_window_search(state, settings, 1, depth - 1 - reduction, -alpha, false);
         if let Some(mut score) = score {
           score = -score;
           if score > alpha {
+            failed_high = true;
             backup_pv = best_pv;
             best_pv = vec![*quiet];
             if show_output {
@@ -749,6 +798,12 @@ pub(crate) fn alpha_beta_root(
         return (best_pv, alpha);
       };
       if score > alpha {
+        let nodes_taken = settings.nodes - node_count;
+        if move_count == 1 {
+          settings.best_move_nodes += nodes_taken;
+        } else {
+          settings.best_move_nodes = nodes_taken;
+        }
         alpha = score;
         let mut new_pv = vec![*quiet];
         new_pv.append(&mut pv);
@@ -767,12 +822,22 @@ pub(crate) fn alpha_beta_root(
             state.table.capacity(),
           );
         }
-      } else {
+      } else if failed_high {
         // In case of PVS research fail-low, revert best pv
         best_pv.clone_from(&backup_pv);
-      }
-      if !settings.hard_tm && settings.start.elapsed().as_millis() * 5 >= settings.max_time * 4 {
-        return (best_pv, alpha);
+        if show_output {
+          print_info(
+            out,
+            board,
+            alpha,
+            depth,
+            settings,
+            &best_pv,
+            pv_line,
+            show_pv_line,
+            state.table.capacity(),
+          );
+        }
       }
     }
   }

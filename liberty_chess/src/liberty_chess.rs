@@ -1119,17 +1119,16 @@ impl Board {
     ]
   }
 
-  #[allow(clippy::cast_sign_loss)]
-  const fn jump_coords((row, column): (isize, isize), dx: isize, dy: isize) -> [(usize, usize); 8] {
+  const fn jump_coords((row, column): (usize, usize), dx: usize, dy: usize) -> [(usize, usize); 8] {
     [
-      ((row + dx) as usize, (column + dy) as usize),
-      ((row + dx) as usize, (column - dy) as usize),
-      ((row - dx) as usize, (column + dy) as usize),
-      ((row - dx) as usize, (column - dy) as usize),
-      ((row + dy) as usize, (column + dx) as usize),
-      ((row + dy) as usize, (column - dx) as usize),
-      ((row - dy) as usize, (column + dx) as usize),
-      ((row - dy) as usize, (column - dx) as usize),
+      (row + dx, column + dy),
+      (row + dx, column.wrapping_sub(dy)),
+      (row.wrapping_sub(dx), column + dy),
+      (row.wrapping_sub(dx), column.wrapping_sub(dy)),
+      (row + dy, column + dx),
+      (row + dy, column.wrapping_sub(dx)),
+      (row.wrapping_sub(dy), column + dx),
+      (row.wrapping_sub(dy), column.wrapping_sub(dx)),
     ]
   }
 
@@ -1320,7 +1319,7 @@ impl Board {
               }
             }
             KNIGHT => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 2, 1) {
+              for (k, l) in Self::jump_coords((i, j), 2, 1) {
                 if k < self.height() && l < self.width() && self.test_legal((i, j), (k, l)) {
                   return true;
                 }
@@ -1449,7 +1448,7 @@ impl Board {
     (mut row, mut column): (isize, isize),
     dx: isize,
     dy: isize,
-  ) -> i32 {
+  ) -> i64 {
     let mut length = 0;
     let (offset, enemy_pawn) = if colour {
       (1, Some(&-PAWN))
@@ -1463,7 +1462,7 @@ impl Board {
       match pieces.get(row as usize, column) {
         Some(&SQUARE) => {
           let row = (row + offset) as usize;
-          if pieces.get(row, column.saturating_sub(1)) != enemy_pawn
+          if pieces.get(row, column.wrapping_sub(1)) != enemy_pawn
             && pieces.get(row, column + 1) != enemy_pawn
           {
             length += 1;
@@ -1472,7 +1471,7 @@ impl Board {
         Some(piece) => {
           if colour != (*piece > 0) {
             let row = (row + offset) as usize;
-            if pieces.get(row, column.saturating_sub(1)) != enemy_pawn
+            if pieces.get(row, column.wrapping_sub(1)) != enemy_pawn
               && pieces.get(row, column + 1) != enemy_pawn
             {
               length += 1;
@@ -1487,7 +1486,7 @@ impl Board {
   }
 
   #[must_use]
-  fn bishop_mobility(pieces: &Array2D<Piece>, piece: (usize, usize), colour: bool) -> i32 {
+  fn bishop_mobility(pieces: &Array2D<Piece>, piece: (usize, usize), colour: bool) -> i64 {
     let piece = (piece.0 as isize, piece.1 as isize);
     Self::ray_length(pieces, colour, piece, 1, 1)
       + Self::ray_length(pieces, colour, piece, 1, -1)
@@ -1496,7 +1495,7 @@ impl Board {
   }
 
   #[must_use]
-  fn rook_mobility(pieces: &Array2D<Piece>, piece: (usize, usize), colour: bool) -> i32 {
+  fn rook_mobility(pieces: &Array2D<Piece>, piece: (usize, usize), colour: bool) -> i64 {
     let piece = (piece.0 as isize, piece.1 as isize);
     Self::ray_length(pieces, colour, piece, 1, 0)
       + Self::ray_length(pieces, colour, piece, 0, 1)
@@ -1505,7 +1504,7 @@ impl Board {
   }
 
   #[must_use]
-  fn nightrider_mobility(pieces: &Array2D<Piece>, piece: (usize, usize), colour: bool) -> i32 {
+  fn nightrider_mobility(pieces: &Array2D<Piece>, piece: (usize, usize), colour: bool) -> i64 {
     let piece = (piece.0 as isize, piece.1 as isize);
     Self::ray_length(pieces, colour, piece, 2, 1)
       + Self::ray_length(pieces, colour, piece, 1, 2)
@@ -1519,7 +1518,7 @@ impl Board {
 
   /// Get the mobility of a ray attacked piece on a square
   #[must_use]
-  pub fn mobility(pieces: &Array2D<Piece>, piece: (usize, usize), piece_type: Piece) -> i32 {
+  pub fn mobility(pieces: &Array2D<Piece>, piece: (usize, usize), piece_type: Piece) -> i64 {
     // not correct for empty square but irrelevant in that case
     let colour = piece_type > 0;
     match piece_type.abs() {

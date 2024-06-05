@@ -64,21 +64,21 @@ impl Board {
               }
             }
             KNIGHT => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 2, 1) {
+              for (k, l) in Self::jump_coords((i, j), 2, 1) {
                 if k < self.height() && l < self.width() {
                   self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
                 }
               }
             }
             CAMEL => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 1) {
+              for (k, l) in Self::jump_coords((i, j), 3, 1) {
                 if k < self.height() && l < self.width() {
                   self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
                 }
               }
             }
             ZEBRA => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 2) {
+              for (k, l) in Self::jump_coords((i, j), 3, 2) {
                 if k < self.height() && l < self.width() {
                   self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
                 }
@@ -91,6 +91,33 @@ impl Board {
               let right_row = usize::min(i + 1, self.height() - 1);
               for k in left_row..=right_row {
                 for l in left_column..=right_column {
+                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
+                }
+              }
+            }
+            CHAMPION => {
+              let left_column = j.saturating_sub(2);
+              let right_column = usize::min(j + 2, self.width() - 1);
+              let left_row = i.saturating_sub(2);
+              let right_row = usize::min(i + 2, self.height() - 1);
+              for k in left_row..=right_row {
+                for l in left_column..=right_column {
+                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
+                }
+              }
+            }
+            CENTAUR => {
+              let left_column = j.saturating_sub(1);
+              let right_column = usize::min(j + 1, self.width() - 1);
+              let left_row = i.saturating_sub(1);
+              let right_row = usize::min(i + 1, self.height() - 1);
+              for k in left_row..=right_row {
+                for l in left_column..=right_column {
+                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
+                }
+              }
+              for (k, l) in Self::jump_coords((i, j), 2, 1) {
+                if k < self.height() && l < self.width() {
                   self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
                 }
               }
@@ -205,21 +232,21 @@ impl Board {
               }
             }
             KNIGHT => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 2, 1) {
+              for (k, l) in Self::jump_coords((i, j), 2, 1) {
                 if k < self.height() && l < self.width() {
                   self.add_if_pseudolegal(captures, quiets, (i, j), (k, l));
                 }
               }
             }
             CAMEL => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 1) {
+              for (k, l) in Self::jump_coords((i, j), 3, 1) {
                 if k < self.height() && l < self.width() {
                   self.add_if_pseudolegal(captures, quiets, (i, j), (k, l));
                 }
               }
             }
             ZEBRA => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 2) {
+              for (k, l) in Self::jump_coords((i, j), 3, 2) {
                 if k < self.height() && l < self.width() {
                   self.add_if_pseudolegal(captures, quiets, (i, j), (k, l));
                 }
@@ -236,13 +263,29 @@ impl Board {
                 }
               }
             }
-            CHAMPION | CENTAUR => {
+            CHAMPION => {
               let left_column = j.saturating_sub(2);
               let right_column = usize::min(j + 2, self.width() - 1);
               let left_row = i.saturating_sub(2);
               let right_row = usize::min(i + 2, self.height() - 1);
               for k in left_row..=right_row {
                 for l in left_column..=right_column {
+                  self.add_if_pseudolegal(captures, quiets, (i, j), (k, l));
+                }
+              }
+            }
+            CENTAUR => {
+              let left_column = j.saturating_sub(1);
+              let right_column = usize::min(j + 1, self.width() - 1);
+              let left_row = i.saturating_sub(1);
+              let right_row = usize::min(i + 1, self.height() - 1);
+              for k in left_row..=right_row {
+                for l in left_column..=right_column {
+                  self.add_if_pseudolegal(captures, quiets, (i, j), (k, l));
+                }
+              }
+              for (k, l) in Self::jump_coords((i, j), 2, 1) {
+                if k < self.height() && l < self.width() {
                   self.add_if_pseudolegal(captures, quiets, (i, j), (k, l));
                 }
               }
@@ -353,21 +396,21 @@ impl Board {
               }
             }
             KNIGHT => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 2, 1) {
+              for (k, l) in Self::jump_coords((i, j), 2, 1) {
                 if k < self.height() && l < self.width() {
                   self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, l));
                 }
               }
             }
             CAMEL => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 1) {
+              for (k, l) in Self::jump_coords((i, j), 3, 1) {
                 if k < self.height() && l < self.width() {
                   self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, l));
                 }
               }
             }
             ZEBRA => {
-              for (k, l) in Self::jump_coords((i as isize, j as isize), 3, 2) {
+              for (k, l) in Self::jump_coords((i, j), 3, 2) {
                 if k < self.height() && l < self.width() {
                   self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, l));
                 }
@@ -384,13 +427,29 @@ impl Board {
                 }
               }
             }
-            CHAMPION | CENTAUR => {
+            CHAMPION => {
               let left_column = j.saturating_sub(2);
               let right_column = usize::min(j + 2, self.width() - 1);
               let left_row = i.saturating_sub(2);
               let right_row = usize::min(i + 2, self.height() - 1);
               for k in left_row..=right_row {
                 for l in left_column..=right_column {
+                  self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, l));
+                }
+              }
+            }
+            CENTAUR => {
+              let left_column = j.saturating_sub(1);
+              let right_column = usize::min(j + 1, self.width() - 1);
+              let left_row = i.saturating_sub(1);
+              let right_row = usize::min(i + 1, self.height() - 1);
+              for k in left_row..=right_row {
+                for l in left_column..=right_column {
+                  self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, l));
+                }
+              }
+              for (k, l) in Self::jump_coords((i, j), 2, 1) {
+                if k < self.height() && l < self.width() {
                   self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, l));
                 }
               }

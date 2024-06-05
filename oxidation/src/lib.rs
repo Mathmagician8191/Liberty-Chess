@@ -23,21 +23,23 @@ use ulci::client::Message;
 use ulci::server::UlciResult;
 use ulci::{AnalysisResult, OptionValue, Score, SearchTime};
 
+#[cfg(not(feature = "feature_extraction"))]
+use crate::parameters::PackedParameters;
+
 /// Evaluation
 pub mod evaluate;
 /// Interface for efficiently integrating into another application
 pub mod glue;
-/// Interface for picking moves
-pub mod movepicker;
 /// Tunable parameters
 pub mod parameters;
 /// Searching through a position
 pub mod search;
 
 mod history;
+mod movepicker;
 mod tt;
 
-#[cfg(feature = "pesto")]
+#[cfg(all(feature = "pesto", not(feature = "feature_extraction")))]
 mod pesto;
 
 /// The version number of the engine
@@ -95,6 +97,8 @@ pub struct State {
   stack: Vec<StackEntry>,
   search_parameters: SearchParameters,
   parameters: Parameters<i32>,
+  #[cfg(not(feature = "feature_extraction"))]
+  packed_parameters: PackedParameters,
   promotion_values: (i32, i32),
 }
 
@@ -114,6 +118,8 @@ impl State {
       stack: Vec::new(),
       search_parameters,
       parameters,
+      #[cfg(not(feature = "feature_extraction"))]
+      packed_parameters: parameters.into(),
       promotion_values,
     }
   }
@@ -185,6 +191,8 @@ pub struct SearchConfig<'a> {
   last_ms_nodes: usize,
   check_frequency: usize,
   next_check: usize,
+  // nodetm state
+  best_move_nodes: usize,
 }
 
 impl<'a> SearchConfig<'a> {
@@ -216,6 +224,7 @@ impl<'a> SearchConfig<'a> {
       last_ms_nodes: 0,
       check_frequency: 1,
       next_check: 1,
+      best_move_nodes: 0,
     }
   }
 
@@ -230,8 +239,8 @@ impl<'a> SearchConfig<'a> {
     match time {
       SearchTime::Increment(time, inc) => {
         let time = time.saturating_sub(100);
-        let time = time.min(time / 15 + 3 * inc / 4);
-        let time = 1.max(time);
+        let time = time.min(7 * time / 150 + 8 * inc / 13);
+        let time = 1.max(time as u128);
         Self::new(
           qdepth,
           u8::MAX,
@@ -357,6 +366,19 @@ impl<'a> SearchConfig<'a> {
       self.next_check = self.nodes + self.check_frequency;
     }
     false
+  }
+
+  fn soft_limit(&self, multipv: bool) -> u128 {
+    if multipv {
+      self.max_time / 3
+    } else {
+      let best_move_permill = if self.nodes == 0 {
+        0
+      } else {
+        (self.best_move_nodes * 1000 / self.nodes) as u128
+      };
+      self.max_time * (1410 - best_move_permill) / 2282 as u128
+    }
   }
 }
 
@@ -497,6 +519,7 @@ pub fn search(
       best_moves.push(ttmove);
     }
   };
+  let moves = captures.len() + quiets.len();
   let mut best_pv = if let Some(best_move) = best_moves.first() {
     vec![*best_move]
   } else if let Some(capture) = captures.first() {
@@ -507,7 +530,8 @@ pub fn search(
     Vec::new()
   };
   'outer: while depth < settings.max_depth
-    && (settings.hard_tm || settings.start.elapsed().as_millis() * 3 <= settings.max_time)
+    && (settings.hard_tm
+      || settings.start.elapsed().as_millis() <= settings.soft_limit(multipv > 1))
   {
     depth += 1;
     let mut excluded_moves = Vec::new();
@@ -556,6 +580,9 @@ pub fn search(
       if settings.search_is_over() {
         break 'outer;
       }
+    }
+    if !settings.hard_tm && moves <= 1 {
+      break;
     }
     best_moves = excluded_moves;
   }
