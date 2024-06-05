@@ -462,7 +462,12 @@ fn process_info(mut words: SplitWhitespace) -> Vec<UlciResult> {
           modified = true;
         }
       }
-      // TODO fix: only works as the last option
+      "multipv" => {
+        if let Some(value) = words.next().and_then(|w| w.parse().ok()) {
+          result.pv_line = value;
+          modified = true;
+        }
+      }
       "pv" => {
         modified = true;
         break;

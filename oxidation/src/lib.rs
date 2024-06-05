@@ -240,7 +240,7 @@ impl<'a> SearchConfig<'a> {
       SearchTime::Increment(time, inc) => {
         let time = time.saturating_sub(100);
         let time = time.min(7 * time / 150 + 8 * inc / 13);
-        let time = 1.max(time as u128);
+        let time = 1.max(time);
         Self::new(
           qdepth,
           u8::MAX,
@@ -377,7 +377,7 @@ impl<'a> SearchConfig<'a> {
       } else {
         (self.best_move_nodes * 1000 / self.nodes) as u128
       };
-      self.max_time * (1410 - best_move_permill) / 2282 as u128
+      self.max_time * (1410 - best_move_permill) / 2282
     }
   }
 }
