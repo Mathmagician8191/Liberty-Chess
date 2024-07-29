@@ -13,20 +13,13 @@ pub fn process_position(
   receive_message: &Receiver<Message>,
   board: CompressedBoard,
   searchtime: SearchTime,
-  mut qdepth: u8,
   state: &mut State,
 ) -> Option<()> {
   let mut position = board.load_from_thread();
   state.new_position(&position);
   let mut debug = false;
   while receive_message.try_recv().is_ok() {}
-  let mut config = SearchConfig::new_time(
-    &position,
-    &mut qdepth,
-    searchtime,
-    receive_message,
-    &mut debug,
-  );
+  let mut config = SearchConfig::new_time(&position, searchtime, receive_message, &mut debug);
   let pv = search(
     state,
     &mut config,

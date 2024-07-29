@@ -21,7 +21,7 @@ use std::sync::mpsc::{Receiver, Sender, TryRecvError};
 use std::time::Instant;
 use ulci::client::Message;
 use ulci::server::UlciResult;
-use ulci::{AnalysisResult, OptionValue, Score, SearchTime};
+use ulci::{AnalysisResult, Score, SearchTime};
 
 #[cfg(not(feature = "feature_extraction"))]
 use crate::parameters::PackedParameters;
@@ -39,25 +39,13 @@ mod history;
 mod movepicker;
 mod tt;
 
-#[cfg(all(feature = "pesto", not(feature = "feature_extraction")))]
-mod pesto;
-
 /// The version number of the engine
 pub const VERSION_NUMBER: &str = env!("CARGO_PKG_VERSION");
 
-/// Default Quiescence depth
-pub const QDEPTH: u8 = 3;
-/// Maximum allowed Quiescence depth
-pub const MAX_QDEPTH: u16 = 32;
 /// Default Hash size
 pub const HASH_SIZE: usize = 64;
 /// Default Multi-PV lines
 pub const MULTI_PV_COUNT: u16 = 1;
-
-/// Internal naming thing - do not use
-///
-/// Public due to being required in the binary
-pub const QDEPTH_NAME: &str = "QDepth";
 
 const DRAW_SCORE: Score = Score::Centipawn(0);
 
@@ -72,6 +60,7 @@ pub enum Output<'a> {
 struct StackEntry {
   movepicker: MovePicker,
   board: Board,
+  eval: Option<i32>,
 }
 
 impl StackEntry {
@@ -79,6 +68,7 @@ impl StackEntry {
     Self {
       movepicker: MovePicker::new(),
       board,
+      eval: None,
     }
   }
 
@@ -173,7 +163,6 @@ pub fn get_promotion_values<T: Copy + PartialOrd + Mul<T, Output = T> + From<i32
 
 /// Configuration for the search
 pub struct SearchConfig<'a> {
-  qdepth: &'a mut u8,
   start: Instant,
   max_depth: u8,
   max_time: u128,
@@ -198,7 +187,6 @@ pub struct SearchConfig<'a> {
 impl<'a> SearchConfig<'a> {
   /// Initialise the search config
   fn new(
-    qdepth: &'a mut u8,
     max_depth: u8,
     max_time: u128,
     max_nodes: usize,
@@ -208,7 +196,6 @@ impl<'a> SearchConfig<'a> {
     debug: &'a mut bool,
   ) -> Self {
     Self {
-      qdepth,
       start: Instant::now(),
       max_depth,
       max_time,
@@ -231,7 +218,6 @@ impl<'a> SearchConfig<'a> {
   /// Initialise the search config based on the search time
   pub fn new_time(
     board: &Board,
-    qdepth: &'a mut u8,
     time: SearchTime,
     rx: &'a Receiver<Message>,
     debug: &'a mut bool,
@@ -239,18 +225,9 @@ impl<'a> SearchConfig<'a> {
     match time {
       SearchTime::Increment(time, inc) => {
         let time = time.saturating_sub(100);
-        let time = time.min(7 * time / 150 + 8 * inc / 13);
+        let time = time.min(time / 15 + 3 * inc / 4);
         let time = 1.max(time);
-        Self::new(
-          qdepth,
-          u8::MAX,
-          time,
-          usize::MAX,
-          Score::Loss(0),
-          false,
-          rx,
-          debug,
-        )
+        Self::new(u8::MAX, time, usize::MAX, Score::Loss(0), false, rx, debug)
       }
       SearchTime::Asymmetric(wtime, winc, btime, binc) => {
         let (time, inc) = if board.to_move() {
@@ -261,19 +238,9 @@ impl<'a> SearchConfig<'a> {
         let time = time.saturating_sub(100);
         let time = time.min(time / 15 + 3 * inc / 4);
         let time = 1.max(time);
-        Self::new(
-          qdepth,
-          u8::MAX,
-          time,
-          usize::MAX,
-          Score::Loss(0),
-          false,
-          rx,
-          debug,
-        )
+        Self::new(u8::MAX, time, usize::MAX, Score::Loss(0), false, rx, debug)
       }
       SearchTime::Infinite => Self::new(
-        qdepth,
         u8::MAX,
         u128::MAX,
         usize::MAX,
@@ -283,7 +250,6 @@ impl<'a> SearchConfig<'a> {
         debug,
       ),
       SearchTime::Other(limits) => Self::new(
-        qdepth,
         limits.depth,
         limits.time,
         limits.nodes,
@@ -293,7 +259,6 @@ impl<'a> SearchConfig<'a> {
         debug,
       ),
       SearchTime::Mate(moves) => Self::new(
-        qdepth,
         u8::MAX,
         u128::MAX,
         usize::MAX,
@@ -336,18 +301,8 @@ impl<'a> SearchConfig<'a> {
                 self.stopped = true;
                 return true;
               }
-              Message::UpdateOption(name, value) => {
-                if name == QDEPTH_NAME {
-                  match value {
-                    OptionValue::UpdateInt(value) => *self.qdepth = value as u8,
-                    OptionValue::SendTrigger
-                    | OptionValue::UpdateBool(_)
-                    | OptionValue::UpdateRange(_)
-                    | OptionValue::UpdateString(_) => {
-                      println!("info error {QDEPTH_NAME} is an integer")
-                    }
-                  }
-                }
+              Message::UpdateOption(..) => {
+                println!("info error cannot change options during search")
               }
               Message::IsReady => println!("readyok"),
               Message::Clock(_) | Message::Info(_) => (),
@@ -594,7 +549,6 @@ pub fn bench(
   state: &mut State,
   board: &mut Board,
   depth: u8,
-  qdepth: &mut u8,
   debug: &mut bool,
   rx: &Receiver<Message>,
   out: Output,
@@ -603,7 +557,6 @@ pub fn bench(
   board.skip_checkmate = true;
   state.new_game(board);
   let mut settings = SearchConfig::new(
-    qdepth,
     depth,
     u128::MAX,
     usize::MAX,

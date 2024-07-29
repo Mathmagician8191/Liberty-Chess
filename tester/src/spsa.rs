@@ -4,7 +4,7 @@ use liberty_chess::{Board, Gamestate};
 use oxidation::glue::process_position;
 use oxidation::parameters::DEFAULT_PARAMETERS;
 use oxidation::search::{SearchParameters, SEARCH_PARAMETERS};
-use oxidation::{State, HASH_SIZE, QDEPTH};
+use oxidation::{State, HASH_SIZE};
 use rand::{thread_rng, Rng};
 use std::sync::mpsc::{channel, Sender};
 use std::time::Instant;
@@ -12,6 +12,7 @@ use tester::{get_threadpool, GameResult, POSITIONS, STC};
 use ulci::server::UlciResult;
 use ulci::SearchTime;
 
+const STARTING_ITERATION: u16 = 0;
 const ITERATION_COUNT: u16 = 2000;
 
 const ALPHA: f32 = 0.602;
@@ -37,6 +38,7 @@ impl Spsa<f32> for SearchParameters {
       lmr_base: rng.gen_range(-0.06..0.06),
       lmr_factor: rng.gen_range(-0.04..0.04),
       lmr_pv_reduction: rng.gen_range(-0.1..0.1),
+      lmr_improving_reduction: rng.gen_range(-0.1..0.1),
     }
   }
 
@@ -55,14 +57,7 @@ fn process_move(state: &mut State, board: &mut Board, search_time: &mut SearchTi
   let move_time = Instant::now();
   let (tx, rx) = channel();
   let (_tx_2, rx_2) = channel();
-  process_position(
-    &tx,
-    &rx_2,
-    board.send_to_thread(),
-    *search_time,
-    QDEPTH,
-    state,
-  );
+  process_position(&tx, &rx_2, board.send_to_thread(), *search_time, state);
   while let Ok(result) = rx.recv() {
     match result {
       UlciResult::Analysis(results) => {
@@ -214,7 +209,7 @@ fn run_match(params1: SearchParameters, params2: SearchParameters) -> (i32, u32)
 
 fn main() {
   let mut params = SEARCH_PARAMETERS;
-  for k in 0..ITERATION_COUNT {
+  for k in STARTING_ITERATION..ITERATION_COUNT {
     println!("Iteration {k}");
     let k = f32::from(k);
     let a_k = 1.0 / (k + 1.0).powf(ALPHA);

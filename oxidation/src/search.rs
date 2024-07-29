@@ -12,6 +12,7 @@ pub const SEARCH_PARAMETERS: SearchParameters = SearchParameters {
   lmr_base: 0.42826194,
   lmr_factor: 0.36211678,
   lmr_pv_reduction: 0.6459082,
+  lmr_improving_reduction: 0.5,
 };
 
 /// Parameters affecting the behaviour of the search
@@ -25,6 +26,8 @@ pub struct SearchParameters {
   pub lmr_factor: f32,
   /// How much to reduce LMR by in pv nodes
   pub lmr_pv_reduction: f32,
+  /// How much to increase LMR by when not improving
+  pub lmr_improving_reduction: f32,
 }
 
 impl Add for SearchParameters {
@@ -35,6 +38,7 @@ impl Add for SearchParameters {
       lmr_base: self.lmr_base + rhs.lmr_base,
       lmr_factor: self.lmr_factor + rhs.lmr_factor,
       lmr_pv_reduction: self.lmr_pv_reduction + rhs.lmr_pv_reduction,
+      lmr_improving_reduction: self.lmr_improving_reduction + rhs.lmr_improving_reduction,
     }
   }
 }
@@ -47,6 +51,7 @@ impl Sub for SearchParameters {
       lmr_base: self.lmr_base - rhs.lmr_base,
       lmr_factor: self.lmr_factor - rhs.lmr_factor,
       lmr_pv_reduction: self.lmr_pv_reduction - rhs.lmr_pv_reduction,
+      lmr_improving_reduction: self.lmr_improving_reduction - rhs.lmr_improving_reduction,
     }
   }
 }
@@ -59,6 +64,7 @@ impl Mul<f32> for SearchParameters {
       lmr_base: self.lmr_base * rhs,
       lmr_factor: self.lmr_factor * rhs,
       lmr_pv_reduction: self.lmr_pv_reduction * rhs,
+      lmr_improving_reduction: self.lmr_improving_reduction * rhs,
     }
   }
 }
@@ -73,7 +79,7 @@ fn recaptures(
   target: (usize, usize),
 ) -> (Vec<Move>, Score) {
   settings.seldepth = max(settings.seldepth, ply);
-  let board = &state.stack[ply - 1].board;
+  let board = &state.stack[ply].board;
   if board.state() == Gamestate::InProgress {
     let mut best_score = Score::Centipawn(evaluate(state, board));
     if best_score >= beta {
@@ -85,16 +91,16 @@ fn recaptures(
     let mut best_pv = Vec::new();
     let mut moves = board.generate_recaptures(target);
     moves.sort_by_key(|(_, piece)| state.parameters.pieces[usize::from(*piece - 1)].0);
-    while state.stack.len() < ply + 1 {
+    while state.stack.len() <= ply + 1 {
       state
         .stack
-        .push(StackEntry::new(state.stack[ply - 1].board.clone()));
+        .push(StackEntry::new(state.stack[ply].board.clone()));
     }
     for (mv, _) in moves {
       // Safety - the indices are different therefore the references don't alias
       let position = unsafe {
-        let board = &*(&state.stack[ply - 1].board as *const Board);
-        let position = &mut state.stack[ply].board;
+        let board = &*(&state.stack[ply].board as *const Board);
+        let position = &mut state.stack[ply + 1].board;
         position.clone_from(board);
         position
       };
@@ -129,8 +135,8 @@ pub fn quiescence(
   mut alpha: Score,
   beta: Score,
 ) -> Option<(Vec<Move>, Score)> {
-  let board = &state.stack[ply - 1].board;
   settings.seldepth = max(settings.seldepth, ply);
+  let board = &state.stack[ply].board;
   if board.state() == Gamestate::InProgress {
     let hash = board.hash();
     let (score, ttmove) = state.table.get(hash, board.moves(), alpha, beta, 0);
@@ -164,16 +170,16 @@ pub fn quiescence(
       state.parameters.pieces[usize::from(*piece - 1)].0
         - 100 * state.parameters.pieces[usize::from(*capture - 1)].0
     });
-    while state.stack.len() < ply + 1 {
+    while state.stack.len() <= ply + 1 {
       state
         .stack
-        .push(StackEntry::new(state.stack[ply - 1].board.clone()));
+        .push(StackEntry::new(state.stack[ply].board.clone()));
     }
     for (mv, _, _) in moves {
       // Safety - the indices are different therefore the references don't alias
       let position = unsafe {
-        let board = &*(&state.stack[ply - 1].board as *const Board);
-        let position = &mut state.stack[ply].board;
+        let board = &*(&state.stack[ply].board as *const Board);
+        let position = &mut state.stack[ply + 1].board;
         position.clone_from(board);
         position
       };
@@ -213,7 +219,7 @@ fn alpha_beta(
   nullmove: bool,
 ) -> Option<(Vec<Move>, Score)> {
   settings.seldepth = max(settings.seldepth, ply);
-  let board = &state.stack[ply - 1].board;
+  let board = &state.stack[ply].board;
   if let Score::Win(movecount) = alpha {
     let moves = board.moves();
     if moves >= movecount {
@@ -228,7 +234,7 @@ fn alpha_beta(
   if board.state() != Gamestate::InProgress {
     Some((Vec::new(), evaluate_terminal(board)))
   } else if depth == 0 {
-    let (pv, score) = quiescence(state, settings, ply, *settings.qdepth, alpha, beta)?;
+    let (pv, score) = quiescence(state, settings, ply, 1, alpha, beta)?;
     let tt_flag = if score >= beta {
       ScoreType::LowerBound
     } else if score > alpha {
@@ -236,7 +242,7 @@ fn alpha_beta(
     } else {
       ScoreType::UpperBound
     };
-    let board = &state.stack[ply - 1].board;
+    let board = &state.stack[ply].board;
     state.table.store(Entry {
       hash: board.hash(),
       depth: 0,
@@ -259,21 +265,34 @@ fn alpha_beta(
     let mut futility_score = None;
     let movecount = board.moves();
 
-    while state.stack.len() < ply + 1 {
+    let eval = evaluate(state, board);
+
+    while state.stack.len() <= ply + 1 {
       state
         .stack
-        .push(StackEntry::new(state.stack[ply - 1].board.clone()));
+        .push(StackEntry::new(state.stack[ply].board.clone()));
     }
 
-    if !pv_node && !in_check {
-      let board = &state.stack[ply - 1].board;
-      let eval = evaluate(state, board);
+    state.stack[ply].eval = if in_check { None } else { Some(eval) };
+    let improving = if in_check {
+      false
+    } else if ply < 2 {
+      true
+    } else if let Some(old_eval) = state.stack[ply - 2].eval {
+      eval > old_eval
+    } else {
+      true
+    };
 
+    if !pv_node && !in_check {
       // Reverse futility pruning
       if depth <= 8 {
         if let Score::Centipawn(beta_cp) = beta {
-          let depth = i32::from(depth);
-          let rfp_margin = 120 * depth - 60;
+          let mut depth = i32::from(depth);
+          if improving {
+            depth -= 1;
+          }
+          let rfp_margin = 120 * depth;
           let rfp_beta = beta_cp + rfp_margin;
           if eval >= rfp_beta {
             let score = Score::Centipawn(eval - rfp_margin);
@@ -282,11 +301,13 @@ fn alpha_beta(
         }
       }
 
+      let board = &state.stack[ply].board;
+
       // Null move pruning
       if !nullmove && depth >= 2 && Score::Centipawn(eval) >= beta && board.has_pieces() {
         if let Some(nullmove) = board.nullmove() {
           let null_depth = depth.saturating_sub(3 + depth / 5);
-          state.stack[ply].board = nullmove;
+          state.stack[ply + 1].board = nullmove;
           let score = -null_move_search(state, settings, ply + 1, null_depth, -beta)?;
           if score >= beta {
             let score = match score {
@@ -306,7 +327,7 @@ fn alpha_beta(
         }
       }
 
-      if depth <= 3 {
+      if depth <= 4 {
         if let Score::Centipawn(alpha_cp) = alpha {
           let futility_margin = 125 * i32::from(depth);
           let futility_threshold = alpha_cp - futility_margin;
@@ -325,9 +346,8 @@ fn alpha_beta(
     let mut best_score = Score::Loss(0);
     let mut move_count = 0;
     let mut fail_lows: Vec<Move> = Vec::new();
-    state.stack[ply - 1].movepicker.init(ttmove);
-    while let Some((mv, is_capture)) =
-      state.stack[ply - 1].pick_move(&state.history, &state.parameters)
+    state.stack[ply].movepicker.init(ttmove);
+    while let Some((mv, is_capture)) = state.stack[ply].pick_move(&state.history, &state.parameters)
     {
       // Move loop pruning for quiets - we need to avoid mate first
       if !is_capture && !matches!(best_score, Score::Loss(_)) {
@@ -337,14 +357,14 @@ fn alpha_beta(
         }
 
         // Late move pruning
-        if !pv_node && depth <= 2 && move_count >= (5 << depth) {
+        if depth <= 2 && move_count >= (5 << depth) {
           break;
         }
       }
       // Safety - the indices are different therefore the references don't alias
       let position = unsafe {
-        let board = &*(&state.stack[ply - 1].board as *const Board);
-        let position = &mut state.stack[ply].board;
+        let board = &*(&state.stack[ply].board as *const Board);
+        let position = &mut state.stack[ply + 1].board;
         position.clone_from(board);
         position
       };
@@ -357,6 +377,9 @@ fn alpha_beta(
             + f32::from(depth).ln() * (move_count as f32).ln() * state.search_parameters.lmr_factor;
           if pv_node {
             reduction -= state.search_parameters.lmr_pv_reduction;
+          }
+          if !improving {
+            reduction += state.search_parameters.lmr_improving_reduction;
           }
           // avoid dropping into qsearch
           (reduction as i8).clamp(0, (depth / 2) as i8) as u8
@@ -403,8 +426,8 @@ fn alpha_beta(
         };
         if score >= beta {
           if !is_capture {
-            state.stack[ply - 1].movepicker.store_killer(mv);
-            let board = &state.stack[ply - 1].board;
+            state.stack[ply].movepicker.store_killer(mv);
+            let board = &state.stack[ply].board;
             for fail_low in fail_lows {
               state.history.malus(
                 board.to_move(),
@@ -532,16 +555,21 @@ pub(crate) fn alpha_beta_root(
   let mut backup_pv = Vec::new();
   let mut move_count = 0;
   let mut show_output = false;
-  if state.stack.is_empty() {
+  while state.stack.len() <= 1 {
     state.stack.push(StackEntry::new(board.clone()));
   }
+  state.stack[0].eval = if board.in_check() {
+    None
+  } else {
+    Some(evaluate(state, board))
+  };
   for best_move in best_moves {
     if !excluded_moves.contains(best_move) {
       if let Some(position) = board.move_if_legal(*best_move) {
         let node_count = settings.nodes;
         settings.nodes += 1;
         move_count += 1;
-        state.stack[0].board = position;
+        state.stack[1].board = position;
         let mut failed_high = false;
         let (mut pv, score) = if move_count > 1 {
           // Zero window search to see if raises alpha
@@ -635,7 +663,7 @@ pub(crate) fn alpha_beta_root(
       let node_count = settings.nodes;
       settings.nodes += 1;
       move_count += 1;
-      state.stack[0].board = position;
+      state.stack[1].board = position;
       let mut failed_high = false;
       let (mut pv, score) = if move_count > 1 {
         // Zero window search to see if raises alpha
@@ -750,7 +778,7 @@ pub(crate) fn alpha_beta_root(
       } else {
         0
       };
-      state.stack[0].board = position;
+      state.stack[1].board = position;
       let mut failed_high = false;
       let (mut pv, score) = if move_count > 1 {
         // Zero window search to see if raises alpha

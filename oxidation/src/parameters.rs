@@ -3,165 +3,165 @@ use liberty_chess::{CENTAUR, CHAMPION, ELEPHANT, KING, MANN, OBSTACLE, WALL};
 use std::ops::{Add, AddAssign, Div, Mul};
 
 const PIECE_VALUES: [(i32, i32); 18] = [
-  (61, 141),    // Pawn
-  (278, 367),   // Knight
-  (323, 299),   // Bishop
-  (443, 512),   // Rook
-  (1047, 964),  // Queen
-  (-505, 812),  // King
-  (853, 1081),  // Archbishop
-  (977, 1147),  // Chancellor
-  (229, 252),   // Camel
-  (195, 199),   // Zebra
-  (208, 339),   // Mann
-  (533, 369),   // Nightrider
-  (549, 1076),  // Champion
-  (544, 1197),  // Centaur
-  (1595, 1635), // Amazon
-  (753, 552),   // Elephant
-  (18, 44),     // Obstacle
-  (85, 105),    // Wall
+  (71, 132),    // Pawn
+  (286, 350),   // Knight
+  (328, 289),   // Bishop
+  (430, 502),   // Rook
+  (1044, 966),  // Queen
+  (-765, 815),  // King
+  (819, 1033),  // Archbishop
+  (933, 1115),  // Chancellor
+  (249, 241),   // Camel
+  (233, 175),   // Zebra
+  (212, 344),   // Mann
+  (505, 358),   // Nightrider
+  (570, 1043),  // Champion
+  (555, 1198),  // Centaur
+  (1436, 1671), // Amazon
+  (798, 563),   // Elephant
+  (1, 82),      // Obstacle
+  (118, 94),    // Wall
 ];
 
 const MG_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [
-  [-38, 4, 5, 23, -31, -17, -6, -6, -7],    // Pawn
-  [42, 53, 32, 27, 28, 17, 13, 0, -3],      // Knight
-  [29, 33, 49, 6, 5, -4, 0, -7, 4],         // Bishop
-  [28, 27, 1, 0, 0, -4, 3, -10, -6],        // Rook
-  [23, -4, 0, -7, 23, 4, -3, 0, 1],         // Queen
-  [-32, -49, -17, -1, 34, 19, 48, 10, 32],  // King
-  [57, 9, 15, 25, 20, 3, -1, 2, -3],        // Archbishop
-  [-2, 21, 0, 17, 84, -19, 3, -12, -1],     // Chancellor
-  [-17, 73, 10, 7, 11, 10, -9, -5, -15],    // Camel
-  [37, 0, -2, 29, 79, 2, 17, 57, 3],        // Zebra
-  [7, 34, 10, 73, 14, 0, 0, 17, 16],        // Mann
-  [46, 8, -10, -22, -76, -6, -74, -23, -5], // Nightrider
-  [65, 38, 14, 9, 0, 1, 9, 18, 13],         // Champion
-  [40, 26, 42, 6, 38, 29, 11, 5, 0],        // Centaur
-  [88, 37, 7, 1, 33, 2, -26, 3, -22],       // Amazon
-  [112, 128, 112, 75, 84, 43, 40, 38, 49],  // Elephant
+  [-89, 2, 3, 22, -29, -14, -2, -2, 0],     // Pawn
+  [29, 50, 35, 32, 28, 12, 14, 6, 3],       // Knight
+  [58, 39, 42, 6, 7, -3, -2, -2, 2],        // Bishop
+  [22, 25, 4, 0, -2, -5, -3, -10, -1],      // Rook
+  [18, 13, 4, 0, 22, -2, -2, -1, 3],        // Queen
+  [-11, -49, -17, -1, 48, 29, 50, 13, 37],  // King
+  [58, 1, 14, 22, 11, 12, 3, -12, 1],       // Archbishop
+  [10, 15, 1, 12, 72, -17, -3, -6, 6],      // Chancellor
+  [-21, 75, -4, 6, 17, 11, -7, 19, 0],      // Camel
+  [0, 32, 12, 23, 82, 10, 19, 64, 11],      // Zebra
+  [74, 68, 21, 43, 0, 25, 0, 18, 24],       // Mann
+  [-9, 1, -13, -22, 59, -23, -40, -12, -1], // Nightrider
+  [49, 61, 36, 0, 4, 22, 21, 10, 19],       // Champion
+  [40, 22, 33, 26, 36, 26, 14, 5, 2],       // Centaur
+  [53, 32, 9, -3, 13, 8, -5, -17, -5],      // Amazon
+  [207, 171, 138, 63, 120, 49, 12, 11, 22], // Elephant
   [0, 0, 0, 0, 0, 0, 0, 0, 0],              // Obstacle
   [0, 0, 0, 0, 0, 0, 0, 0, 0],              // Wall
 ];
 
 const EG_EDGE_AVOIDANCE: [[i32; EDGE_PARAMETER_COUNT]; 18] = [
-  [141, 8, 20, 12, 1, 8, 3, 7, 6],             // Pawn
-  [51, 9, 21, 23, 15, 11, 17, 5, 11],          // Knight
-  [2, -11, -12, -7, 12, -6, 9, -6, -13],       // Bishop
-  [76, 19, 18, 4, 26, 20, -3, 22, -4],         // Rook
-  [58, 25, 13, 32, 6, 25, 6, 6, -19],          // Queen
-  [132, 83, 56, 41, 20, 22, 3, 14, 0],         // King
-  [298, 204, 127, 80, 134, 39, 61, 54, 5],     // Archbishop
-  [73, 42, 81, -6, -8, 45, 25, 17, -10],       // Chancellor
-  [34, 13, 26, 15, -1, 10, 8, 26, 21],         // Camel
-  [-11, 6, 1, -17, -23, 20, -24, -31, -11],    // Zebra
-  [180, 5, 73, 0, 16, 6, 47, 8, 0],            // Mann
-  [5, 24, -5, -17, 1, 7, 49, 46, 5],           // Nightrider
-  [14, 93, 156, 90, 111, 65, 69, 0, 0],        // Champion
-  [381, 203, 189, 131, 166, 126, 89, 74, 41],  // Centaur
-  [153, 139, 5, -39, -14, 82, -48, 78, -62],   // Amazon
-  [207, 197, 154, 151, 167, 112, 120, 79, 31], // Elephant
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],                 // Obstacle
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],                 // Wall
+  [132, 7, 19, 16, 4, 9, 5, 5, 2],              // Pawn
+  [56, 10, 18, 24, 17, 18, 17, 7, 3],           // Knight
+  [-20, -8, -5, -1, 5, 1, 15, -7, -2],          // Bishop
+  [88, 28, 17, 9, 30, 18, -1, 12, -9],          // Rook
+  [61, 10, 12, 16, 5, 22, 6, -3, -19],          // Queen
+  [127, 91, 60, 44, 21, 25, 8, 20, 3],          // King
+  [204, 153, 108, 57, 86, 0, 17, 19, -11],      // Archbishop
+  [32, -6, 58, -4, -45, 13, 0, 6, -30],         // Chancellor
+  [53, 5, 31, 26, -1, 9, 8, 15, 3],             // Camel
+  [37, 19, -2, -13, -3, 11, -20, -38, -6],      // Zebra
+  [32, 85, 104, 4, 35, 15, 23, 15, 0],          // Mann
+  [31, 38, 29, 15, 5, 45, 48, 37, 15],          // Nightrider
+  [124, 138, 124, 161, 182, 38, 2, 17, 0],      // Champion
+  [396, 232, 182, 141, 115, 102, 56, 57, 16],   // Centaur
+  [72, -10, 80, 37, 21, 23, -16, 69, -67],      // Amazon
+  [192, 173, 140, 176, 145, 119, 159, 106, 62], // Elephant
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],                  // Obstacle
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],                  // Wall
 ];
 
 const MG_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
   0,  // Pawn
-  10, // Knight
-  2,  // Bishop
+  11, // Knight
+  8,  // Bishop
   0,  // Rook
   5,  // Queen
-  25, // King
+  31, // King
   7,  // Archbishop
-  8,  // Chancellor
+  0,  // Chancellor
   0,  // Camel
   0,  // Zebra
-  8,  // Mann
+  0,  // Mann
   0,  // Nightrider
   0,  // Champion
   0,  // Centaur
   0,  // Amazon
-  5,  // Elephant
+  20, // Elephant
   0,  // Obstacle
-  18, // Wall
+  15, // Wall
 ];
 
 const EG_FRIENDLY_PAWN_PENALTY: [i32; 18] = [
-  31, // Pawn
-  12, // Knight
-  19, // Bishop
+  37, // Pawn
+  8,  // Knight
+  10, // Bishop
   0,  // Rook
   0,  // Queen
   0,  // King
-  25, // Archbishop
-  19, // Chancellor
-  5,  // Camel
-  0,  // Zebra
-  33, // Mann
+  0,  // Archbishop
+  4,  // Chancellor
+  11, // Camel
+  1,  // Zebra
+  0,  // Mann
   0,  // Nightrider
-  4,  // Champion
+  0,  // Champion
   0,  // Centaur
   0,  // Amazon
-  20, // Elephant
-  0,  // Obstacle
-  0,  // Wall
+  4,  // Elephant
+  18, // Obstacle
+  13, // Wall
 ];
 
 const MG_ENEMY_PAWN_PENALTY: [i32; 18] = [
   0,   // Pawn
-  31,  // Knight
-  13,  // Bishop
-  -29, // Rook
-  4,   // Queen
-  61,  // King
-  17,  // Archbishop
-  11,  // Chancellor
-  -9,  // Camel
-  -32, // Zebra
-  32,  // Mann
-  2,   // Nightrider
-  3,   // Champion
-  21,  // Centaur
-  39,  // Amazon
-  61,  // Elephant
-  -15, // Obstacle
+  25,  // Knight
+  8,   // Bishop
+  -21, // Rook
+  3,   // Queen
+  71,  // King
+  21,  // Archbishop
+  8,   // Chancellor
+  -18, // Camel
+  -53, // Zebra
+  23,  // Mann
+  31,  // Nightrider
+  10,  // Champion
+  18,  // Centaur
+  16,  // Amazon
+  71,  // Elephant
+  0,   // Obstacle
   0,   // Wall
 ];
 
 const EG_ENEMY_PAWN_PENALTY: [i32; 18] = [
   0,   // Pawn
-  19,  // Knight
-  80,  // Bishop
-  86,  // Rook
-  51,  // Queen
-  43,  // King
-  82,  // Archbishop
-  63,  // Chancellor
-  26,  // Camel
-  37,  // Zebra
-  92,  // Mann
-  31,  // Nightrider
-  81,  // Champion
-  52,  // Centaur
-  141, // Amazon
+  23,  // Knight
+  77,  // Bishop
+  87,  // Rook
+  61,  // Queen
+  39,  // King
+  84,  // Archbishop
+  89,  // Chancellor
+  35,  // Camel
+  55,  // Zebra
+  106, // Mann
+  2,   // Nightrider
+  97,  // Champion
+  61,  // Centaur
+  132, // Amazon
   0,   // Elephant
-  60,  // Obstacle
+  28,  // Obstacle
   0,   // Wall
 ];
 
 const MG_MOBILITY_BONUS: [i32; 18] = [
   0, // Pawn
   0, // Knight
-  4, // Bishop
+  3, // Bishop
   6, // Rook
   3, // Queen
   0, // King
-  1, // Archbishop
+  2, // Archbishop
   2, // Chancellor
   0, // Camel
   0, // Zebra
   0, // Mann
-  6, // Nightrider
+  8, // Nightrider
   0, // Champion
   0, // Centaur
   0, // Amazon
@@ -174,111 +174,113 @@ const EG_MOBILITY_BONUS: [i32; 18] = [
   0,  // Pawn
   0,  // Knight
   6,  // Bishop
-  10, // Rook
-  10, // Queen
+  9,  // Rook
+  9,  // Queen
   0,  // King
-  0,  // Archbishop
-  13, // Chancellor
+  1,  // Archbishop
+  16, // Chancellor
   0,  // Camel
   0,  // Zebra
   0,  // Mann
   0,  // Nightrider
   0,  // Champion
   0,  // Centaur
-  15, // Amazon
+  16, // Amazon
   0,  // Elephant
   0,  // Obstacle
   0,  // Wall
 ];
 
 const MG_PAWN_ATTACKED_PENALTY: [i32; 18] = [
-  -4,  // Pawn
-  50,  // Knight
-  53,  // Bishop
-  61,  // Rook
-  38,  // Queen
+  -18, // Pawn
+  52,  // Knight
+  56,  // Bishop
+  53,  // Rook
+  31,  // Queen
   0,   // King
-  40,  // Archbishop
-  49,  // Chancellor
-  56,  // Camel
-  22,  // Zebra
-  68,  // Mann
-  82,  // Nightrider
-  34,  // Champion
-  20,  // Centaur
-  65,  // Amazon
-  4,   // Elephant
-  -14, // Obstacle
+  30,  // Archbishop
+  54,  // Chancellor
+  53,  // Camel
+  61,  // Zebra
+  69,  // Mann
+  52,  // Nightrider
+  27,  // Champion
+  22,  // Centaur
+  45,  // Amazon
+  28,  // Elephant
+  0,   // Obstacle
   22,  // Wall
 ];
 
 const EG_PAWN_ATTACKED_PENALTY: [i32; 18] = [
-  -30, // Pawn
-  24,  // Knight
-  50,  // Bishop
-  -3,  // Rook
-  34,  // Queen
-  0,   // King
-  -20, // Archbishop
-  -95, // Chancellor
-  48,  // Camel
-  77,  // Zebra
-  48,  // Mann
-  -93, // Nightrider
-  60,  // Champion
-  0,   // Centaur
-  84,  // Amazon
-  106, // Elephant
-  0,   // Obstacle
-  54,  // Wall
+  -12,  // Pawn
+  28,   // Knight
+  45,   // Bishop
+  49,   // Rook
+  32,   // Queen
+  0,    // King
+  -11,  // Archbishop
+  -100, // Chancellor
+  69,   // Camel
+  67,   // Zebra
+  21,   // Mann
+  -44,  // Nightrider
+  45,   // Champion
+  -20,  // Centaur
+  -208, // Amazon
+  86,   // Elephant
+  6,    // Obstacle
+  56,   // Wall
 ];
 
 const MG_PAWN_DEFENDED_BONUS: [i32; 18] = [
-  7,   // Pawn
-  4,   // Knight
-  11,  // Bishop
-  -20, // Rook
-  -4,  // Queen
-  -32, // King
-  2,   // Archbishop
-  -2,  // Chancellor
-  12,  // Camel
-  35,  // Zebra
-  -31, // Mann
-  20,  // Nightrider
-  -3,  // Champion
-  9,   // Centaur
-  -5,  // Amazon
-  4,   // Elephant
-  26,  // Obstacle
-  -13, // Wall
+  11,  // Pawn
+  5,   // Knight
+  8,   // Bishop
+  -26, // Rook
+  -9,  // Queen
+  -40, // King
+  0,   // Archbishop
+  -1,  // Chancellor
+  15,  // Camel
+  24,  // Zebra
+  -14, // Mann
+  11,  // Nightrider
+  -5,  // Champion
+  5,   // Centaur
+  -8,  // Amazon
+  -12, // Elephant
+  22,  // Obstacle
+  -10, // Wall
 ];
 
 const EG_PAWN_DEFENDED_BONUS: [i32; 18] = [
-  4,   // Pawn
-  -5,  // Knight
-  5,   // Bishop
-  57,  // Rook
-  34,  // Queen
-  22,  // King
-  -16, // Archbishop
+  2,   // Pawn
+  -6,  // Knight
+  4,   // Bishop
+  55,  // Rook
+  26,  // Queen
+  24,  // King
+  -19, // Archbishop
   -6,  // Chancellor
-  -5,  // Camel
-  -27, // Zebra
-  33,  // Mann
-  70,  // Nightrider
-  -23, // Champion
-  27,  // Centaur
-  165, // Amazon
-  -4,  // Elephant
-  9,   // Obstacle
-  7,   // Wall
+  -12, // Camel
+  -22, // Zebra
+  60,  // Mann
+  112, // Nightrider
+  7,   // Champion
+  10,  // Centaur
+  90,  // Amazon
+  23,  // Elephant
+  -5,  // Obstacle
+  0,   // Wall
 ];
 
 // advanced pawns get a bonus of numerator/(factor * squares_to_promotion + bonus) times the promotion value
 pub(crate) const PAWN_SCALING_NUMERATOR: i32 = 20;
-const PAWN_SCALING_FACTOR: i32 = 180;
-const PAWN_SCALING_BONUS: i32 = -69;
+const MG_PAWN_SCALING_FACTOR: i32 = 276;
+const MG_PAWN_SCALING_BONUS: i32 = -11;
+const EG_PAWN_SCALING_FACTOR: i32 = 146;
+const EG_PAWN_SCALING_BONUS: i32 = -56;
 
 pub(crate) const TEMPO_BONUS: i32 = 10;
 
@@ -335,10 +337,10 @@ pub(crate) struct PackedParameters {
   pub(crate) mobility_bonus: [i64; 18],
   pub(crate) pawn_attacked_penalty: [i64; 18],
   pub(crate) pawn_defended_bonus: [i64; 18],
-  #[cfg(not(feature = "pesto"))]
-  pub(crate) pawn_scale_factor: i32,
-  #[cfg(not(feature = "pesto"))]
-  pub(crate) pawn_scaling_bonus: i32,
+  pub(crate) mg_pawn_scale_factor: i32,
+  pub(crate) mg_pawn_scaling_bonus: i32,
+  pub(crate) eg_pawn_scale_factor: i32,
+  pub(crate) eg_pawn_scaling_bonus: i32,
 }
 
 #[cfg(not(feature = "feature_extraction"))]
@@ -380,10 +382,10 @@ impl From<Parameters<i32>> for PackedParameters {
       mobility_bonus,
       pawn_attacked_penalty,
       pawn_defended_bonus,
-      #[cfg(not(feature = "pesto"))]
-      pawn_scale_factor: value.pawn_scale_factor,
-      #[cfg(not(feature = "pesto"))]
-      pawn_scaling_bonus: value.pawn_scaling_bonus,
+      mg_pawn_scale_factor: value.mg_pawn_scale_factor,
+      mg_pawn_scaling_bonus: value.mg_pawn_scaling_bonus,
+      eg_pawn_scale_factor: value.eg_pawn_scale_factor,
+      eg_pawn_scaling_bonus: value.eg_pawn_scaling_bonus,
     }
   }
 }
@@ -403,8 +405,10 @@ pub const DEFAULT_PARAMETERS: Parameters<i32> = Parameters {
   eg_pawn_attacked_penalty: EG_PAWN_ATTACKED_PENALTY,
   mg_pawn_defended_bonus: MG_PAWN_DEFENDED_BONUS,
   eg_pawn_defended_bonus: EG_PAWN_DEFENDED_BONUS,
-  pawn_scale_factor: PAWN_SCALING_FACTOR,
-  pawn_scaling_bonus: PAWN_SCALING_BONUS,
+  mg_pawn_scale_factor: MG_PAWN_SCALING_FACTOR,
+  mg_pawn_scaling_bonus: MG_PAWN_SCALING_BONUS,
+  eg_pawn_scale_factor: EG_PAWN_SCALING_FACTOR,
+  eg_pawn_scaling_bonus: EG_PAWN_SCALING_BONUS,
 };
 
 /// Parameters for evaluation
@@ -437,9 +441,13 @@ pub struct Parameters<T> {
   /// Endgame bonus for being defended by a pawn
   pub eg_pawn_defended_bonus: [T; 18],
   /// Scaling factor for the advanced pawn bonus
-  pub pawn_scale_factor: T,
+  pub mg_pawn_scale_factor: T,
   /// Scaling factor for the advanced pawn bonus
-  pub pawn_scaling_bonus: T,
+  pub mg_pawn_scaling_bonus: T,
+  /// Scaling factor for the advanced pawn bonus
+  pub eg_pawn_scale_factor: T,
+  /// Scaling factor for the advanced pawn bonus
+  pub eg_pawn_scaling_bonus: T,
 }
 
 impl<T: Copy + AddAssign> AddAssign for Parameters<T> {
@@ -464,8 +472,10 @@ impl<T: Copy + AddAssign> AddAssign for Parameters<T> {
         self.eg_edge[i][j] += rhs.eg_edge[i][j];
       }
     }
-    self.pawn_scale_factor += rhs.pawn_scale_factor;
-    self.pawn_scaling_bonus += rhs.pawn_scaling_bonus;
+    self.mg_pawn_scale_factor += rhs.mg_pawn_scale_factor;
+    self.mg_pawn_scaling_bonus += rhs.mg_pawn_scaling_bonus;
+    self.eg_pawn_scale_factor += rhs.eg_pawn_scale_factor;
+    self.eg_pawn_scaling_bonus += rhs.eg_pawn_scaling_bonus;
   }
 }
 
@@ -496,8 +506,10 @@ impl Div<f64> for Parameters<f64> {
       eg_pawn_attacked_penalty: self.eg_pawn_attacked_penalty.map(|x| x / rhs),
       mg_pawn_defended_bonus: self.mg_pawn_defended_bonus.map(|x| x / rhs),
       eg_pawn_defended_bonus: self.eg_pawn_defended_bonus.map(|x| x / rhs),
-      pawn_scale_factor: self.pawn_scale_factor / rhs,
-      pawn_scaling_bonus: self.pawn_scaling_bonus / rhs,
+      mg_pawn_scale_factor: self.mg_pawn_scale_factor / rhs,
+      mg_pawn_scaling_bonus: self.mg_pawn_scaling_bonus / rhs,
+      eg_pawn_scale_factor: self.eg_pawn_scale_factor / rhs,
+      eg_pawn_scaling_bonus: self.eg_pawn_scaling_bonus / rhs,
     }
   }
 }
@@ -524,8 +536,10 @@ impl Div<Self> for Parameters<f64> {
         self.eg_edge[i][j] /= rhs.eg_edge[i][j];
       }
     }
-    self.pawn_scale_factor /= rhs.pawn_scale_factor;
-    self.pawn_scaling_bonus /= rhs.pawn_scaling_bonus;
+    self.mg_pawn_scale_factor /= rhs.mg_pawn_scale_factor;
+    self.mg_pawn_scaling_bonus /= rhs.mg_pawn_scaling_bonus;
+    self.eg_pawn_scale_factor /= rhs.eg_pawn_scale_factor;
+    self.eg_pawn_scaling_bonus /= rhs.eg_pawn_scaling_bonus;
     self
   }
 }
@@ -548,8 +562,10 @@ impl Mul<f64> for Parameters<f64> {
       eg_pawn_attacked_penalty: self.eg_pawn_attacked_penalty.map(|x| x * rhs),
       mg_pawn_defended_bonus: self.mg_pawn_defended_bonus.map(|x| x * rhs),
       eg_pawn_defended_bonus: self.eg_pawn_defended_bonus.map(|x| x * rhs),
-      pawn_scale_factor: self.pawn_scale_factor * rhs,
-      pawn_scaling_bonus: self.pawn_scaling_bonus * rhs,
+      mg_pawn_scale_factor: self.mg_pawn_scale_factor * rhs,
+      mg_pawn_scaling_bonus: self.mg_pawn_scaling_bonus * rhs,
+      eg_pawn_scale_factor: self.eg_pawn_scale_factor * rhs,
+      eg_pawn_scaling_bonus: self.eg_pawn_scaling_bonus * rhs,
     }
   }
 }
@@ -572,8 +588,10 @@ impl Parameters<f64> {
       eg_pawn_attacked_penalty: self.eg_pawn_attacked_penalty.map(f64::abs),
       mg_pawn_defended_bonus: self.mg_pawn_defended_bonus.map(f64::abs),
       eg_pawn_defended_bonus: self.eg_pawn_defended_bonus.map(f64::abs),
-      pawn_scale_factor: self.pawn_scale_factor.abs(),
-      pawn_scaling_bonus: self.pawn_scaling_bonus.abs(),
+      mg_pawn_scale_factor: self.mg_pawn_scale_factor.abs(),
+      mg_pawn_scaling_bonus: self.mg_pawn_scaling_bonus.abs(),
+      eg_pawn_scale_factor: self.eg_pawn_scale_factor.abs(),
+      eg_pawn_scaling_bonus: self.eg_pawn_scaling_bonus.abs(),
     }
   }
 
@@ -604,8 +622,10 @@ impl Parameters<f64> {
       eg_pawn_attacked_penalty: self.eg_pawn_attacked_penalty.map(Self::remove_nan),
       mg_pawn_defended_bonus: self.mg_pawn_defended_bonus.map(Self::remove_nan),
       eg_pawn_defended_bonus: self.eg_pawn_defended_bonus.map(Self::remove_nan),
-      pawn_scale_factor: Self::remove_nan(self.pawn_scale_factor),
-      pawn_scaling_bonus: Self::remove_nan(self.pawn_scaling_bonus),
+      mg_pawn_scale_factor: Self::remove_nan(self.mg_pawn_scale_factor),
+      mg_pawn_scaling_bonus: Self::remove_nan(self.mg_pawn_scaling_bonus),
+      eg_pawn_scale_factor: Self::remove_nan(self.eg_pawn_scale_factor),
+      eg_pawn_scaling_bonus: Self::remove_nan(self.eg_pawn_scaling_bonus),
     }
   }
 
@@ -656,8 +676,10 @@ impl From<Parameters<i32>> for Parameters<f64> {
       eg_pawn_attacked_penalty: value.eg_pawn_attacked_penalty.map(f64::from),
       mg_pawn_defended_bonus: value.mg_pawn_defended_bonus.map(f64::from),
       eg_pawn_defended_bonus: value.eg_pawn_defended_bonus.map(f64::from),
-      pawn_scale_factor: f64::from(value.pawn_scale_factor),
-      pawn_scaling_bonus: f64::from(value.pawn_scaling_bonus),
+      mg_pawn_scale_factor: f64::from(value.mg_pawn_scale_factor),
+      mg_pawn_scaling_bonus: f64::from(value.mg_pawn_scaling_bonus),
+      eg_pawn_scale_factor: f64::from(value.eg_pawn_scale_factor),
+      eg_pawn_scaling_bonus: f64::from(value.eg_pawn_scaling_bonus),
     }
   }
 }

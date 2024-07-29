@@ -12,7 +12,7 @@ use liberty_chess::Board;
 use oxidation::evaluate::evaluate;
 use oxidation::parameters::DEFAULT_PARAMETERS;
 use oxidation::search::{quiescence, SEARCH_PARAMETERS};
-use oxidation::{random_move, SearchConfig, State, QDEPTH};
+use oxidation::{random_move, SearchConfig, State};
 use rand::{thread_rng, Rng};
 use std::num::NonZeroUsize;
 use std::sync::mpsc::channel;
@@ -81,10 +81,8 @@ impl StartingPosition {
         board.friendly_fire = friendly_fire;
         let mut state = State::new(0, &board, SEARCH_PARAMETERS, DEFAULT_PARAMETERS);
         let mut debug = false;
-        let mut qdepth = QDEPTH;
         let (_tx, rx_2) = channel();
-        let mut settings =
-          SearchConfig::new_time(&board, &mut qdepth, SearchTime::Infinite, &rx_2, &mut debug);
+        let mut settings = SearchConfig::new_time(&board, SearchTime::Infinite, &rx_2, &mut debug);
         let mut eval = evaluate(&state, &board);
         if RANDOM_MOVE_COUNT % 2 == 1 {
           // Final board is opposite stm, invert score
@@ -103,7 +101,7 @@ impl StartingPosition {
           }
           // Filter out busted openings
           state.set_first_stack_entry(&board);
-          let (_, score) = quiescence(&mut state, &mut settings, 1, QDEPTH, alpha, beta)
+          let (_, score) = quiescence(&mut state, &mut settings, 0, 1, alpha, beta)
             .unwrap_or((Vec::new(), Score::Centipawn(eval)));
           if score > alpha && score < beta {
             break board;

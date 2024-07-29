@@ -219,7 +219,7 @@ fn position(
       } else {
         write(out, &format!("info error invalid position {fen}"))?;
         // Fatal error, quit the program
-        return None;
+        return if !debug { None } else { Some(()) };
       }
     }
     Some(_) | None => {
@@ -242,12 +242,12 @@ fn position(
             ),
           )?;
           // Fatal error, quit the program
-          return None;
+          return if !debug { None } else { Some(()) };
         }
       } else {
         write(out, &format!("info error invalid move {word}"))?;
         // Fatal error, quit the program
-        return None;
+        return if !debug { None } else { Some(()) };
       }
     }
   }
@@ -262,7 +262,12 @@ fn position(
     .ok()
 }
 
-fn go(out: &mut impl Write, client: &Sender<Message>, mut words: SplitWhitespace) -> Option<()> {
+fn go(
+  out: &mut impl Write,
+  client: &Sender<Message>,
+  mut words: SplitWhitespace,
+  debug: bool,
+) -> Option<()> {
   let mut time = SearchTime::Infinite;
   while let Some(word) = words.next() {
     match word {
@@ -361,7 +366,7 @@ fn go(out: &mut impl Write, client: &Sender<Message>, mut words: SplitWhitespace
       }
       "searchmoves" => break,
       _ => {
-        write(out, "info error unknown go parameter")?;
+        write(out, format!("info error unknown go parameter {word}"))?;
       }
     }
   }
@@ -372,7 +377,7 @@ fn go(out: &mut impl Write, client: &Sender<Message>, mut words: SplitWhitespace
     } else {
       write(out, "info error invalid move specified")?;
       // Fatal error, quit the program
-      return None;
+      return if !debug { None } else { Some(()) };
     }
   }
   client
@@ -466,7 +471,7 @@ pub fn startup(
       }
       Some("setoption") => setoption(&mut out, client, words, info)?,
       Some("position") => position(&mut out, client, &mut board, words, debug)?,
-      Some("go") => go(&mut out, client, words)?,
+      Some("go") => go(&mut out, client, words, debug)?,
       Some("stop") => client.send(Message::Stop).ok()?,
       Some("eval") => client.send(Message::Eval).ok()?,
       Some("ucinewgame") => client.send(Message::NewGame).ok()?,

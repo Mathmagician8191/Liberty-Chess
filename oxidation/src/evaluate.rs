@@ -10,13 +10,7 @@ use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 use ulci::Score;
 
 #[cfg(not(feature = "feature_extraction"))]
-use crate::parameters::{unpack_eg, unpack_mg, PackedParameters};
-
-#[cfg(all(not(feature = "feature_extraction"), not(feature = "pesto")))]
-use crate::parameters::pack;
-
-#[cfg(all(feature = "pesto", not(feature = "feature_extraction")))]
-use crate::pesto::PSQT;
+use crate::parameters::{pack, unpack_eg, unpack_mg, PackedParameters};
 
 /// Extracted evaluation features
 #[derive(Clone)]
@@ -38,7 +32,7 @@ pub struct Features {
 pub(crate) fn raw(
   pieces: &Array2D<Piece>,
   to_move: bool,
-  #[cfg(not(feature = "pesto"))] promotion_values: (i32, i32),
+  promotion_values: (i32, i32),
   parameters: &PackedParameters,
 ) -> i32 {
   let mut value = 0;
@@ -59,28 +53,11 @@ pub(crate) fn raw(
         let mut piece_value = parameters.pieces[piece_type];
         let mobility = Board::mobility(pieces, (i, j), piece);
         piece_value += mobility * parameters.mobility_bonus[piece_type];
-        #[cfg(feature = "pesto")]
-        {
-          if height == 8 && width == 8 && piece_type < 6 {
-            let index = if piece > 0 { 7 - i } else { i };
-            piece_value += PSQT[piece_type][index][j];
-          } else {
-            let horizontal_distance = min(i, height - 1 - i).min(EDGE_DISTANCE);
-            let vertical_distance = min(j, width - 1 - j).min(EDGE_DISTANCE);
-            let index = INDEXING[horizontal_distance * (EDGE_DISTANCE + 1) + vertical_distance];
-            if index < EDGE_PARAMETER_COUNT {
-              piece_value -= parameters.edge_avoidance[piece_type][index];
-            }
-          }
-        }
-        #[cfg(not(feature = "pesto"))]
-        {
-          let horizontal_distance = min(i, height - 1 - i).min(EDGE_DISTANCE);
-          let vertical_distance = min(j, width - 1 - j).min(EDGE_DISTANCE);
-          let index = INDEXING[horizontal_distance * (EDGE_DISTANCE + 1) + vertical_distance];
-          if index < EDGE_PARAMETER_COUNT {
-            piece_value -= parameters.edge_avoidance[piece_type][index];
-          }
+        let horizontal_distance = min(i, height - 1 - i).min(EDGE_DISTANCE);
+        let vertical_distance = min(j, width - 1 - j).min(EDGE_DISTANCE);
+        let index = INDEXING[horizontal_distance * (EDGE_DISTANCE + 1) + vertical_distance];
+        if index < EDGE_PARAMETER_COUNT {
+          piece_value -= parameters.edge_avoidance[piece_type][index];
         }
         if pieces.get(block_i, j.wrapping_sub(1)) == enemy_pawn
           || pieces.get(block_i, j + 1) == enemy_pawn
@@ -105,16 +82,15 @@ pub(crate) fn raw(
             }
           }
           // bonus for advanced pawn
-          #[cfg(not(feature = "pesto"))]
-          {
-            let squares_to_go = if piece > 0 { height - 1 - i } else { i } as i32;
-            if squares_to_go != 0 {
-              let divisor =
-                squares_to_go * parameters.pawn_scale_factor + parameters.pawn_scaling_bonus;
-              let mg_value = promotion_values.0 / divisor;
-              let eg_value = promotion_values.1 / divisor;
-              piece_value += pack(mg_value, eg_value);
-            }
+          let squares_to_go = if piece > 0 { height - 1 - i } else { i } as i32;
+          if squares_to_go != 0 {
+            let mg_divisor =
+              squares_to_go * parameters.mg_pawn_scale_factor + parameters.mg_pawn_scaling_bonus;
+            let eg_divisor =
+              squares_to_go * parameters.eg_pawn_scale_factor + parameters.eg_pawn_scaling_bonus;
+            let mg_value = promotion_values.0 / mg_divisor;
+            let eg_value = promotion_values.1 / eg_divisor;
+            piece_value += pack(mg_value, eg_value);
           }
         }
         value += piece_value * multiplier;
@@ -188,10 +164,12 @@ pub fn eval_features<
   }
   for (squares_to_go, multiplier) in &features.pawn_list {
     let multiplier = T::from(*multiplier);
-    let divisor =
-      T::from(*squares_to_go) * parameters.pawn_scale_factor + parameters.pawn_scaling_bonus;
-    middlegame += promotion_values.0 / divisor * multiplier;
-    endgame += promotion_values.1 / divisor * multiplier;
+    let mg_divisor =
+      T::from(*squares_to_go) * parameters.mg_pawn_scale_factor + parameters.mg_pawn_scaling_bonus;
+    let eg_divisor =
+      T::from(*squares_to_go) * parameters.eg_pawn_scale_factor + parameters.eg_pawn_scaling_bonus;
+    middlegame += promotion_values.0 / mg_divisor * multiplier;
+    endgame += promotion_values.1 / eg_divisor * multiplier;
   }
   let threshold = T::from(ENDGAME_THRESHOLD);
   let material = T::from(features.material);
@@ -236,15 +214,28 @@ pub fn gradient(
   let eg_pawn_attacked_penalty = features.attacked_by_pawn.map(|x| -f64::from(x) * eg_factor);
   let mg_pawn_defended_bonus = features.defended_by_pawn.map(|x| f64::from(x) * mg_factor);
   let eg_pawn_defended_bonus = features.defended_by_pawn.map(|x| f64::from(x) * eg_factor);
-  let mut pawn_scale_factor = 0.0;
-  let mut pawn_scaling_bonus = 0.0;
-  let piece_value = promotion_values.0 * mg_factor + promotion_values.1 * eg_factor;
+  let mut mg_pawn_scale_factor = 0.0;
+  let mut mg_pawn_scaling_bonus = 0.0;
+  let mut eg_pawn_scale_factor = 0.0;
+  let mut eg_pawn_scaling_bonus = 0.0;
   for (squares, count) in &features.pawn_list {
     let squares = f64::from(*squares);
-    let divisor = squares.mul_add(parameters.pawn_scale_factor, parameters.pawn_scaling_bonus);
-    let scaling_factor = -piece_value * f64::from(*count) / divisor.powi(2);
-    pawn_scale_factor += scaling_factor * squares;
-    pawn_scaling_bonus += scaling_factor;
+    let mg_divisor = squares.mul_add(
+      parameters.mg_pawn_scale_factor,
+      parameters.mg_pawn_scaling_bonus,
+    );
+    let eg_divisor = squares.mul_add(
+      parameters.eg_pawn_scale_factor,
+      parameters.eg_pawn_scaling_bonus,
+    );
+    let mg_scaling_factor =
+      -promotion_values.0 * mg_factor * f64::from(*count) / mg_divisor.powi(2);
+    let eg_scaling_factor =
+      -promotion_values.0 * eg_factor * f64::from(*count) / eg_divisor.powi(2);
+    mg_pawn_scale_factor += mg_scaling_factor * squares;
+    mg_pawn_scaling_bonus += mg_scaling_factor;
+    eg_pawn_scale_factor += eg_scaling_factor * squares;
+    eg_pawn_scaling_bonus += eg_scaling_factor;
   }
   Parameters {
     pieces,
@@ -260,8 +251,10 @@ pub fn gradient(
     eg_pawn_attacked_penalty,
     mg_pawn_defended_bonus,
     eg_pawn_defended_bonus,
-    pawn_scale_factor,
-    pawn_scaling_bonus,
+    mg_pawn_scale_factor,
+    mg_pawn_scaling_bonus,
+    eg_pawn_scale_factor,
+    eg_pawn_scaling_bonus,
   }
 }
 
@@ -353,7 +346,6 @@ pub fn evaluate(state: &State, board: &Board) -> i32 {
   let score = raw(
     board.board(),
     board.to_move(),
-    #[cfg(not(feature = "pesto"))]
     state.promotion_values,
     &state.packed_parameters,
   );

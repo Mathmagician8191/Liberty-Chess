@@ -9,8 +9,7 @@ use oxidation::evaluate::evaluate;
 use oxidation::parameters::DEFAULT_PARAMETERS;
 use oxidation::search::SEARCH_PARAMETERS;
 use oxidation::{
-  bench, divide, search, Output, SearchConfig, State, HASH_SIZE, MAX_QDEPTH, MULTI_PV_COUNT,
-  QDEPTH, QDEPTH_NAME, VERSION_NUMBER,
+  bench, divide, search, Output, SearchConfig, State, HASH_SIZE, MULTI_PV_COUNT, VERSION_NUMBER,
 };
 use std::collections::{HashMap, HashSet};
 use std::io::{stdin, stdout, BufReader};
@@ -48,14 +47,6 @@ const BENCH_POSITIONS: &[(&str, i8)] = &[
 
 fn startup_client(tx: &Sender<Message>) {
   let mut options = HashMap::new();
-  options.insert(
-    QDEPTH_NAME.to_owned(),
-    UlciOption::Int(IntOption {
-      default: usize::from(QDEPTH),
-      min: 0,
-      max: usize::from(MAX_QDEPTH),
-    }),
-  );
   options.insert(
     HASH_NAME.to_owned(),
     UlciOption::Int(IntOption {
@@ -100,7 +91,6 @@ fn startup_client(tx: &Sender<Message>) {
 fn main() {
   let (tx, rx) = channel();
   spawn(move || startup_client(&tx));
-  let mut qdepth = QDEPTH;
   let mut hash_size = HASH_SIZE;
   let mut pv_lines = MULTI_PV_COUNT;
   let mut position = get_startpos();
@@ -117,8 +107,7 @@ fn main() {
       }
       Message::Go(settings) => {
         let searchmoves = settings.moves;
-        let mut settings =
-          SearchConfig::new_time(&position, &mut qdepth, settings.time, &rx, &mut debug);
+        let mut settings = SearchConfig::new_time(&position, settings.time, &rx, &mut debug);
         let pv = search(
           &mut state,
           &mut settings,
@@ -136,10 +125,6 @@ fn main() {
         println!("info error not currently searching");
       }
       Message::UpdateOption(name, value) => match &*name {
-        QDEPTH_NAME => match value {
-          OptionValue::UpdateInt(value) => qdepth = value as u8,
-          _ => println!("info error incorrect option type"),
-        },
         HASH_NAME => match value {
           OptionValue::UpdateInt(value) => {
             if value != hash_size {
@@ -180,7 +165,6 @@ fn main() {
               &mut state,
               &mut board,
               depth,
-              &mut qdepth,
               &mut debug,
               &rx,
               Output::String(stdout()),
@@ -190,7 +174,6 @@ fn main() {
               &mut state,
               &mut board,
               depth,
-              &mut qdepth,
               &mut debug,
               &rx,
               Output::String(stdout()),

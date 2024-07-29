@@ -721,12 +721,8 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       }
     }
     match player {
-      PlayerType::BuiltIn(ref mut qdepth, ref mut hash_size) => {
+      PlayerType::BuiltIn(ref mut hash_size) => {
         if gui.config.get_advanced() {
-          ui.horizontal_top(|ui| {
-            ui.label("Quiescence depth");
-            raw_text_edit(ui, size * 2.0, qdepth);
-          });
           ui.horizontal_top(|ui| {
             ui.label("Hash size (MB)");
             raw_text_edit(ui, size * 4.0, hash_size);

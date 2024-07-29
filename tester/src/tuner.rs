@@ -186,8 +186,10 @@ fn main() {
     pieces: DEFAULT_PARAMETERS
       .pieces
       .map(|(x, y)| (f64::from(x), f64::from(y))),
-    pawn_scale_factor: f64::from(DEFAULT_PARAMETERS.pawn_scale_factor),
-    pawn_scaling_bonus: f64::from(DEFAULT_PARAMETERS.pawn_scaling_bonus),
+    mg_pawn_scale_factor: f64::from(DEFAULT_PARAMETERS.mg_pawn_scale_factor),
+    mg_pawn_scaling_bonus: f64::from(DEFAULT_PARAMETERS.mg_pawn_scaling_bonus),
+    eg_pawn_scale_factor: f64::from(DEFAULT_PARAMETERS.eg_pawn_scale_factor),
+    eg_pawn_scaling_bonus: f64::from(DEFAULT_PARAMETERS.eg_pawn_scaling_bonus),
     ..Default::default()
   };
   let mut data = Vec::new();

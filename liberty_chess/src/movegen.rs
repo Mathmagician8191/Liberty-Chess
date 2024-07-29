@@ -1,7 +1,7 @@
 use crate::moves::Move;
 use crate::{
-  Board, BISHOP, CAMEL, CENTAUR, CHAMPION, ELEPHANT, KING, KNIGHT, MANN, OBSTACLE, PAWN, ROOK,
-  WALL, ZEBRA,
+  Board, BISHOP, CAMEL, CENTAUR, CHAMPION, CHANCELLOR, ELEPHANT, KING, KNIGHT, MANN, OBSTACLE,
+  PAWN, ROOK, WALL, ZEBRA,
 };
 
 impl Board {
@@ -64,6 +64,19 @@ impl Board {
               }
             }
             KNIGHT => {
+              for (k, l) in Self::jump_coords((i, j), 2, 1) {
+                if k < self.height() && l < self.width() {
+                  self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
+                }
+              }
+            }
+            CHANCELLOR => {
+              for k in 0..self.height() {
+                self.add_if_legal(&mut boards, (i, j), (k, j), &mut skip_legality);
+              }
+              for l in 0..self.width() {
+                self.add_if_legal(&mut boards, (i, j), (i, l), &mut skip_legality);
+              }
               for (k, l) in Self::jump_coords((i, j), 2, 1) {
                 if k < self.height() && l < self.width() {
                   self.add_if_legal(&mut boards, (i, j), (k, l), &mut skip_legality);
@@ -238,6 +251,19 @@ impl Board {
                 }
               }
             }
+            CHANCELLOR => {
+              for k in 0..self.height() {
+                self.add_if_pseudolegal(captures, quiets, (i, j), (k, j));
+              }
+              for l in 0..self.width() {
+                self.add_if_pseudolegal(captures, quiets, (i, j), (i, l));
+              }
+              for (k, l) in Self::jump_coords((i, j), 2, 1) {
+                if k < self.height() && l < self.width() {
+                  self.add_if_pseudolegal(captures, quiets, (i, j), (k, l));
+                }
+              }
+            }
             CAMEL => {
               for (k, l) in Self::jump_coords((i, j), 3, 1) {
                 if k < self.height() && l < self.width() {
@@ -396,6 +422,19 @@ impl Board {
               }
             }
             KNIGHT => {
+              for (k, l) in Self::jump_coords((i, j), 2, 1) {
+                if k < self.height() && l < self.width() {
+                  self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, l));
+                }
+              }
+            }
+            CHANCELLOR => {
+              for k in 0..self.height() {
+                self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, j));
+              }
+              for l in 0..self.width() {
+                self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (i, l));
+              }
               for (k, l) in Self::jump_coords((i, j), 2, 1) {
                 if k < self.height() && l < self.width() {
                   self.add_if_pseudolegal_qsearch(&mut moves, (i, j), (k, l));

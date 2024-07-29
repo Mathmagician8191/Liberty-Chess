@@ -10,7 +10,7 @@ use liberty_chess::{Board, Gamestate, ALL_PIECES};
 use oxidation::glue::process_position;
 use oxidation::parameters::DEFAULT_PARAMETERS;
 use oxidation::search::SEARCH_PARAMETERS;
-use oxidation::{mvvlva_move, random_move, State, HASH_SIZE, MAX_QDEPTH, QDEPTH, VERSION_NUMBER};
+use oxidation::{mvvlva_move, random_move, State, HASH_SIZE, VERSION_NUMBER};
 use rand::{thread_rng, Rng};
 use std::collections::HashMap;
 use std::io::{BufReader, ErrorKind, Write};
@@ -184,8 +184,8 @@ pub struct Limits {
 pub enum PlayerType {
   RandomEngine,
   MVVLVA,
-  // parameters are qdepth and hash size
-  BuiltIn(NumericalInput<u16>, NumericalInput<usize>),
+  // parameter is hash size
+  BuiltIn(NumericalInput<usize>),
   External(String),
   Multiplayer(String, NumericalInput<u16>, String),
 }
@@ -195,7 +195,7 @@ impl ToString for PlayerType {
     match self {
       Self::RandomEngine => "Random Mover".to_owned(),
       Self::MVVLVA => "MVVLVA".to_owned(),
-      Self::BuiltIn(..) => format!("Oxidation v{VERSION_NUMBER}"),
+      Self::BuiltIn(_) => format!("Oxidation v{VERSION_NUMBER}"),
       Self::External(_) => "External engine (beta)".to_owned(),
       Self::Multiplayer(..) => "Connect to server (beta)".to_owned(),
     }
@@ -204,10 +204,7 @@ impl ToString for PlayerType {
 
 impl PlayerType {
   pub fn built_in() -> Self {
-    Self::BuiltIn(
-      NumericalInput::new(u16::from(QDEPTH), 0, MAX_QDEPTH),
-      NumericalInput::new(HASH_SIZE, 0, 1 << 32),
-    )
+    Self::BuiltIn(NumericalInput::new(HASH_SIZE, 0, 1 << 32))
   }
 
   #[cfg(feature = "clock")]
@@ -267,11 +264,10 @@ impl PlayerData {
     match player {
       PlayerType::RandomEngine => Ok(Self::RandomEngine),
       PlayerType::MVVLVA => Ok(Self::MVVLVA),
-      PlayerType::BuiltIn(qdepth, hash_size) => {
+      PlayerType::BuiltIn(hash_size) => {
         let (send_request, recieve_request) = channel();
         let (send_result, recieve_result) = channel();
         let hash_size = hash_size.get_value();
-        let qdepth = qdepth.get_value() as u8;
         let (send_message, receive_message) = channel();
         let ctx = ctx.clone();
         spawn(move || {
@@ -287,7 +283,6 @@ impl PlayerData {
               &receive_message,
               board,
               searchtime,
-              qdepth,
               &mut state,
             );
             ctx.request_repaint();

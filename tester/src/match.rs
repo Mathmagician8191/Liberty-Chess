@@ -4,7 +4,7 @@ use liberty_chess::threading::CompressedBoard;
 use liberty_chess::{Board, Gamestate};
 use oxidation::parameters::DEFAULT_PARAMETERS;
 use oxidation::search::{quiescence, SEARCH_PARAMETERS};
-use oxidation::{SearchConfig, State, QDEPTH};
+use oxidation::{SearchConfig, State};
 use rand::{thread_rng, Rng};
 use std::collections::{HashMap, HashSet};
 use std::fs::write;
@@ -171,10 +171,8 @@ fn play_game(
   let mut challenge_tc = CHALLENGE_TIME;
   let mut state = State::new(0, &board, SEARCH_PARAMETERS, DEFAULT_PARAMETERS);
   let mut debug = false;
-  let mut qdepth = QDEPTH;
   let (_tx, rx_2) = channel();
-  let mut settings =
-    SearchConfig::new_time(&board, &mut qdepth, SearchTime::Infinite, &rx_2, &mut debug);
+  let mut settings = SearchConfig::new_time(&board, SearchTime::Infinite, &rx_2, &mut debug);
   while current_board.state() == Gamestate::InProgress {
     if current_board.to_move() ^ champion_side {
       challenge_requests
@@ -227,8 +225,8 @@ fn play_game(
       let (pv, _) = quiescence(
         &mut state,
         &mut settings,
+        0,
         1,
-        QDEPTH,
         Score::Loss(0),
         Score::Win(0),
       )
