@@ -67,18 +67,18 @@ fn print_uci(out: &mut impl Write, info: &ClientInfo) -> Option<()> {
   }
   write(
     out,
-    &format!(
+    format!(
       "id pieces {}",
       info.pieces.iter().map(|p| to_char(-*p)).collect::<String>()
     ),
   )?;
-  write(out, &format!("id name {}", info.name))?;
+  write(out, format!("id name {}", info.name))?;
   if let Some(ref name) = info.username {
-    write(out, &format!("id username {name}"))?;
+    write(out, format!("id username {name}"))?;
   }
-  write(out, &format!("id author {}", info.author))?;
+  write(out, format!("id author {}", info.author))?;
   for (name, option) in &info.options {
-    write(out, &format!("option name {name} {}", option.to_string()))?;
+    write(out, format!("option name {name} {}", option.to_string()))?;
   }
   write(out, "uciok")?;
   Some(())
@@ -102,7 +102,7 @@ fn process_debug(
     Some(value) => {
       write(
         out,
-        &format!("info error Unrecognised debug setting {value}"),
+        format!("info error Unrecognised debug setting {value}"),
       )?;
       Some(())
     }
@@ -154,7 +154,7 @@ fn setoption(
               .ok()?;
           }
           Err(_) => {
-            write(out, &format!("info error {value} is not an integer"))?;
+            write(out, format!("info error {value} is not an integer"))?;
           }
         },
         UlciOption::Bool(_) => match value.parse() {
@@ -164,7 +164,7 @@ fn setoption(
               .ok()?;
           }
           Err(_) => {
-            write(out, &format!("info error {value} is not a boolean"))?;
+            write(out, format!("info error {value} is not a boolean"))?;
           }
         },
         UlciOption::Range(option) => {
@@ -175,7 +175,7 @@ fn setoption(
           } else {
             write(
               out,
-              &format!("info error option {name} has no value {value}"),
+              format!("info error option {name} has no value {value}"),
             )?;
           }
         }
@@ -186,7 +186,7 @@ fn setoption(
         }
       }
     } else {
-      write(out, &format!("info error unrecognised option {name}"))?;
+      write(out, format!("info error unrecognised option {name}"))?;
     }
   } else {
     write(out, "info error malformed setoption command")?;
@@ -217,7 +217,7 @@ fn position(
       if let Ok(board) = Board::new(&fen) {
         board
       } else {
-        write(out, &format!("info error invalid position {fen}"))?;
+        write(out, format!("info error invalid position {fen}"))?;
         // Fatal error, quit the program
         return if !debug { None } else { Some(()) };
       }
@@ -235,7 +235,7 @@ fn position(
         } else {
           write(
             out,
-            &format!(
+            format!(
               "info error illegal move {} from {}",
               candidate_move.to_string(),
               board.to_string()
@@ -245,7 +245,7 @@ fn position(
           return if !debug { None } else { Some(()) };
         }
       } else {
-        write(out, &format!("info error invalid move {word}"))?;
+        write(out, format!("info error invalid move {word}"))?;
         // Fatal error, quit the program
         return if !debug { None } else { Some(()) };
       }
@@ -254,7 +254,7 @@ fn position(
   if debug {
     write(
       out,
-      &format!("info string position changed to {}", board.to_string()),
+      format!("info string position changed to {}", board.to_string()),
     )?;
   }
   client
@@ -506,7 +506,7 @@ pub fn startup(
       Some(command) => {
         write(
           &mut out,
-          &format!("info error Unrecognised command {command}"),
+          format!("info error Unrecognised command {command}"),
         )?;
       }
     }

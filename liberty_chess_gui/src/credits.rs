@@ -37,7 +37,7 @@ fn get_row(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui, pieces: &str) 
 // convenient wrappers for links
 
 fn github(ui: &mut Ui, name: &str) {
-  link(ui, name, &format!("https://github.com/{name}"));
+  link(ui, name, format!("https://github.com/{name}"));
 }
 
 fn wikipedia(ui: &mut Ui, name: &str) {

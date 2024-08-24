@@ -16,8 +16,8 @@ use eframe::emath::Align2;
 use eframe::epaint::{pos2, Color32, FontId, Pos2, Rect, Rounding, TextureId};
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
-  Area, Button, CentralPanel, ColorImage, ComboBox, Context, IconData, Key, Label, RichText, ScrollArea,
-  SidePanel, Slider, TextureHandle, TextureOptions, TopBottomPanel, Ui, Vec2,
+  Area, Button, CentralPanel, ColorImage, ComboBox, Context, IconData, Key, Label, RichText,
+  ScrollArea, SidePanel, Slider, TextureHandle, TextureOptions, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
 use helpers::{populate_dropdown, populate_dropdown_transform, raw_text_edit};
@@ -1062,7 +1062,7 @@ fn main() {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
-    use eframe::egui::ViewportBuilder;
+  use eframe::egui::ViewportBuilder;
 
   let size = helpers::ICON_SIZE;
   let mut pixmap = Pixmap::new(size, size).unwrap();
@@ -1084,7 +1084,7 @@ fn main() {
     // disable vsync for uncapped framerates while benchmarking
     vsync: cfg!(not(feature = "benchmarking")),
     viewport,
-    
+
     ..Default::default()
   };
   eframe::run_native(
