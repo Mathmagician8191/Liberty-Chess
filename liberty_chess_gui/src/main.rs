@@ -16,7 +16,7 @@ use eframe::emath::Align2;
 use eframe::epaint::{pos2, Color32, FontId, Pos2, Rect, Rounding, TextureId};
 use eframe::{egui, App, CreationContext, Frame, Storage};
 use egui::{
-  Area, Button, CentralPanel, ColorImage, ComboBox, Context, Key, Label, RichText, ScrollArea,
+  Area, Button, CentralPanel, ColorImage, ComboBox, Context, IconData, Key, Label, RichText, ScrollArea,
   SidePanel, Slider, TextureHandle, TextureOptions, TopBottomPanel, Ui, Vec2,
 };
 use enum_iterator::all;
@@ -310,7 +310,7 @@ impl App for LibertyChessGUI {
                 if page == self.help_page {
                   text = text.color(Colours::ValidBlack.value());
                 }
-                if ui.add(Button::new(text).wrap(false)).clicked() {
+                if ui.add(Button::new(text).truncate()).clicked() {
                   self.help_page = page;
                 }
               }
@@ -325,9 +325,9 @@ impl App for LibertyChessGUI {
           .resizable(false)
           .show(ctx, |ui| {
             menu_button(self, ui);
-            ui.add(Label::new("Credits:").wrap(false));
+            ui.add(Label::new("Credits:").truncate());
             for page in all::<Credits>() {
-              if ui.add(Button::new(page.title()).wrap(false)).clicked() {
+              if ui.add(Button::new(page.title()).truncate()).clicked() {
                 self.credits = page;
               }
             }
@@ -344,7 +344,7 @@ impl App for LibertyChessGUI {
         Screen::Credits => credits::draw(self, ctx, ui),
         Screen::Settings => {
           let width = ui.available_width();
-          Area::new("Settings")
+          Area::new("Settings".into())
             .fixed_pos(((width / 2.0) - 200.0, 0.0))
             .show(ctx, |ui| draw_settings(self, ctx, ui));
         }
@@ -1062,6 +1062,8 @@ fn main() {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
+    use eframe::egui::ViewportBuilder;
+
   let size = helpers::ICON_SIZE;
   let mut pixmap = Pixmap::new(size, size).unwrap();
   render(
@@ -1071,21 +1073,24 @@ fn main() {
     pixmap.as_mut(),
   )
   .unwrap();
-  let options = eframe::NativeOptions {
-    // disable vsync for uncapped framerates while benchmarking
-    vsync: cfg!(not(feature = "benchmarking")),
-    icon_data: Some(eframe::IconData {
+  let viewport = ViewportBuilder::default()
+    .with_icon(IconData {
       rgba: Pixmap::take(pixmap),
       width: size,
       height: size,
-    }),
-    min_window_size: Some(Vec2::new(640.0, 480.0)),
+    })
+    .with_min_inner_size(Vec2::new(640.0, 480.0));
+  let options = eframe::NativeOptions {
+    // disable vsync for uncapped framerates while benchmarking
+    vsync: cfg!(not(feature = "benchmarking")),
+    viewport,
+    
     ..Default::default()
   };
   eframe::run_native(
     "Liberty Chess",
     options,
-    Box::new(|cc| Box::new(LibertyChessGUI::new(cc))),
+    Box::new(|cc| Ok(Box::new(LibertyChessGUI::new(cc)))),
   )
   .expect("Failed to load Liberty Chess");
 }

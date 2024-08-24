@@ -15,7 +15,7 @@ oxidation = {path = "oxidation"}
 sound = {path = "sound"}
 ulci = {path = "ulci"}
 array2d = {git = "https://github.com/Mathmagician8191/array2d", branch="mutable_iteration"}
-eframe = {version = "0.23.0", features = ["persistence"]}
+eframe = {version = "0.28.1", features = ["persistence"]}
 enum-iterator = "1.2.0"
 kira = {version = "0.8.4", default-features = false, features = ["cpal", "ogg"]}
 parking_lot = "0.12.1"

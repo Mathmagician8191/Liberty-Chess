@@ -207,7 +207,7 @@ pub(crate) fn draw_game(gui: &mut LibertyChessGUI, ctx: &Context, mut board: Boa
       _ => (),
     }
   }
-  Area::new("Board")
+  Area::new("Board".into())
     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
       draw_board(gui, ctx, ui, board, clickable, gui.flipped);
@@ -441,7 +441,7 @@ fn register_response(
   }
   if let Some((start, ref mut offset)) = gui.drag {
     *offset += response.drag_delta();
-    if response.drag_released() {
+    if response.drag_stopped() {
       #[cfg(feature = "sound")]
       if let Some((coords, piece)) = hover {
         if start != coords {

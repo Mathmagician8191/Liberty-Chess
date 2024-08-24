@@ -142,7 +142,7 @@ impl HelpPage {
 
 pub(crate) fn draw_help(gui: &mut LibertyChessGUI, ctx: &Context) {
   gui.selected = Some(gui.help_page.selected());
-  Area::new("Board")
+  Area::new("Board".into())
     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
     .show(ctx, |ui| {
       draw_board(gui, ctx, ui, gui.help_page.board(), false, false);
