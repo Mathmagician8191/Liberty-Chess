@@ -14,6 +14,7 @@ pub fn process_position(
   board: CompressedBoard,
   searchtime: SearchTime,
   state: &mut State,
+  multipv: u16,
 ) -> Option<()> {
   let mut position = board.load_from_thread();
   state.new_position(&position);
@@ -25,7 +26,7 @@ pub fn process_position(
     &mut config,
     &mut position,
     &[],
-    1,
+    multipv,
     Output::Channel(tx),
   );
   tx.send(UlciResult::AnalysisStopped(pv[0])).ok()?;

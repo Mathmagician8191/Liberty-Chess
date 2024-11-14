@@ -57,7 +57,7 @@ fn process_move(state: &mut State, board: &mut Board, search_time: &mut SearchTi
   let move_time = Instant::now();
   let (tx, rx) = channel();
   let (_tx_2, rx_2) = channel();
-  process_position(&tx, &rx_2, board.send_to_thread(), *search_time, state);
+  process_position(&tx, &rx_2, board.send_to_thread(), *search_time, state, 1);
   while let Ok(result) = rx.recv() {
     match result {
       UlciResult::Analysis(results) => {

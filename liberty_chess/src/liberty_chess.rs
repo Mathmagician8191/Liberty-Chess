@@ -278,7 +278,7 @@ impl Board {
     };
 
     let mut halfmoves = 0;
-    if let Some(value) = fields.get(4).and_then(|x| x.parse::<u8>().ok()) {
+    if let Some(value) = fields.get(4).and_then(|x| x.parse().ok()) {
       halfmoves = value;
     }
 

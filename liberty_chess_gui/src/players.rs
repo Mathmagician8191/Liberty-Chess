@@ -284,6 +284,7 @@ impl PlayerData {
               board,
               searchtime,
               &mut state,
+              1,
             );
             ctx.request_repaint();
           }
