@@ -58,7 +58,10 @@ fn wikimedia(ui: &mut Ui, name: &str, username: &str) {
 
 fn link(ui: &mut Ui, name: impl Into<WidgetText>, link: impl ToString) {
   let name: WidgetText = name.into();
-  ui.add(Hyperlink::from_label_and_url(name.color(Color32::BLUE), link));
+  ui.add(Hyperlink::from_label_and_url(
+    name.color(Color32::BLUE),
+    link,
+  ));
 }
 
 pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
