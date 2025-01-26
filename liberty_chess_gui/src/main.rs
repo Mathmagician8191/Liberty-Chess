@@ -976,7 +976,7 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
     gui.safety_mode = false;
   }
 
-  if gui.player.is_none() {
+  if gui.config.get_evalbar() && gui.player.is_none() {
     if checkbox(
       ui,
       &mut gui.kibbutz.is_some(),
