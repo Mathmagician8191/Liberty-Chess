@@ -21,8 +21,11 @@ use egui::{
 };
 use enum_iterator::all;
 use helpers::{populate_dropdown, populate_dropdown_transform, raw_text_edit};
+use liberty_chess::moves::Move;
 use liberty_chess::parsing::to_name;
 use liberty_chess::{Board, Gamestate, Piece};
+use oxidation::HASH_SIZE;
+use players::EngineInterface;
 use resvg::render;
 use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{FitTo, Tree};
@@ -111,6 +114,7 @@ pub(crate) struct LibertyChessGUI {
   flipped: bool,
   eval: Option<(Score, u16)>,
   safety_mode: bool,
+  kibbutz: Option<(EngineInterface, Option<Move>)>,
 
   // fields for other screens
   help_page: HelpPage,
@@ -182,6 +186,7 @@ impl LibertyChessGUI {
       flipped: false,
       eval: None,
       safety_mode: false,
+      kibbutz: None,
 
       help_page: HelpPage::PawnForward,
       credits: Credits::Coding,
@@ -240,7 +245,7 @@ impl App for LibertyChessGUI {
           if let Some((score, depth)) = self.eval {
             let size = f32::from(self.config.get_text_size());
             SidePanel::left("Eval bar")
-              .exact_width(size * 1.6)
+              .exact_width(size * 2.0)
               .resizable(false)
               .show(ctx, |ui| {
                 let height = ui.available_height();
@@ -416,6 +421,7 @@ fn switch_screen(gui: &mut LibertyChessGUI, screen: Screen) {
       gui.undo.clear();
       gui.player = None;
       gui.eval = None;
+      gui.kibbutz = None;
       #[cfg(feature = "clock")]
       {
         gui.clock = None;
@@ -586,7 +592,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.selectable_value(&mut gui.alternate_player, None, "Local Opponent");
       let values = [
         PlayerType::RandomEngine,
-        PlayerType::MVVLVA,
+        PlayerType::MvvLva,
         PlayerType::built_in(),
         PlayerType::External(String::new()),
         PlayerType::Multiplayer(
@@ -747,7 +753,7 @@ fn draw_menu(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
           raw_text_edit(ui, size * 6.0, name);
         });
       }
-      PlayerType::RandomEngine | PlayerType::MVVLVA => (),
+      PlayerType::RandomEngine | PlayerType::MvvLva => (),
     }
   }
 }
@@ -890,6 +896,10 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
     if let Some((player, _)) = &mut gui.player {
       player.cancel_move();
     }
+    if let Some((player, bestmove)) = &mut gui.kibbutz {
+      player.cancel_move();
+      *bestmove = None;
+    }
     #[cfg(feature = "clock")]
     if let Some(clock) = &mut gui.clock {
       if gui.player.is_none() {
@@ -964,6 +974,23 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
     }
   } else {
     gui.safety_mode = false;
+  }
+
+  if gui.player.is_none() {
+    if checkbox(
+      ui,
+      &mut gui.kibbutz.is_some(),
+      "Enable kibbutz",
+      #[cfg(feature = "sound")]
+      gui.audio_engine.as_mut(),
+    ) {
+      gui.kibbutz = match gui.kibbutz {
+        Some(_) => None,
+        None => Some((EngineInterface::new(HASH_SIZE, ui.ctx()), None)),
+      }
+    }
+  } else {
+    gui.kibbutz = None;
   }
 
   // if the game is over, report the reason

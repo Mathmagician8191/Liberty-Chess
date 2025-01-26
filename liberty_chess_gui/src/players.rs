@@ -183,7 +183,7 @@ pub struct Limits {
 #[derive(Clone, Eq, PartialEq)]
 pub enum PlayerType {
   RandomEngine,
-  MVVLVA,
+  MvvLva,
   // parameter is hash size
   BuiltIn(NumericalInput<usize>),
   External(String),
@@ -194,7 +194,7 @@ impl ToString for PlayerType {
   fn to_string(&self) -> String {
     match self {
       Self::RandomEngine => "Random Mover".to_owned(),
-      Self::MVVLVA => "MVVLVA".to_owned(),
+      Self::MvvLva => "MVVLVA".to_owned(),
       Self::BuiltIn(_) => format!("Oxidation v{VERSION_NUMBER}"),
       Self::External(_) => "External engine (beta)".to_owned(),
       Self::Multiplayer(..) => "Connect to server (beta)".to_owned(),
@@ -210,14 +210,14 @@ impl PlayerType {
   #[cfg(feature = "clock")]
   pub const fn is_thinking(&self) -> bool {
     match self {
-      Self::RandomEngine | Self::MVVLVA => false,
+      Self::RandomEngine | Self::MvvLva => false,
       Self::BuiltIn(..) | Self::External(_) | Self::Multiplayer(..) => true,
     }
   }
 
   pub const fn custom_thinking_time(&self) -> bool {
     match self {
-      Self::RandomEngine | Self::MVVLVA | Self::Multiplayer(..) => false,
+      Self::RandomEngine | Self::MvvLva | Self::Multiplayer(..) => false,
       Self::BuiltIn(..) | Self::External(_) => true,
     }
   }
@@ -253,7 +253,7 @@ impl PlayerColour {
 
 pub enum PlayerData {
   RandomEngine,
-  MVVLVA,
+  MvvLva,
   BuiltIn(EngineInterface),
   Uci(UciInterface),
   Multiplayer(Connection),
@@ -263,39 +263,11 @@ impl PlayerData {
   pub fn new(player: &PlayerType, board: &Board, ctx: &Context) -> Result<Self, String> {
     match player {
       PlayerType::RandomEngine => Ok(Self::RandomEngine),
-      PlayerType::MVVLVA => Ok(Self::MVVLVA),
-      PlayerType::BuiltIn(hash_size) => {
-        let (send_request, recieve_request) = channel();
-        let (send_result, recieve_result) = channel();
-        let hash_size = hash_size.get_value();
-        let (send_message, receive_message) = channel();
-        let ctx = ctx.clone();
-        spawn(move || {
-          let mut state = State::new(
-            hash_size,
-            &get_startpos(),
-            SEARCH_PARAMETERS,
-            DEFAULT_PARAMETERS,
-          );
-          while let Ok((board, searchtime)) = recieve_request.recv() {
-            process_position(
-              &send_result,
-              &receive_message,
-              board,
-              searchtime,
-              &mut state,
-              1,
-            );
-            ctx.request_repaint();
-          }
-        });
-        Ok(Self::BuiltIn(EngineInterface {
-          tx: send_request,
-          rx: recieve_result,
-          send_message,
-          status: false,
-        }))
-      }
+      PlayerType::MvvLva => Ok(Self::MvvLva),
+      PlayerType::BuiltIn(hash_size) => Ok(Self::BuiltIn(EngineInterface::new(
+        hash_size.get_value(),
+        ctx,
+      ))),
       PlayerType::External(path) => {
         let (send_request, recieve_request) = channel();
         let (send_result, recieve_result) = channel();
@@ -357,8 +329,11 @@ impl PlayerData {
   ) -> (Option<Move>, Option<(Score, u16)>) {
     match self {
       Self::RandomEngine => (random_move(board), None),
-      Self::MVVLVA => (mvvlva_move(board), None),
-      Self::BuiltIn(interface) => interface.get_move(board, searchtime),
+      Self::MvvLva => (mvvlva_move(board), None),
+      Self::BuiltIn(interface) => {
+        let (bestmove, score, _) = interface.get_move(board, searchtime);
+        (bestmove, score)
+      }
       Self::Uci(interface) => interface.get_move(board, searchtime),
       Self::Multiplayer(_) => (None, None),
     }
@@ -368,7 +343,7 @@ impl PlayerData {
     match self {
       Self::BuiltIn(interface) => interface.cancel_move(),
       Self::Uci(interface) => interface.cancel_move(),
-      Self::RandomEngine | Self::MVVLVA | Self::Multiplayer(_) => (),
+      Self::RandomEngine | Self::MvvLva | Self::Multiplayer(_) => (),
     }
   }
 }
@@ -381,12 +356,44 @@ pub struct EngineInterface {
 }
 
 impl EngineInterface {
+  pub fn new(hash_size: usize, ctx: &Context) -> Self {
+    let (send_request, recieve_request) = channel();
+    let (send_result, recieve_result) = channel();
+    let (send_message, receive_message) = channel();
+    let ctx = ctx.clone();
+    spawn(move || {
+      let mut state = State::new(
+        hash_size,
+        &get_startpos(),
+        SEARCH_PARAMETERS,
+        DEFAULT_PARAMETERS,
+      );
+      while let Ok((board, searchtime)) = recieve_request.recv() {
+        process_position(
+          &send_result,
+          &receive_message,
+          board,
+          searchtime,
+          &mut state,
+          1,
+        );
+        ctx.request_repaint();
+      }
+    });
+    EngineInterface {
+      tx: send_request,
+      rx: recieve_result,
+      send_message,
+      status: false,
+    }
+  }
+
   pub fn get_move(
     &mut self,
     board: &Board,
     searchtime: SearchTime,
-  ) -> (Option<Move>, Option<(Score, u16)>) {
-    let (mut result, mut analysis) = (None, None);
+  ) -> (Option<Move>, Option<(Score, u16)>, Vec<Move>) {
+    let (mut result, mut analysis, mut pv) = (None, None, Vec::new());
     if self.status {
       // request sent, poll for results
       for message in self.rx.try_iter() {
@@ -406,6 +413,7 @@ impl EngineInterface {
               Score::Centipawn(_) => (),
             }
             analysis = Some((score, result.depth));
+            pv = result.pv;
           }
           UlciResult::Startup(_) | UlciResult::Info(..) => (),
         }
@@ -415,17 +423,17 @@ impl EngineInterface {
       self.tx.send((board.send_to_thread(), searchtime)).ok();
       self.status = true;
     }
-    (result, analysis)
+    (result, analysis, pv)
   }
 
-  fn cancel_move(&mut self) {
+  pub fn cancel_move(&mut self) {
     if self.status {
       self.send_message.send(Message::Stop).ok();
       // wait for results
       while let Ok(message) = self.rx.recv() {
-        match message {
-          UlciResult::AnalysisStopped(_) => self.status = false,
-          UlciResult::Analysis(_) | UlciResult::Startup(_) | UlciResult::Info(..) => (),
+        if let UlciResult::AnalysisStopped(_) = message {
+          self.status = false;
+          break;
         }
       }
     }

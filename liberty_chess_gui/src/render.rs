@@ -4,20 +4,19 @@ use crate::themes::Colours;
 use crate::{LibertyChessGUI, Screen};
 use eframe::egui::{
   pos2, Align2, Area, Color32, Context, FontId, PointerButton, Pos2, Rect, Response, Rounding,
-  Sense, Shape, Ui, Vec2,
+  Sense, Shape, Stroke, Ui, Vec2,
 };
 use liberty_chess::moves::Move;
 use liberty_chess::parsing::to_letters;
 use liberty_chess::{Board, Gamestate, Piece};
 use std::sync::mpsc::TryRecvError;
 use ulci::client::Message;
+use ulci::SearchTime;
 
 #[cfg(feature = "clock")]
 use liberty_chess::clock::Clock;
 #[cfg(feature = "clock")]
 use std::time::Duration;
-#[cfg(feature = "clock")]
-use ulci::SearchTime;
 
 #[cfg(feature = "sound")]
 use crate::helpers::update_sound;
@@ -239,7 +238,7 @@ pub(crate) fn draw_board(
   painter.rect_filled(board_rect, Rounding::ZERO, Colours::WhiteSquare.value());
   if let Some(location) = response.interact_pointer_pos() {
     let hover = get_hovered(board_rect, location, size as usize, flipped, &gamestate);
-    register_response(gui, &gamestate, &response, hover);
+    register_response(gui, &mut gamestate, &response, hover);
   }
   let (dragged, offset) = unwrap_tuple(gui.drag);
   let numbers = size >= NUMBER_SCALE && gui.config.get_numbers();
@@ -378,6 +377,32 @@ pub(crate) fn draw_board(
       .value(),
     );
   }
+  if let Some((player, bestmove)) = &mut gui.kibbutz {
+    let (_, score, pv) = player.get_move(&gamestate, SearchTime::Infinite);
+    if let Some(score) = score {
+      gui.eval = Some(score);
+    }
+    if let Some(new_move) = pv.first() {
+      *bestmove = Some(*new_move);
+    }
+    if let Some(bestmove) = bestmove {
+      let start = bestmove.start();
+      let end = bestmove.end();
+      let start = (start.1 as f32 + 0.5, start.0 as f32 + 0.5);
+      let end = (end.1 as f32 + 0.5, end.0 as f32 + 0.5);
+      let start = (
+        start.0.mul_add(size, board_rect.min.x),
+        start.1.mul_add(-size, board_rect.max.y),
+      );
+      let end = (
+        end.0.mul_add(size, board_rect.min.x),
+        end.1.mul_add(-size, board_rect.max.y),
+      );
+      let stroke = Stroke::new(size / 10.0, Color32::GRAY);
+      painter.line_segment([start.into(), end.into()], stroke);
+      painter.circle(end.into(), size / 10.0, Color32::GRAY, stroke);
+    }
+  }
 }
 
 fn get_size(ctx: &Context, rows: f32, cols: f32) -> (f32, Vec2) {
@@ -414,7 +439,7 @@ fn get_hovered(
 
 fn register_response(
   gui: &mut LibertyChessGUI,
-  gamestate: &Board,
+  gamestate: &mut Board,
   response: &Response,
   hover: Option<((usize, usize), Piece)>,
 ) {
@@ -462,7 +487,7 @@ fn register_response(
 
 fn attempt_move(
   gui: &mut LibertyChessGUI,
-  gamestate: &Board,
+  gamestate: &mut Board,
   selected: (usize, usize),
   coords: (usize, usize),
   #[cfg(feature = "sound")] capture: bool,
@@ -471,6 +496,10 @@ fn attempt_move(
   let mut effect = Effect::Illegal;
   if gamestate.check_pseudolegal(selected, coords) {
     if let Some(mut newstate) = gamestate.get_legal(selected, coords) {
+      if let Some((player, bestmove)) = &mut gui.kibbutz {
+        player.cancel_move();
+        *bestmove = None;
+      }
       if !newstate.promotion_available() {
         newstate.update();
         #[cfg(feature = "clock")]
@@ -502,6 +531,7 @@ fn attempt_move(
       if play_move {
         gui.undo.push(gamestate.clone());
       }
+      *gamestate = newstate.clone();
       gui.screen = Screen::Game(Box::new(newstate));
     }
   }

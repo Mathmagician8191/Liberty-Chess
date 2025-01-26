@@ -1,6 +1,6 @@
 use crate::helpers::get_icon;
 use crate::LibertyChessGUI;
-use eframe::egui::{Context, Hyperlink, ScrollArea, Ui, WidgetText};
+use eframe::egui::{Color32, Context, Hyperlink, ScrollArea, Ui, WidgetText};
 use enum_iterator::Sequence;
 
 #[derive(Clone, Copy, Sequence)]
@@ -57,7 +57,8 @@ fn wikimedia(ui: &mut Ui, name: &str, username: &str) {
 }
 
 fn link(ui: &mut Ui, name: impl Into<WidgetText>, link: impl ToString) {
-  ui.add(Hyperlink::from_label_and_url(name, link));
+  let name: WidgetText = name.into();
+  ui.add(Hyperlink::from_label_and_url(name.color(Color32::BLUE), link));
 }
 
 pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
