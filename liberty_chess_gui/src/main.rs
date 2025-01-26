@@ -892,6 +892,9 @@ fn draw_game_sidebar(gui: &mut LibertyChessGUI, ui: &mut Ui, mut gamestate: Box<
     if let Some(ref mut player) = gui.audio_engine {
       player.set_dramatic(get_dramatic(&gamestate));
     }
+    if gui.player.is_none() && gui.config.get_autoflip() {
+      gui.flipped = !gamestate.to_move();
+    }
     gui.screen = Screen::Game(Box::new(gamestate));
     if let Some((player, _)) = &mut gui.player {
       player.cancel_move();
