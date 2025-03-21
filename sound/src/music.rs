@@ -22,32 +22,29 @@ use std::thread::{sleep, spawn};
 // The paths for music
 const MUSIC: [(&[u8], Option<&[u8]>); 7] = [
   (
-    include_bytes!("../../resources/music/Hydrangeas-for-a-Friend-Calm.ogg"),
+    include_bytes!("../../resources/music/01 - Cognitive Ambience.ogg"),
+    None,
+  ),
+  (
+    include_bytes!("../../resources/music/02 - Recursive Thinking.ogg"),
+    None,
+  ),
+  (
+    include_bytes!("../../resources/music/03 - Perplex City.ogg"),
+    None,
+  ),
+  (
+    include_bytes!("../../resources/music/04 - These Stray Tiles.ogg"),
+    None,
+  ),
+  (
+    include_bytes!("../../resources/music/05 - Climax Rising Calm.ogg"),
     Some(include_bytes!(
-      "../../resources/music/Hydrangeas-for-a-Friend-Extra.ogg"
+      "../../resources/music/05 - Climax Rising Extra.ogg"
     )),
   ),
-  (
-    include_bytes!("../../resources/music/01 - Renard Lullaby.ogg"),
-    None,
-  ),
-  (
-    include_bytes!("../../resources/music/02 - Cognitive Ambience.ogg"),
-    None,
-  ),
-  (
-    include_bytes!("../../resources/music/03 - Recursive Thinking.ogg"),
-    None,
-  ),
-  (
-    include_bytes!("../../resources/music/04 - Perplex Objector.ogg"),
-    None,
-  ),
-  (
-    include_bytes!("../../resources/music/05 - Wasted Opportunity.ogg"),
-    None,
-  ),
-  (include_bytes!("../../resources/music/Brillfish.ogg"), None),
+  (include_bytes!("../../resources/music/06 - Em.ogg"), None),
+  (include_bytes!("../../resources/music/07 - Edeom.ogg"), None),
 ];
 
 // If it fails, we don't care

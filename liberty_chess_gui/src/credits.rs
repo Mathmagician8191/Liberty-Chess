@@ -126,13 +126,13 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       );
       ui.label("It is licensed under CC BY-NC-SA 4.0");
       ui.label("List of tracks:");
-      ui.label("\"Hydrangeas for a Friend\"");
-      ui.label("\"Renard Lullaby\"");
       ui.label("\"Cognitive Ambience\"");
       ui.label("\"Recursive Thinking\"");
-      ui.label("\"Perplex Objector\"");
-      ui.label("\"Wasted Opportunity\"");
-      ui.label("\"Brillfish\"");
+      ui.label("\"Perplex City\"");
+      ui.label("\"These Stray Tiles\"");
+      ui.label("\"Climax Rising\"");
+      ui.label("\"Em\"");
+      ui.label("\"Edeom\"");
     }
   }
 }
