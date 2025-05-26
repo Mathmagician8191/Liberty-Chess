@@ -1,5 +1,7 @@
 # Liberty-Chess
 
+[itch.io download link](https://mathmagician8191.itch.io/liberty-chess)
+
 The sequel to Totally Normal Chess, now written in Rust
 
 TODO for version 1.0:
