@@ -111,8 +111,8 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.label("Illegal move, menu navigation and checkbox sounds done by:");
       link(
         ui,
-        "Aviitone",
-        "https://open.spotify.com/artist/1S4BPnkEXlh3fptVfr5JNf",
+        "Hekit",
+        "https://open.spotify.com/artist/4NOMEI4iHMnWMuUhxH0VEJ",
       );
       ui.label("They are licensed under CC BY-NC-SA 4.0");
     }
@@ -121,8 +121,8 @@ pub(crate) fn draw(gui: &mut LibertyChessGUI, ctx: &Context, ui: &mut Ui) {
       ui.label("Music composed by:");
       link(
         ui,
-        "Aviitone",
-        "https://open.spotify.com/artist/1S4BPnkEXlh3fptVfr5JNf",
+        "Hekit",
+        "https://open.spotify.com/artist/4NOMEI4iHMnWMuUhxH0VEJ",
       );
       ui.label("It is licensed under CC BY-NC-SA 4.0");
       ui.label("List of tracks:");
