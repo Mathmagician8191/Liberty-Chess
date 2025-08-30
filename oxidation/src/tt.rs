@@ -123,7 +123,7 @@ impl TranspositionTable {
     depth: u8,
   ) -> (Option<Score>, Option<Move>) {
     let mut ttmove = None;
-    if self.entries.len() > 0 {
+    if !self.entries.is_empty() {
       let index = hash as usize % self.entries.len();
       if let Some(entry) = &self.entries[index] {
         if entry.hash == (hash >> 32) as u32 {
@@ -152,7 +152,7 @@ impl TranspositionTable {
   }
 
   pub fn store(&mut self, entry: Entry) {
-    if self.entries.len() > 0 {
+    if !self.entries.is_empty() {
       let index = entry.hash as usize % self.entries.len();
       if let Some(old_entry) = self.entries[index] {
         if old_entry.hash != (entry.hash >> 32) as u32

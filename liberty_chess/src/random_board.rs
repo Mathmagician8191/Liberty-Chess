@@ -10,6 +10,13 @@ pub fn generate(width: usize, height: usize, piece_options: &str, spawn_king: bo
   // The available pieces to choose from
   let pieces = piece_options.to_lowercase().chars().collect::<Vec<char>>();
 
+  let mut promotion_options = Vec::new();
+  for piece in &pieces {
+    if !promotion_options.contains(piece) {
+      promotion_options.push(*piece);
+    }
+  }
+
   let mut rng = thread_rng();
 
   // Get the pieces on the board
@@ -36,7 +43,7 @@ pub fn generate(width: usize, height: usize, piece_options: &str, spawn_king: bo
   result += " w KQkq - 0 1 - ";
 
   // make piece options promotion options
-  result += piece_options;
+  result += &promotion_options.iter().collect::<String>();
 
   result
 }

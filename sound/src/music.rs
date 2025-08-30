@@ -278,7 +278,7 @@ impl Engine {
     self
       .music_player
       .as_ref()
-      .map_or(false, |player| player.dramatic)
+      .is_some_and(|player| player.dramatic)
   }
 
   /// Toggle whether music should play

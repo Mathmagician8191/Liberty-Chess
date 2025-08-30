@@ -664,7 +664,7 @@ impl Board {
             1 => {
               rows == 1
                 && (destination != 0 || {
-                  self.en_passant.map_or(false, |coords| {
+                  self.en_passant.is_some_and(|coords| {
                     end.1 == coords[0] && coords[1] <= end.0 && end.0 <= coords[2]
                   })
                 })
