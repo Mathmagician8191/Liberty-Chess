@@ -1221,7 +1221,13 @@ impl Board {
   /// Update kings in check and game state.
   pub fn update(&mut self) {
     match (self.white_pieces == 0, self.black_pieces == 0) {
-      (true, true) => return self.state = Gamestate::Material,
+      (true, true) => {
+        return self.state = if self.white_kings.is_empty() ^ self.black_kings.is_empty() {
+          Gamestate::Elimination(self.black_kings.is_empty())
+        } else {
+          Gamestate::Material
+        }
+      }
       (true, false) => {
         if self.white_kings.is_empty() {
           self.state = Gamestate::Elimination(false);
